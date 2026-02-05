@@ -1,0 +1,5 @@
+// D4rt bridge generation marker
+// Generated: 2026-02-03T20:15:08.495700
+// Classes: 20
+// Modules: 1
+// Outputs: lib/src/d4rt_library_bridges/package_tom_vscode_bridge_bridges.dart, lib/src/d4rt_library_bridges/package_tom_vscode_scripting_api_bridges.dart, lib/src/d4rt_bridges/tom_vscode_bridge_bridges.dart, lib/d4rt_bridges.dart, lib/dartscript.dart, lib/src/d4rt_library_bridges/bridges_trigger.g.dart

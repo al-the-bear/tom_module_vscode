@@ -1,0 +1,660 @@
+{
+  "name": "dartscript-vscode",
+  "displayName": "DartScript",
+  "description": "AI-powered build and documentation automation for Tom workspace with Copilot integration",
+  "version": "0.1.0",
+  "publisher": "tom",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "submenus": [
+      {
+        "id": "dartscript.sendToChatSubmenu",
+        "label": "DartScript: Send to Chat..."
+      }
+    ],
+    "commands": [
+      {
+        "command": "dartscript.executeFile",
+        "title": "DS: Execute File",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.executeScript",
+        "title": "DS: Execute as Script",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToChat",
+        "title": "DS: Send to Copilot Chat",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToChatAdvanced",
+        "title": "DS: Send to Copilot Chat (Template)...",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.reloadSendToChatConfig",
+        "title": "DS: Reload Chat Config",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToChatTrailReminder",
+        "title": "Send with Trail Reminder",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToChatStandard",
+        "title": "DS: Send to Copilot Chat (Standard)",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToChatTodoExecution",
+        "title": "TODO Execution",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToChatCodeReview",
+        "title": "Code Review",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToChatExplain",
+        "title": "Explain Code",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToChatAddToTodo",
+        "title": "Add to Todo",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToChatFixMarkdown",
+        "title": "Fix Markdown here",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.showChatAnswerValues",
+        "title": "DS: Show chat answer values",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.clearChatAnswerValues",
+        "title": "DS: Clear chat answer values",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.restartBridge",
+        "title": "DS: Restart Bridge",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.reloadWindow",
+        "title": "DS: Reload Window",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.runTests",
+        "title": "DS: Run Tests",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.startCliServer",
+        "title": "DS: Start Tom CLI Integration Server",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.startCliServerCustomPort",
+        "title": "DS: Start Tom CLI Integration Server (Custom Port)",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.stopCliServer",
+        "title": "DS: Stop Tom CLI Integration Server",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.startProcessMonitor",
+        "title": "DS: Start Tom Process Monitor",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.toggleBridgeDebugLogging",
+        "title": "DS: Toggle Bridge Debug Logging",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.printConfiguration",
+        "title": "DartScript: Print Configuration",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.showHelp",
+        "title": "DS: Show Extension Help",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.showApiInfo",
+        "title": "DartScript: Show VS Code API Info",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.startTomAIChat",
+        "title": "Tom AI: Start Chat",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToTomAIChat",
+        "title": "Tom AI: Send Chat Prompt",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.interruptTomAIChat",
+        "title": "Tom AI: Interrupt Chat",
+        "category": "DartScript"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "dartscript.reloadWindow",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r"
+      },
+      {
+        "command": "dartscript.startTomAIChat",
+        "key": "ctrl+cmd+n",
+        "mac": "ctrl+cmd+n",
+        "when": "editorTextFocus && resourceExtname == .md"
+      },
+      {
+        "command": "dartscript.sendToTomAIChat",
+        "key": "ctrl+cmd+s",
+        "mac": "ctrl+cmd+s",
+        "when": "editorTextFocus && resourceExtname == .md"
+      },
+      {
+        "command": "dartscript.interruptTomAIChat",
+        "key": "ctrl+cmd+i",
+        "mac": "ctrl+cmd+i"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "dartscript.executeFile",
+          "when": "resourceExtname == .dart",
+          "group": "dartscript@1"
+        },
+        {
+          "command": "dartscript.executeScript",
+          "when": "resourceExtname == .dart",
+          "group": "dartscript@3"
+        }
+      ],
+      "editor/context": [
+        {
+          "submenu": "dartscript.sendToChatSubmenu",
+          "group": "copilot@0"
+        },
+        {
+          "command": "dartscript.sendToChatStandard",
+          "group": "copilot@1"
+        },
+        {
+          "command": "dartscript.sendToChatAdvanced",
+          "group": "copilot@2"
+        },
+        {
+          "command": "dartscript.sendToChat",
+          "when": "editorHasSelection",
+          "group": "copilot@3"
+        },
+        {
+          "command": "dartscript.executeScript",
+          "when": "resourceExtname == .dart",
+          "group": "dartscript@2"
+        },
+        {
+          "command": "dartscript.startTomAIChat",
+          "when": "resourceExtname == .chat.md",
+          "group": "dartscript@4"
+        },
+        {
+          "command": "dartscript.sendToTomAIChat",
+          "when": "resourceExtname == .chat.md",
+          "group": "dartscript@5"
+        }
+      ],
+      "dartscript.sendToChatSubmenu": [
+        {
+          "command": "dartscript.sendToChatTrailReminder",
+          "group": "standard@1"
+        },
+        {
+          "command": "dartscript.sendToChatTodoExecution",
+          "group": "standard@2"
+        },
+        {
+          "command": "dartscript.sendToChatCodeReview",
+          "group": "standard@3"
+        },
+        {
+          "command": "dartscript.sendToChatExplain",
+          "group": "standard@4"
+        },
+        {
+          "command": "dartscript.sendToChatAddToTodo",
+          "group": "standard@5"
+        },
+        {
+          "command": "dartscript.sendToChatFixMarkdown",
+          "group": "standard@6"
+        }
+      ]
+    },
+    "languageModelTools": [
+      {
+        "name": "tom_createFile",
+        "tags": ["files", "tom-ai-chat"],
+        "displayName": "Create File",
+        "modelDescription": "Create a new file with the specified content. Creates parent directories if needed.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "The path to the file to create. Can be absolute or relative to workspace root."
+            },
+            "content": {
+              "type": "string",
+              "description": "The content to write to the file."
+            }
+          },
+          "required": ["filePath", "content"]
+        }
+      },
+      {
+        "name": "tom_readFile",
+        "tags": ["files", "tom-ai-chat"],
+        "displayName": "Read File",
+        "modelDescription": "Read the contents of a file. Optionally specify line range.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "The path to the file to read."
+            },
+            "startLine": {
+              "type": "number",
+              "description": "Optional 1-based start line number."
+            },
+            "endLine": {
+              "type": "number",
+              "description": "Optional 1-based end line number."
+            }
+          },
+          "required": ["filePath"]
+        }
+      },
+      {
+        "name": "tom_editFile",
+        "tags": ["files", "tom-ai-chat"],
+        "displayName": "Edit File",
+        "modelDescription": "Edit a file by replacing oldText with newText. The oldText must match exactly.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "The path to the file to edit."
+            },
+            "oldText": {
+              "type": "string",
+              "description": "The exact text to find and replace."
+            },
+            "newText": {
+              "type": "string",
+              "description": "The text to replace oldText with."
+            }
+          },
+          "required": ["filePath", "oldText", "newText"]
+        }
+      },
+      {
+        "name": "tom_multiEditFile",
+        "tags": ["files", "tom-ai-chat"],
+        "displayName": "Multi Edit File",
+        "modelDescription": "Apply multiple find/replace edits across one or more files.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "edits": {
+              "type": "array",
+              "description": "Array of edit operations to apply.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "filePath": { "type": "string" },
+                  "oldText": { "type": "string" },
+                  "newText": { "type": "string" }
+                },
+                "required": ["filePath", "oldText", "newText"]
+              }
+            }
+          },
+          "required": ["edits"]
+        }
+      },
+      {
+        "name": "tom_listDirectory",
+        "tags": ["files", "tom-ai-chat"],
+        "displayName": "List Directory",
+        "modelDescription": "List the contents of a directory. Directories have a trailing slash.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "dirPath": {
+              "type": "string",
+              "description": "The path to the directory to list."
+            }
+          },
+          "required": ["dirPath"]
+        }
+      },
+      {
+        "name": "tom_findFiles",
+        "tags": ["files", "search", "tom-ai-chat"],
+        "displayName": "Find Files",
+        "modelDescription": "Find files matching a glob pattern in the workspace.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "description": "Glob pattern to match files, e.g. '**/*.ts' or 'src/**/*.dart'"
+            },
+            "maxResults": {
+              "type": "number",
+              "description": "Maximum number of results to return. Default 100."
+            }
+          },
+          "required": ["pattern"]
+        }
+      },
+      {
+        "name": "tom_findTextInFiles",
+        "tags": ["files", "search", "tom-ai-chat"],
+        "displayName": "Find Text in Files",
+        "modelDescription": "Search for text in files using grep. Returns matching lines with file paths and line numbers.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "searchText": {
+              "type": "string",
+              "description": "The text or regex pattern to search for."
+            },
+            "filePattern": {
+              "type": "string",
+              "description": "Optional glob pattern to filter files, e.g. '*.dart'"
+            },
+            "isRegex": {
+              "type": "boolean",
+              "description": "Whether searchText is a regex pattern. Default false."
+            },
+            "maxResults": {
+              "type": "number",
+              "description": "Maximum number of matching lines to return. Default 50."
+            }
+          },
+          "required": ["searchText"]
+        }
+      },
+      {
+        "name": "tom_runCommand",
+        "tags": ["terminal", "tom-ai-chat"],
+        "displayName": "Run Command",
+        "modelDescription": "Run a shell command and return the output.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "The shell command to run."
+            },
+            "cwd": {
+              "type": "string",
+              "description": "Optional working directory for the command."
+            }
+          },
+          "required": ["command"]
+        }
+      },
+      {
+        "name": "tom_runVscodeCommand",
+        "tags": ["vscode", "tom-ai-chat"],
+        "displayName": "Run VS Code Command",
+        "modelDescription": "Execute a VS Code command by ID.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "The VS Code command ID to execute."
+            },
+            "args": {
+              "type": "array",
+              "description": "Optional arguments to pass to the command.",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["command"]
+        }
+      },
+      {
+        "name": "tom_getErrors",
+        "tags": ["diagnostics", "tom-ai-chat"],
+        "displayName": "Get Errors",
+        "modelDescription": "Get errors and warnings from VS Code diagnostics.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "Optional file path to get errors for. If not specified, returns all errors."
+            }
+          }
+        }
+      },
+      {
+        "name": "tom_fetchWebpage",
+        "tags": ["web", "tom-ai-chat"],
+        "displayName": "Fetch Webpage",
+        "modelDescription": "Fetch the content of a URL.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "The URL to fetch."
+            }
+          },
+          "required": ["url"]
+        }
+      },
+      {
+        "name": "tom_readGuideline",
+        "tags": ["guidelines", "tom-ai-chat"],
+        "displayName": "Read Guideline",
+        "modelDescription": "Read workspace Copilot guidelines from _copilot_guidelines/ folder. Without a fileName, returns the list of available files and the content of index.md (the main guideline index). Key guidelines: coding_guidelines.md (code structure, naming), documentation_guidelines.md (docs format), tests.md (test creation), project_structure.md (project patterns), bug_fixing.md (debugging workflow). Use this tool to understand workspace conventions before making changes.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "fileName": {
+              "type": "string",
+              "description": "Optional specific guideline file to read (e.g., 'coding_guidelines.md' or 'coding_guidelines'). If not specified, returns index.md with list of available files."
+            }
+          }
+        }
+      },
+      {
+        "name": "tom_manageTodo",
+        "tags": ["todo", "task-management", "tom-ai-chat"],
+        "displayName": "Manage Todo List",
+        "modelDescription": "Optional: Manage a persistent todo list for complex multi-step tasks. Skip for simple tasks. Operations: 'list' (view todos), 'add' (create with title/description), 'update' (change status/title/description by id), 'remove' (delete by id), 'clear' (remove all). Status values: not-started, in-progress, completed. Use when you have 3+ distinct steps to track.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "required": ["operation"],
+          "properties": {
+            "operation": {
+              "type": "string",
+              "enum": ["list", "add", "update", "remove", "clear"],
+              "description": "The operation to perform: list (view todos), add (create new), update (modify existing), remove (delete), clear (remove all)."
+            },
+            "id": {
+              "type": "number",
+              "description": "Todo ID. Required for 'update' and 'remove' operations."
+            },
+            "title": {
+              "type": "string",
+              "description": "Short headline for the todo (3-7 words). Required for 'add', optional for 'update'."
+            },
+            "description": {
+              "type": "string",
+              "description": "Detailed description of the task. Optional for 'add' and 'update'."
+            },
+            "status": {
+              "type": "string",
+              "enum": ["not-started", "in-progress", "completed"],
+              "description": "Todo status. Used with 'update' operation."
+            },
+            "filterStatus": {
+              "type": "string",
+              "enum": ["not-started", "in-progress", "completed"],
+              "description": "Filter by status when using 'list' operation."
+            }
+          }
+        }
+      }
+    ],
+    "configuration": {
+      "title": "DartScript",
+      "properties": {
+        "dartscript.contextApproach": {
+          "type": "string",
+          "default": "accumulation",
+          "enum": [
+            "accumulation",
+            "persistent"
+          ],
+          "description": "Context persistence approach for AI operations"
+        },
+        "dartscript.maxContextSize": {
+          "type": "number",
+          "default": 50000,
+          "description": "Maximum context size in tokens"
+        },
+        "dartscript.autoRunOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically run scripts on save"
+        },
+        "dartscript.copilotModel": {
+          "type": "string",
+          "default": "gpt-4o",
+          "enum": [
+            "gpt-4o",
+            "gpt-4",
+            "gpt-3.5-turbo"
+          ],
+          "description": "Preferred Copilot model"
+        },
+        "dartscript.sendToChat.configPath": {
+          "type": "string",
+          "default": "${workspaceFolder}/_ai/send_to_chat/send_to_chat.json",
+          "description": "Path to send_to_chat.json configuration file for custom prompt templates"
+        },
+        "dartscript.sendToChat.showNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications when sending text to Copilot Chat"
+        },
+        "dartscript.sendToChat.chatAnswerFolder": {
+          "type": "string",
+          "default": "_ai/chat_replies",
+          "description": "Folder path for chat answer files (relative to workspace root)"
+        },
+        "dartscript.tomAiChat.modelId": {
+          "type": "string",
+          "default": "gpt-5.2",
+          "description": "Model ID for Tom AI chat"
+        },
+        "dartscript.tomAiChat.tokenModelId": {
+          "type": "string",
+          "default": "gpt-4o",
+          "description": "Model ID used for token count estimates"
+        },
+        "dartscript.tomAiChat.responsesTokenLimit": {
+          "type": "number",
+          "default": 50000,
+          "description": "Token limit for <chat-id>.responses.md"
+        },
+        "dartscript.tomAiChat.responseSummaryTokenLimit": {
+          "type": "number",
+          "default": 8000,
+          "description": "Token limit for <chat-id>.response-summary.md"
+        },
+        "dartscript.tomAiChat.preProcessingModelId": {
+          "type": "string",
+          "default": "gpt-5-mini",
+          "description": "Model ID for pre-processing step (cheap model to gather context before main processing)"
+        },
+        "dartscript.tomAiChat.enablePromptOptimization": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable pre-processing step with cheap model to gather context before main processing"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^18.x",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {}
+}

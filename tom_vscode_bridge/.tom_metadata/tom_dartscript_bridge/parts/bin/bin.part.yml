@@ -1,0 +1,4 @@
+# Part: Bin
+name: bin
+displayName: Bin
+sources: [tom_dartscript_bridge.dart]

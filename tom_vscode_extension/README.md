@@ -1,0 +1,271 @@
+# DartScript VS Code Extension
+
+A VS Code extension that enhances Dart/Flutter development with Copilot Chat integration, Dart script execution, and workspace automation tools.
+
+## Overview
+
+DartScript provides productivity features for VS Code including smart Copilot Chat integration with customizable templates, Dart script execution via the D4rt interpreter, and Tom CLI integration for workspace automation.
+
+## Key Features
+
+- 🤖 **Copilot Chat Integration**: Send text to Copilot with customizable prompt templates
+- ⚡ **Dart Script Execution**: Execute Dart files directly or via D4rt interpreter
+- 🔧 **Tom CLI Integration**: Control Tom CLI from VS Code with server communication
+- 📊 **Process Monitor**: Background process monitoring with auto-restart
+- 🔄 **Window Reload**: Quick keyboard shortcut for window reload
+- ❓ **Extension Help**: Built-in documentation access
+
+## Installation
+
+Build and install from source:
+
+```bash
+cd xternal/tom_module_vscode/tom_vscode_extension
+npm install
+npm run compile
+bash reinstall_for_testing.sh
+```
+
+Or install from VSIX:
+
+```bash
+code --install-extension dartscript-vscode-0.1.0.vsix
+```
+
+## Commands
+
+Open Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`) and type "DS:" to see all commands:
+
+### Copilot Chat Commands
+
+| Command | Description |
+|---------|-------------|
+| **DS: Send to Copilot Chat** | Send selected text to Copilot Chat |
+| **DS: Send to Copilot Chat (Standard)** | Send with standard formatting |
+| **DS: Send to Copilot Chat (Template)...** | Choose from custom prompt templates |
+| **DS: Reload Chat Config** | Reload prompt template configuration |
+| **DS: Show chat answer values** | Display captured chat answer values |
+| **DS: Clear chat answer values** | Clear captured chat answer values |
+
+### Send to Chat Submenu Templates
+
+Right-click in the editor to access the "DartScript: Send to Chat..." submenu:
+
+- **Send with Trail Reminder** - Include chat trail reminder
+- **TODO Execution** - Execute TODO items
+- **Code Review** - Request code review
+- **Explain Code** - Get code explanation
+- **Add to Todo** - Add selection to todo list
+- **Fix Markdown here** - Fix markdown formatting
+
+### Dart Execution Commands
+
+| Command | Description |
+|---------|-------------|
+| **DS: Execute File** | Execute selected Dart file as subprocess |
+| **DS: Execute as Script** | Execute Dart file via D4rt interpreter |
+
+### Bridge & Server Commands
+
+| Command | Description |
+|---------|-------------|
+| **DS: Restart Bridge** | Restart the Dart bridge process |
+| **DS: Start Tom CLI Integration Server** | Start CLI server on default port |
+| **DS: Start Tom CLI Integration Server (Custom Port)** | Start CLI server on custom port |
+| **DS: Stop Tom CLI Integration Server** | Stop the running CLI server |
+| **DS: Start Tom Process Monitor** | Start background process monitor |
+| **DS: Toggle Bridge Debug Logging** | Enable/disable detailed bridge logging |
+
+### Utility Commands
+
+| Command | Description |
+|---------|-------------|
+| **DS: Reload Window** | Reload VS Code window (`Cmd+Shift+R` / `Ctrl+Shift+R`) |
+| **DS: Run Tests** | Run extension tests |
+| **DS: Show Extension Help** | Open extension documentation |
+| **DartScript: Print Configuration** | Print D4rt interpreter configuration to output |
+| **DartScript: Show VS Code API Info** | Show available language models, tools, and AI extensions |
+| **Tom AI: Start Chat** | Initialize a .chat.md file for Tom AI chat |
+| **Tom AI: Send Chat Prompt** | Send the current prompt in a .chat.md file |
+
+## Context Menu Actions
+
+### File Explorer (on .dart files)
+
+- **DS: Execute File** - Run Dart file as subprocess
+- **DS: Execute as Script** - Run via D4rt interpreter
+
+### Editor Context Menu
+
+- **DartScript: Send to Chat...** - Submenu with template options
+- **DS: Send to Copilot Chat (Standard)** - Quick send
+- **DS: Send to Copilot Chat (Template)...** - Template picker
+- **DS: Send to Copilot Chat** - Send selection (when text selected)
+- **DS: Execute as Script** - Run current Dart file
+
+## Keyboard Shortcuts
+
+| Shortcut | Command |
+|----------|---------|
+| `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Win/Linux) | Reload Window |
+
+## Custom Prompt Templates
+
+Create a `send_to_chat.json` file to define custom prompt templates:
+
+**Default location**: `${workspaceFolder}/_ai/send_to_chat/send_to_chat.json`
+
+Example configuration:
+
+```json
+{
+  "templates": [
+    {
+      "id": "code-review",
+      "name": "Code Review",
+      "prompt": "Please review the following code:\n\n${selection}"
+    },
+    {
+      "id": "explain",
+      "name": "Explain Code",
+      "prompt": "Explain what this code does:\n\n${selection}"
+    }
+  ]
+}
+```
+
+Templates support these variables:
+- `${selection}` - Currently selected text
+- `${file}` - Current file path
+- `${filename}` - Current file name
+
+The configuration file is watched and auto-reloads when saved.
+
+## Configuration
+
+Access settings via **File > Preferences > Settings**, then search for "DartScript":
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `dartscript.contextApproach` | `accumulation` | Context persistence approach (`accumulation` or `persistent`) |
+| `dartscript.maxContextSize` | `50000` | Maximum context size in tokens |
+| `dartscript.autoRunOnSave` | `false` | Automatically run scripts on save |
+| `dartscript.copilotModel` | `gpt-4o` | Preferred Copilot model |
+| `dartscript.sendToChat.configPath` | `${workspaceFolder}/_ai/send_to_chat/send_to_chat.json` | Path to prompt template config |
+| `dartscript.sendToChat.showNotifications` | `true` | Show notifications when sending to chat |
+| `dartscript.sendToChat.chatAnswerFolder` | `_ai/chat_replies` | Folder for chat answer files |
+
+## Tom CLI Integration
+
+The extension can start a server that allows Tom CLI to communicate with VS Code:
+
+1. **Start server**: Run "DS: Start Tom CLI Integration Server"
+2. **Use Tom CLI**: CLI commands can now interact with VS Code
+3. **Stop server**: Run "DS: Stop Tom CLI Integration Server"
+
+The server enables:
+- Sending prompts to Copilot Chat from CLI
+- Reading chat responses
+- Executing VS Code commands remotely
+
+## Process Monitor
+
+Start the Tom Process Monitor to watch and auto-restart background processes:
+
+1. Run "DS: Start Tom Process Monitor"
+2. Monitor watches configured processes
+3. Auto-restarts crashed processes
+4. Logs status to output channel
+
+## Architecture
+
+```
+┌──────────────────────────────────┐
+│  DartScript Extension            │
+│  (VS Code Extension - TypeScript)│
+│  - Commands & menus              │
+│  - Copilot Chat integration      │
+│  - CLI server                    │
+└────────────┬─────────────────────┘
+             │ JSON-RPC 2.0
+             │ stdin/stdout
+┌────────────▼─────────────────────┐
+│  Dart Bridge (optional)          │
+│  (Dart Process)                  │
+│  - D4rt script execution         │
+│  - Bridge server                 │
+└──────────────────────────────────┘
+```
+
+## Requirements
+
+- VS Code 1.85.0 or higher
+- GitHub Copilot subscription (for chat features)
+- Dart SDK 3.0+ (for script execution and bridge)
+
+## Development
+
+### Project Structure
+
+```
+tom_vscode_extension/
+├── src/
+│   ├── extension.ts           # Main extension activation
+│   ├── handlers/              # Command handlers
+│   │   ├── execute-handler.ts
+│   │   ├── sendToChat-handler.ts
+│   │   ├── cliServer-handler.ts
+│   │   └── ...
+│   ├── bridge/                # Dart bridge client
+│   ├── cli-server/            # Tom CLI integration server
+│   └── process-monitor/       # Process monitor client
+├── out/                       # Compiled JavaScript (generated)
+├── doc/                       # Documentation
+│   ├── USER_GUIDE.md
+│   └── extension_commands.md
+├── package.json               # Extension manifest
+├── tsconfig.json              # TypeScript configuration
+└── README.md                  # This file
+```
+
+### Building
+
+```bash
+npm install
+npm run compile
+```
+
+### Watching for Changes
+
+```bash
+npm run watch
+```
+
+### Testing in Development
+
+1. Open this folder in VS Code
+2. Press F5 to launch Extension Development Host
+3. Test commands in the new window
+
+### Reinstalling for Testing
+
+```bash
+bash reinstall_for_testing.sh
+```
+
+## License
+
+Copyright (c) 2024-2026 Tom Framework. All rights reserved.
+
+## Documentation
+
+- [User Guide](doc/USER_GUIDE.md) - Complete guide to extension features
+- [Command Reference](doc/extension_commands.md) - Detailed command documentation
+- [Bridge Scripting Guide](doc/BRIDGE_SCRIPTING_GUIDE.md) - Advanced JavaScript/Dart bridge scripting
+- [Architecture](doc/ARCHITECTURE.md) - System architecture details
+
+## Resources
+
+- [VS Code Extension API](https://code.visualstudio.com/api)
+- [Language Model API](https://code.visualstudio.com/api/extension-guides/language-model)
+- [Chat API](https://code.visualstudio.com/api/extension-guides/chat)

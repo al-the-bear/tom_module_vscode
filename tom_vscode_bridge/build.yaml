@@ -1,0 +1,32 @@
+# Build configuration for tom_vscode_bridge
+#
+# D4rt bridge configuration for DartScript integration.
+
+targets:
+  $default:
+    builders:
+      # Version builder - generates version.g.dart with build info
+      tom_version_builder:version_builder:
+        enabled: true
+        options:
+          output: lib/src/version.g.dart
+          includeGitCommit: true
+
+      tom_d4rt_generator:d4rt_bridge_builder:
+        enabled: true
+        options:
+          name: tom_vscode_bridge
+          modules:
+            - name: all
+              barrelFiles:
+                - lib/tom_vscode_bridge.dart
+              outputPath: lib/src/d4rt_bridges/tom_vscode_bridge_bridges.dart
+              barrelImport: tom_vscode_bridge.dart
+              excludePatterns: []
+              excludeClasses: []
+          helpersImport: package:tom_d4rt/tom_d4rt.dart
+          generateBarrel: true
+          barrelPath: lib/d4rt_bridges.dart
+          generateDartscript: true
+          dartscriptPath: lib/dartscript.dart
+          registrationClass: TomDartscriptBridgeBridges
