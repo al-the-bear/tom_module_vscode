@@ -23,7 +23,7 @@ dev_dependencies:
   build: ^4.0.3
   tom_d4rt_generator: ^1.2.0
   tom_version_builder:
-    path: ../../xternal/tom_module_basics/tom_version_builder
+    path: ../../tom_module_basics/tom_version_builder
 
 dependency_overrides:
   runtime_native_semaphores:

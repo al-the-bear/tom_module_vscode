@@ -700,7 +700,7 @@ packages:
   runtime_native_semaphores:
     dependency: "direct overridden"
     description:
-      path: "../../xternal/named_semaphores"
+      path: "../../named_semaphores"
       relative: true
     source: path
     version: "1.0.0-beta.7"
@@ -899,35 +899,35 @@ packages:
   tom_basics_console:
     dependency: transitive
     description:
-      path: "../../xternal/tom_module_basics/tom_basics_console"
+      path: "../../tom_module_basics/tom_basics_console"
       relative: true
     source: path
     version: "1.0.0"
   tom_basics_network:
     dependency: transitive
     description:
-      path: "../../xternal/tom_module_basics/tom_basics_network"
+      path: "../../tom_module_basics/tom_basics_network"
       relative: true
     source: path
     version: "1.0.0"
   tom_build:
     dependency: transitive
     description:
-      path: "../../devops/tom_build"
+      path: "../../../devops/tom_build"
       relative: true
     source: path
     version: "1.0.0"
   tom_core_kernel:
     dependency: transitive
     description:
-      path: "../../core/tom_core_kernel"
+      path: "../../../core/tom_core_kernel"
       relative: true
     source: path
     version: "1.0.0"
   tom_core_server:
     dependency: transitive
     description:
-      path: "../../core/tom_core_server"
+      path: "../../../core/tom_core_server"
       relative: true
     source: path
     version: "1.0.0"
@@ -942,42 +942,42 @@ packages:
   tom_d4rt:
     dependency: "direct main"
     description:
-      path: "../../xternal/tom_module_d4rt/tom_d4rt"
+      path: "../../tom_module_d4rt/tom_d4rt"
       relative: true
     source: path
     version: "1.5.0"
   tom_d4rt_dcli:
     dependency: transitive
     description:
-      path: "../../xternal/tom_module_d4rt/tom_d4rt_dcli"
+      path: "../../tom_module_d4rt/tom_d4rt_dcli"
       relative: true
     source: path
     version: "1.0.0"
   tom_d4rt_generator:
     dependency: "direct dev"
     description:
-      path: "../../xternal/tom_module_d4rt/tom_d4rt_generator"
+      path: "../../tom_module_d4rt/tom_d4rt_generator"
       relative: true
     source: path
     version: "1.3.0"
   tom_dartscript_bridges:
     dependency: "direct main"
     description:
-      path: "../../dartscript/tom_dartscript_bridges"
+      path: "../../../dartscript/tom_dartscript_bridges"
       relative: true
     source: path
     version: "1.0.0"
   tom_dist_ledger:
     dependency: transitive
     description:
-      path: "../../xternal/tom_module_distributed/tom_dist_ledger"
+      path: "../../tom_module_distributed/tom_dist_ledger"
       relative: true
     source: path
     version: "0.1.0"
   tom_process_monitor:
     dependency: transitive
     description:
-      path: "../../xternal/tom_module_distributed/tom_process_monitor"
+      path: "../../tom_module_distributed/tom_process_monitor"
       relative: true
     source: path
     version: "1.0.0"
@@ -992,14 +992,14 @@ packages:
   tom_version_builder:
     dependency: "direct dev"
     description:
-      path: "../../xternal/tom_module_basics/tom_version_builder"
+      path: "../../tom_module_basics/tom_version_builder"
       relative: true
     source: path
     version: "1.0.0"
   tom_vscode_scripting_api:
     dependency: "direct main"
     description:
-      path: "../tom_vscode_scripting_api"
+      path: "../../tom_module_d4rt/tom_vscode_scripting_api"
       relative: true
     source: path
     version: "1.0.0"
