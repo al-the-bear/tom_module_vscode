@@ -972,6 +972,13 @@ packages:
       relative: true
     source: path
     version: "1.0.0"
+  tom_build_kit:
+    dependency: "direct dev"
+    description:
+      path: "../../tom_module_basics/tom_build_kit"
+      relative: true
+    source: path
+    version: "1.0.0"
   tom_chattools:
     dependency: transitive
     description:
@@ -1051,13 +1058,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.1"
-  tom_version_builder:
-    dependency: "direct dev"
-    description:
-      path: "../../tom_module_basics/tom_version_builder"
-      relative: true
-    source: path
-    version: "1.0.0"
   tom_vscode_scripting_api:
     dependency: "direct main"
     description:
