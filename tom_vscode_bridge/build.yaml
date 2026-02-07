@@ -1,6 +1,0 @@
-# Build configuration for tom_vscode_bridge
-#
-# Note: Version generation and D4rt bridge configuration have been
-# migrated to tom_build.yaml. This file is kept for build_runner
-# compatibility only.
-
