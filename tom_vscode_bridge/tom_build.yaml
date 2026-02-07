@@ -1,0 +1,21 @@
+# Tom Build Configuration for tom_vscode_bridge
+
+versioner:
+  output: lib/src/version.g.dart
+
+d4rtgen:
+  name: tom_vscode_bridge
+  helpersImport: package:tom_d4rt/tom_d4rt.dart
+  generateBarrel: true
+  barrelPath: lib/d4rt_bridges.dart
+  generateDartscript: true
+  dartscriptPath: lib/dartscript.dart
+  registrationClass: TomDartscriptBridgeBridges
+  modules:
+    - name: all
+      barrelFiles:
+        - lib/tom_vscode_bridge.dart
+      barrelImport: tom_vscode_bridge.dart
+      outputPath: lib/src/d4rt_bridges/tom_vscode_bridge_bridges.dart
+      excludePatterns: []
+      excludeClasses: []
