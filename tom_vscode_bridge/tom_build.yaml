@@ -10,7 +10,9 @@ d4rtgen:
   barrelPath: lib/d4rt_bridges.dart
   generateDartscript: true
   dartscriptPath: lib/dartscript.dart
-  registrationClass: TomDartscriptBridgeBridges
+  generateTestRunner: true
+  testRunnerPath: bin/d4rtrun.b.dart
+  registrationClass: TomVscodeBridgeBridges
   modules:
     - name: all
       barrelFiles:

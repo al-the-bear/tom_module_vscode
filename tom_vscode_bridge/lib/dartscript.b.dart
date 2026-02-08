@@ -1,6 +1,6 @@
 // D4rt Bridge - Generated file, do not edit
 // Dartscript registration for tom_vscode_bridge
-// Generated: 2026-02-07T22:14:42.375233
+// Generated: 2026-02-08T11:14:02.873131
 
 /// D4rt Bridge Registration for tom_vscode_bridge
 library;
@@ -9,7 +9,7 @@ import 'package:tom_d4rt/d4rt.dart';
 import 'src/d4rt_bridges/tom_vscode_bridge_bridges.b.dart' as all_bridges;
 
 /// Combined bridge registration for tom_vscode_bridge.
-class TomDartscriptBridgeBridges {
+class TomVscodeBridgeBridges {
   /// Register all bridges with D4rt interpreter.
   static void register([D4rt? interpreter]) {
     final d4rt = interpreter ?? D4rt();
