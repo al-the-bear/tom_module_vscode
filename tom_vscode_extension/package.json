@@ -652,12 +652,12 @@
         "dartscript.ollama.url": {
           "type": "string",
           "default": "http://localhost:11434",
-          "description": "Ollama server URL for local model inference"
+          "description": "Ollama server URL (fallback; prefer promptExpander section in send_to_chat.json)"
         },
         "dartscript.ollama.model": {
           "type": "string",
           "default": "qwen3:8b",
-          "description": "Ollama model to use for prompt expansion"
+          "description": "Ollama model name (fallback; prefer promptExpander section in send_to_chat.json)"
         }
       }
     }

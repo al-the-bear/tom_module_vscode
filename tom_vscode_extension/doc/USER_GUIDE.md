@@ -20,6 +20,14 @@ Complete guide to using the DartScript VS Code extension for enhanced Dart/Flutt
       - [Template Properties](#template-properties)
       - [Auto-Reload](#auto-reload)
     - [Chat Answer Values](#chat-answer-values)
+  - [Prompt Expander (Ollama)](#prompt-expander-ollama)
+    - [Prerequisites](#prerequisites)
+    - [Basic Usage](#basic-usage)
+    - [Configuration](#configuration)
+      - [Configuration Properties](#configuration-properties)
+      - [Profiles](#profiles)
+      - [Available Placeholders](#available-placeholders)
+      - [VS Code Settings Fallback](#vs-code-settings-fallback)
   - [Dart Script Execution](#dart-script-execution)
     - [Execute File](#execute-file)
     - [Execute as Script](#execute-as-script)
@@ -201,6 +209,113 @@ This is useful for:
 - Tracking responses across multiple prompts
 - Extracting specific values from chat conversations
 - Building workflows that depend on chat output
+
+---
+
+## Prompt Expander (Ollama)
+
+Use a local Ollama model to expand terse, shorthand prompts into detailed, well-structured prompts before sending them to Copilot Chat. This runs entirely on your machine — no cloud API calls.
+
+### Prerequisites
+
+1. **Install Ollama:** `brew install ollama`
+2. **Start the service:** `brew services start ollama`
+3. **Pull a model:** `ollama pull qwen3:8b` (or any model you prefer)
+
+### Basic Usage
+
+1. Write a short prompt in the editor (e.g., `add error handling to the save function`)
+2. Select the text (or leave nothing selected to use the full document)
+3. Press **Ctrl+Cmd+E** (or run **DS: Expand Prompt (Ollama)** from Command Palette)
+4. If multiple profiles are configured, choose one from the quick pick
+5. The selected text is replaced in-place with the expanded version
+
+### Configuration
+
+All settings live in the `promptExpander` section of your `send_to_chat.json` config file:
+
+**Default location:** `${workspaceFolder}/_ai/send_to_chat/send_to_chat.json`
+
+```json
+{
+  "promptExpander": {
+    "ollamaUrl": "http://localhost:11434",
+    "model": "qwen3:8b",
+    "temperature": 0.4,
+    "stripThinkingTags": true,
+    "defaultProfile": "expand",
+    "systemPrompt": "You are a prompt expansion assistant...",
+    "resultTemplate": "${response}",
+    "profiles": { ... }
+  }
+}
+```
+
+#### Configuration Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `ollamaUrl` | string | `http://localhost:11434` | Ollama server URL |
+| `model` | string | `qwen3:8b` | Model name to use |
+| `temperature` | number | `0.4` | LLM temperature (0.0–2.0). Lower = more deterministic |
+| `stripThinkingTags` | boolean | `true` | Strip `<think>...</think>` tags from Qwen 3 output |
+| `defaultProfile` | string | `expand` | Profile to use when only one exists |
+| `systemPrompt` | string | *(see below)* | Default system prompt sent to the LLM |
+| `resultTemplate` | string | `${response}` | Template for the text that replaces the selection |
+| `profiles` | object | `{}` | Named expansion profiles (see below) |
+
+#### Profiles
+
+Profiles let you define different expansion behaviors. Each profile can override `systemPrompt`, `resultTemplate`, and `temperature`. Values set to `null` inherit from the top-level config.
+
+```json
+"profiles": {
+  "expand": {
+    "label": "Expand Prompt",
+    "systemPrompt": null,
+    "resultTemplate": null,
+    "temperature": null
+  },
+  "rewrite": {
+    "label": "Rewrite for Clarity",
+    "systemPrompt": "You are a technical writing assistant. Rewrite the following prompt...",
+    "resultTemplate": null,
+    "temperature": 0.3
+  },
+  "annotated": {
+    "label": "Expand with Original",
+    "systemPrompt": null,
+    "resultTemplate": "<!-- Original prompt:\n${original}\n-->\n\n${response}",
+    "temperature": null
+  }
+}
+```
+
+When multiple profiles exist, pressing **Ctrl+Cmd+E** shows a quick pick to choose one. If only one profile is defined (or none), it runs immediately.
+
+#### Available Placeholders
+
+Placeholders can be used in both `systemPrompt` and `resultTemplate`:
+
+| Placeholder | Description |
+|-------------|-------------|
+| `${original}` | The original text before expansion |
+| `${response}` | The raw LLM response (after thinking-tag stripping) |
+| `${filename}` | Basename of the active file (e.g., `main.dart`) |
+| `${filePath}` | Full path to the active file |
+| `${languageId}` | VS Code language identifier (e.g., `dart`, `typescript`) |
+| `${workspaceName}` | Name of the first workspace folder |
+| `${datetime}` | Current date/time as `yyyymmdd_hhmmss` |
+| `${model}` | The Ollama model used |
+| `${profile}` | The profile name used |
+| `${lineStart}` | Start line of the selection (1-based) |
+| `${lineEnd}` | End line of the selection (1-based) |
+
+**Note:** In `systemPrompt`, `${response}` is empty (it hasn't been generated yet). Use the other placeholders to give the LLM file/language context. In `resultTemplate`, all placeholders are available.
+
+#### VS Code Settings Fallback
+
+The `dartscript.ollama.url` and `dartscript.ollama.model` VS Code settings serve as fallbacks when `ollamaUrl`/`model` are not specified in the JSON config. The JSON config takes precedence.
 
 ---
 
@@ -479,6 +594,15 @@ Access settings via **File > Preferences > Settings** and search for "DartScript
 | `dartscript.tomAiChat.responsesTokenLimit` | `50000` | Token limit for `<chat-id>.responses.md` |
 | `dartscript.tomAiChat.responseSummaryTokenLimit` | `8000` | Token limit for `<chat-id>.response-summary.md` |
 
+### Ollama Settings
+
+These VS Code settings serve as fallbacks. Prefer configuring via the `promptExpander` section in `send_to_chat.json`.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `dartscript.ollama.url` | `http://localhost:11434` | Ollama server URL |
+| `dartscript.ollama.model` | `qwen3:8b` | Ollama model name |
+
 ### Example settings.json
 
 ```json
@@ -559,6 +683,7 @@ Access settings via **File > Preferences > Settings** and search for "DartScript
 | Shortcut | Command |
 |----------|---------|
 | `Cmd+Shift+R` / `Ctrl+Shift+R` | Reload Window |
+| `Ctrl+Cmd+E` | Expand Prompt (Ollama) |
 
 ## Context Menu Summary
 
