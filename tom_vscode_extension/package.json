@@ -173,7 +173,7 @@
       },
       {
         "command": "dartscript.switchLocalModel",
-        "title": "DS: Switch local Ollama model...",
+        "title": "DS: Change local Ollama model...",
         "category": "DartScript"
       },
       {
@@ -239,11 +239,6 @@
     ],
     "keybindings": [
       {
-        "command": "dartscript.reloadWindow",
-        "key": "ctrl+shift+r",
-        "mac": "cmd+shift+r"
-      },
-      {
         "command": "dartscript.startBotConversation",
         "key": "ctrl+shift+c ctrl+shift+b"
       },
@@ -257,7 +252,7 @@
       },
       {
         "command": "dartscript.continueBotConversation",
-        "key": "ctrl+shift+c ctrl+shift+j"
+        "key": "ctrl+shift+c ctrl+shift+c"
       },
       {
         "command": "dartscript.addToBotConversation",
@@ -270,7 +265,7 @@
       },
       {
         "command": "dartscript.switchLocalModel",
-        "key": "ctrl+shift+l ctrl+shift+w"
+        "key": "ctrl+shift+l ctrl+shift+c"
       },
       {
         "command": "dartscript.sendToLocalLlmStandard",

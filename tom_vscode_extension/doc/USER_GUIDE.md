@@ -30,6 +30,8 @@ Complete guide to using the DartScript VS Code extension for enhanced Dart/Flutt
       - [Profiles](#profiles)
       - [Available Placeholders](#available-placeholders)
       - [VS Code Settings Fallback](#vs-code-settings-fallback)
+    - [Switching Ollama Models](#switching-ollama-models)
+    - [Model Selection Flow](#model-selection-flow)
     - [Bridge API](#bridge-api)
       - [Available Methods](#available-methods)
       - [Examples](#examples)
@@ -55,23 +57,28 @@ Complete guide to using the DartScript VS Code extension for enhanced Dart/Flutt
     - [Advanced Bridge Scripting](#advanced-bridge-scripting)
   - [Tom CLI Integration](#tom-cli-integration)
     - [Starting the Server](#starting-the-server)
-    - [How It Works](#how-it-works)
+    - [How It Works](#how-it-works-1)
     - [Use Cases](#use-cases)
     - [Server Status](#server-status)
   - [Process Monitor](#process-monitor)
     - [Features](#features)
     - [How to Use](#how-to-use)
-    - [Configuration](#configuration)
+    - [Configuration](#configuration-2)
   - [Utility Features](#utility-features)
     - [Quick Window Reload](#quick-window-reload)
     - [Debug Logging](#debug-logging)
     - [Extension Help](#extension-help)
     - [Restart Bridge](#restart-bridge)
     - [Run Tests](#run-tests)
+    - [Print Configuration](#print-configuration)
+    - [Show VS Code API Info](#show-vs-code-api-info)
+    - [Tom AI Chat](#tom-ai-chat)
   - [Configuration Reference](#configuration-reference)
     - [Context Settings](#context-settings)
     - [Copilot Settings](#copilot-settings)
     - [Send to Chat Settings](#send-to-chat-settings)
+    - [Tom AI Chat Settings](#tom-ai-chat-settings)
+    - [Ollama Settings](#ollama-settings)
     - [Example settings.json](#example-settingsjson)
   - [Troubleshooting](#troubleshooting)
     - [Commands Not Appearing](#commands-not-appearing)
@@ -80,15 +87,20 @@ Complete guide to using the DartScript VS Code extension for enhanced Dart/Flutt
     - [Send to Chat Not Working](#send-to-chat-not-working)
     - [CLI Server Connection Issues](#cli-server-connection-issues)
   - [Additional Resources](#additional-resources)
+  - [Keyboard Shortcuts Summary](#keyboard-shortcuts-summary)
+    - [Conversation Control (`Ctrl+Shift+C, ...`)](#conversation-control-ctrlshiftc-)
+    - [Local LLM (`Ctrl+Shift+L, ...`)](#local-llm-ctrlshiftl-)
+    - [Send to Copilot Chat (`Ctrl+Shift+S, ...`)](#send-to-copilot-chat-ctrlshifts-)
+    - [Tom AI Chat (`Ctrl+Shift+T, ...`)](#tom-ai-chat-ctrlshiftt-)
+    - [Standalone](#standalone)
   - [Command \& Keybinding Reference](#command--keybinding-reference)
     - [Bot Conversation Control](#bot-conversation-control)
     - [Local LLM / Prompt Expander](#local-llm--prompt-expander)
     - [Send to Copilot Chat](#send-to-copilot-chat)
-    - [Tom AI Chat](#tom-ai-chat)
+    - [Tom AI Chat](#tom-ai-chat-1)
     - [Dart Script Execution](#dart-script-execution-1)
     - [Bridge \& Server](#bridge--server)
     - [Utility](#utility)
-  - [Keyboard Shortcuts Summary](#keyboard-shortcuts-summary)
   - [Context Menu Summary](#context-menu-summary)
     - [File Explorer (on .dart files)](#file-explorer-on-dart-files)
     - [Editor Context Menu](#editor-context-menu)
@@ -111,7 +123,7 @@ Complete guide to using the DartScript VS Code extension for enhanced Dart/Flutt
    bash reinstall_for_testing.sh
    ```
 
-3. Reload VS Code window (`Cmd+Shift+R` or use **DS: Reload Window** command)
+3. Reload VS Code window (use **DS: Reload Window** from the Command Palette)
 
 ### Verifying Installation
 
@@ -434,9 +446,9 @@ Placeholders can be used in both `systemPrompt` and `resultTemplate`:
 
 The `dartscript.ollama.url` and `dartscript.ollama.model` VS Code settings serve as fallbacks when `ollamaUrl`/`model` are not specified in the JSON config. The JSON config always takes precedence.
 
-### Switching Ollama Models
+### Changing Ollama Models
 
-**Command:** `DS: Switch local Ollama model...` (Command Palette only)
+**Command:** `DS: Change local Ollama model...` (`Ctrl+Shift+L, Ctrl+Shift+C`)
 
 Queries the Ollama server for all locally available models and shows a quick-pick with model names and sizes. The currently active model is marked with a checkmark. Selecting a model updates the default model configuration in `send_to_chat.json`.
 
@@ -540,7 +552,7 @@ The Bot Conversation feature lets a local Ollama model orchestrate multi-turn co
 | `DS: Start Local-Copilot Conversation` | `Ctrl+Shift+C, Ctrl+Shift+B` | Start a new bot conversation session |
 | `DS: Stop Local-Copilot Conversation` | `Ctrl+Shift+C, Ctrl+Shift+S` | Stop the currently active conversation |
 | `DS: Halt Local-Copilot Conversation` | `Ctrl+Shift+C, Ctrl+Shift+H` | Pause the conversation between turns |
-| `DS: Continue Local-Copilot Conversation` | `Ctrl+Shift+C, Ctrl+Shift+J` | Resume a halted conversation |
+| `DS: Continue Local-Copilot Conversation` | `Ctrl+Shift+C, Ctrl+Shift+C` | Resume a halted conversation |
 | `DS: Add to Local-Copilot Conversation` | `Ctrl+Shift+C, Ctrl+Shift+A` | Inject additional context into the next turn |
 
 ### Starting a Conversation
@@ -586,7 +598,7 @@ You can pause a running conversation between turns:
 1. Run **DS: Halt Local-Copilot Conversation** (`Ctrl+Shift+C, Ctrl+Shift+H`)
 2. The conversation pauses after the current turn completes
 3. Review the conversation state, add context if needed
-4. Run **DS: Continue Local-Copilot Conversation** (`Ctrl+Shift+C, Ctrl+Shift+J`) to resume
+4. Run **DS: Continue Local-Copilot Conversation** (`Ctrl+Shift+C, Ctrl+Shift+C`) to resume
 
 Halting is useful when you want to review intermediate results or steer the conversation in a different direction.
 
@@ -840,8 +852,7 @@ The monitor uses configuration files to determine which processes to watch. See 
 
 ### Quick Window Reload
 
-**Command:** `DS: Reload Window`  
-**Keyboard Shortcut:** `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Windows/Linux)
+**Command:** `DS: Reload Window` (Command Palette only)
 
 Quickly reload the VS Code window. Useful after:
 - Extension updates
@@ -922,25 +933,101 @@ Use this when:
 
 **Commands:**
 
-- `Tom AI: Start Chat`
-- `Tom AI: Send Chat Prompt`
+- `Tom AI: Start Chat` (`Ctrl+Shift+T, Ctrl+Shift+N`)
+- `Tom AI: Send Chat Prompt` (`Ctrl+Shift+T, Ctrl+Shift+S`)
+- `Tom AI: Interrupt Chat` (`Ctrl+Shift+T, Ctrl+Shift+I`)
 
-Creates and manages `.chat.md` files for the Tom AI chat workflow. The Start command initializes the file with metadata and chat header, and the Send command extracts the prompt block, sends it to the language model, and writes responses to `<chat-id>.responses.md`.
+Tom AI Chat is an agentic chat workflow that operates through `.chat.md` files. Unlike the Copilot Chat panel, Tom AI Chat gives the model full access to workspace tools (file editing, terminal, search) and runs a multi-iteration loop where the model can perform complex tasks autonomously.
 
-Key behaviors:
+#### Chat File Structure
 
-- Prompt is the first block under the `CHAT <chat-id>` header
-- Separator lines use `---` or `___`
-- Responses are prepended to `<chat-id>.responses.md`
-- Tool calls are executed and logged to **Tom AI Chat Log**
-- Final response is logged to **Tom AI Chat Responses**
+A `.chat.md` file has this structure:
+
+```markdown
+modelId: gpt-5.2
+tokenModelId: gpt-4o
+preProcessingModelId: gpt-5-mini
+enablePromptOptimization: true
+responsesTokenLimit: 50000
+responseSummaryTokenLimit: 8000
+maxIterations: 100
+maxContextChars: 50000
+maxToolResultChars: 50000
+maxDraftChars: 8000
+toolInvocationToken:
+contextFilePath:
+_________ CHAT my-task ____________
+
+Your prompt text here...
+
+---
+```
+
+The metadata block at the top configures model selection, token limits, and iteration caps. The `CHAT {id}` header separates metadata from the prompt. The separator line (`---` or `___`) marks the end of the current prompt.
+
+#### Starting a Chat Session
+
+1. Create or open a `.chat.md` file (e.g., `my-task.chat.md`)
+2. Run **Tom AI: Start Chat** (`Ctrl+Shift+T, Ctrl+Shift+N`)
+3. The command adds the metadata header block (if not already present) using defaults from VS Code settings
+4. Two companion files are created:
+   - `{chatId}.responses.md` — accumulates model responses (newest first)
+   - `{chatId}.response-summary.md` — stores summarized conversation history for context
+
+#### Sending a Prompt
+
+1. Write your prompt below the `CHAT` header
+2. Run **Tom AI: Send Chat Prompt** (`Ctrl+Shift+T, Ctrl+Shift+S`)
+3. The model receives your prompt with access to workspace tools
+4. The multi-iteration agentic loop runs:
+   - Model generates a response (may include tool calls)
+   - If the response is text-only, it becomes the final answer
+   - If tool calls are present, each tool is invoked and results are fed back
+   - The loop continues (up to `maxIterations`) until the model produces a text-only response
+   - Loop detection prevents the model from calling the same tool with the same arguments more than 3 times
+5. The final response is written to `{chatId}.responses.md` and logged
+
+#### Available Tools
+
+The model can invoke a wide range of workspace tools during the agentic loop:
+
+- **File operations**: `tom_readFile`, `tom_createFile`, `tom_editFile`, `tom_multiEditFile`, `tom_listDirectory`, `tom_findFiles`, `tom_findTextInFiles`
+- **Terminal**: `tom_runCommand`, `run_in_terminal`, `get_terminal_output`
+- **Copilot search**: `copilot_searchCodebase`, `copilot_searchWorkspaceSymbols`, `copilot_listCodeUsages`
+- **Diagnostics**: `tom_getErrors`, `copilot_getErrors`, `copilot_testFailure`
+- **Web**: `tom_fetchWebpage`, `copilot_fetchWebPage`, `copilot_openSimpleBrowser`
+- **VS Code**: `tom_runVscodeCommand`, `tom_readGuideline`, `copilot_getVSCodeAPI`
+- **Dart/Flutter**: `dart_format`, MCP Dart SDK tools (`launch_app`, `hot_reload`, `pub`, etc.)
+- **Debug**: `get_debug_session_info`, `get_debug_stack_trace`, `get_debug_threads`, `get_debug_variables`
+- **Tasks**: `create_and_run_task`, `runTests`, `runSubagent`, `tom_manageTodo`
+
+Tools are capped at 128 max per request.
+
+#### Pre-Processing (Context Gathering)
+
+When `enablePromptOptimization` is `true`, the prompt is first sent to a cheaper model (`preProcessingModelId`, default `gpt-5-mini`) with a restricted read-only tool set. This model runs up to 5 iterations gathering relevant context (reading files, searching the codebase) and produces a context summary. The gathered context is prepended to the main prompt, giving the primary model relevant file contents and codebase knowledge upfront without spending expensive tokens on exploration.
+
+#### Response Management
+
+- Responses are **prepended** to `{chatId}.responses.md` (newest first)
+- The file is trimmed to `responsesTokenLimit` tokens using a block-based algorithm
+- Previous responses are summarized and stored in `{chatId}.response-summary.md` for conversation continuity
+- A detailed per-request log with timestamps is written to `{chatId}.chat-log.md`
+- Three VS Code output channels are used: "Tom AI Chat Log" (progress), "Tom AI Tool Log" (tool details), "Tom AI Chat Responses" (final responses)
+
+#### Interrupting
+
+Run **Tom AI: Interrupt Chat** (`Ctrl+Shift+T, Ctrl+Shift+I`) to cancel a running request. The cancellation is checked at the start of each iteration and during pre-processing. In-flight tool calls at the moment of cancellation will complete before the loop terminates. An `[INTERRUPTED]` marker is written to the chat log.
 
 Settings:
 
-- `dartscript.tomAiChat.modelId`
-- `dartscript.tomAiChat.tokenModelId`
-- `dartscript.tomAiChat.responsesTokenLimit`
-- `dartscript.tomAiChat.responseSummaryTokenLimit`
+- `dartscript.tomAiChat.modelId` — Primary language model (default: `gpt-5.2`)
+- `dartscript.tomAiChat.tokenModelId` — Model for token counting (default: `gpt-4o`)
+- `dartscript.tomAiChat.preProcessingModelId` — Cheaper model for context gathering (default: `gpt-5-mini`)
+- `dartscript.tomAiChat.enablePromptOptimization` — Enable pre-processing context gathering
+- `dartscript.tomAiChat.responsesTokenLimit` — Max tokens in responses file (default: 50000)
+- `dartscript.tomAiChat.responseSummaryTokenLimit` — Max tokens in summary (default: 8000)
+- `dartscript.tomAiChat.maxIterations` — Max agentic loop iterations (default: 100)
 
 ---
 
@@ -1013,7 +1100,7 @@ These VS Code settings serve as fallbacks. Prefer configuring via the `promptExp
 
 **Solutions:**
 1. Ensure extension is installed: Check Extensions view
-2. Reload window: `Cmd+Shift+R`
+2. Reload window: Use **DS: Reload Window** from the Command Palette
 3. Check Output > Extension Host for errors
 
 ### Bridge Not Responding
@@ -1078,7 +1165,7 @@ All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combinatio
 | `Ctrl+Shift+C, Ctrl+Shift+B` | Start Local-Copilot Conversation |
 | `Ctrl+Shift+C, Ctrl+Shift+S` | Stop Local-Copilot Conversation |
 | `Ctrl+Shift+C, Ctrl+Shift+H` | Halt Local-Copilot Conversation |
-| `Ctrl+Shift+C, Ctrl+Shift+J` | Continue Local-Copilot Conversation |
+| `Ctrl+Shift+C, Ctrl+Shift+C` | Continue Local-Copilot Conversation |
 | `Ctrl+Shift+C, Ctrl+Shift+A` | Add to Local-Copilot Conversation |
 
 ### Local LLM (`Ctrl+Shift+L, ...`)
@@ -1086,7 +1173,7 @@ All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combinatio
 | Shortcut | Command |
 |----------|---------|
 | `Ctrl+Shift+L, Ctrl+Shift+E` | Expand Prompt (Ollama) |
-| `Ctrl+Shift+L, Ctrl+Shift+W` | Switch local Ollama model |
+| `Ctrl+Shift+L, Ctrl+Shift+C` | Change local Ollama model |
 | `Ctrl+Shift+L, Ctrl+Shift+S` | Send to local LLM (Standard) |
 | `Ctrl+Shift+L, Ctrl+Shift+T` | Send to local LLM (Template) |
 
@@ -1107,12 +1194,6 @@ All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combinatio
 | `Ctrl+Shift+T, Ctrl+Shift+S` | Send Tom AI Chat Prompt (in .md files) |
 | `Ctrl+Shift+T, Ctrl+Shift+I` | Interrupt Tom AI Chat |
 
-### Standalone
-
-| Shortcut | Command |
-|----------|---------|
-| `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Win/Linux) | Reload Window |
-
 **Note:** On macOS, `Ctrl+Shift+` chords use the Control key (not Command), so they don't conflict with standard VS Code shortcuts which use `Cmd+Shift+`. On Windows/Linux, some `Ctrl+Shift+` first-chord prefixes may shadow default bindings (e.g., `Ctrl+Shift+S` shadows "Save As"); use the Command Palette as an alternative.
 
 ---
@@ -1128,7 +1209,7 @@ Complete reference for all 42 extension commands. Open the Command Palette (`Cmd
 | DS: Start Local-Copilot Conversation | `dartscript.startBotConversation` | `Ctrl+Shift+C, Ctrl+Shift+B` | Starts a multi-turn automated conversation between a local Ollama model and GitHub Copilot (or between two local model personas in self-talk mode). Shows a profile picker if profiles are configured, then prompts for a goal description (pre-filled with selected text if any) and optional constraints. The local model generates prompts for Copilot, evaluates responses, and iterates until the goal is reached or max turns exhausted. Supports configurable history modes, pause-between-turns, file context inclusion, conversation logging, and optional Telegram notifications. |
 | DS: Stop Local-Copilot Conversation | `dartscript.stopBotConversation` | `Ctrl+Shift+C, Ctrl+Shift+S` | Permanently stops the active bot conversation by cancelling its loop. The conversation log is finalized and written to disk. Shows a message if no conversation is active. |
 | DS: Halt Local-Copilot Conversation | `dartscript.haltBotConversation` | `Ctrl+Shift+C, Ctrl+Shift+H` | Pauses the active bot conversation between turns. Unlike stop, the conversation remains active and can be resumed. The loop blocks at the next halt checkpoint, waiting for a continue signal. Useful for reviewing intermediate results before proceeding. |
-| DS: Continue Local-Copilot Conversation | `dartscript.continueBotConversation` | `Ctrl+Shift+C, Ctrl+Shift+J` | Resumes a halted bot conversation, allowing the loop to proceed to the next turn. Any additional user input queued via "Add to" is incorporated into the next prompt. Shows a message if not currently halted. |
+| DS: Continue Local-Copilot Conversation | `dartscript.continueBotConversation` | `Ctrl+Shift+C, Ctrl+Shift+C` | Resumes a halted bot conversation, allowing the loop to proceed to the next turn. Any additional user input queued via "Add to" is incorporated into the next prompt. Shows a message if not currently halted. |
 | DS: Add to Local-Copilot Conversation | `dartscript.addToBotConversation` | `Ctrl+Shift+C, Ctrl+Shift+A` | Shows an input box (pre-filled with selected text) where you can type additional context, corrections, or instructions. The text is queued and injected into the local model's next prompt via the `${additionalUserInfo}` placeholder. Multiple calls are concatenated. Can be used while the conversation is running or halted. |
 
 ### Local LLM / Prompt Expander
@@ -1136,7 +1217,7 @@ Complete reference for all 42 extension commands. Open the Command Palette (`Cmd
 | Command | ID | Shortcut | Description |
 |---------|----|----------|-------------|
 | DS: Expand Prompt (Ollama) | `dartscript.expandPrompt` | `Ctrl+Shift+L, Ctrl+Shift+E` | Takes the selected text (or full file) from the active editor, sends it to a local Ollama model with a configurable system prompt (default: expand terse prompt into detailed one), and **replaces the text in-place** with the LLM's response. Supports `<think>` tag stripping, result templates with placeholder substitution, and cancellable progress notifications. |
-| DS: Switch local Ollama model... | `dartscript.switchLocalModel` | `Ctrl+Shift+L, Ctrl+Shift+W` | Queries the local Ollama server (`/api/tags`) for all available models and shows a QuickPick listing them with sizes. When you pick a model, it updates the default model in `send_to_chat.json` and sends a warm-up request to pre-load the model into Ollama's memory for faster first use. |
+| DS: Change local Ollama model... | `dartscript.switchLocalModel` | `Ctrl+Shift+L, Ctrl+Shift+C` | Queries the local Ollama server (`/api/tags`) for all available models and shows a QuickPick listing them with sizes. When you pick a model, it updates the default model in `send_to_chat.json` and sends a warm-up request to pre-load the model into Ollama's memory for faster first use. |
 | DS: Send to local LLM | `dartscript.sendToLocalLlm` | — | Shows a QuickPick listing all profiles defined in `promptExpander.profiles` in `send_to_chat.json`. When you pick a profile, it sends the selected text (or full file) to Ollama using that profile's system prompt, temperature, and result template, then replaces the text in the editor with the result. |
 | DS: Send to local LLM (Standard) | `dartscript.sendToLocalLlmStandard` | `Ctrl+Shift+L, Ctrl+Shift+S` | Sends the selected text (or full file) to the local Ollama model using the **default profile** (marked `isDefault: true`, or the first profile). Skips the profile picker. Processes the result and replaces text in the editor. |
 | DS: Send to local LLM (Template)... | `dartscript.sendToLocalLlmAdvanced` | `Ctrl+Shift+L, Ctrl+Shift+T` | Same as "Send to local LLM" — shows the profile picker QuickPick, lets you choose a profile, then processes and replaces text. |
@@ -1166,9 +1247,9 @@ Complete reference for all 42 extension commands. Open the Command Palette (`Cmd
 
 | Command | ID | Shortcut | Description |
 |---------|----|----------|-------------|
-| Tom AI: Start Chat | `dartscript.startTomAIChat` | `Ctrl+Shift+T, Ctrl+Shift+N` | Initializes a Tom AI Chat session from a `.chat.md` file open in the active editor. Adds/verifies a metadata header block (with model IDs, token limits, iteration limits, and pre-processing config) and creates companion files for responses and summaries in the same directory. Sets up the chat structure without sending a prompt. |
-| Tom AI: Send Chat Prompt | `dartscript.sendToTomAIChat` | `Ctrl+Shift+T, Ctrl+Shift+S` | Parses the active `.chat.md` file's metadata and prompt, then sends it to a VS Code Language Model (Copilot) with agentic tool-use capabilities. Runs a multi-iteration loop (up to `maxIterations`, default 100) where the model can invoke whitelisted tools (file read/write, terminal, search). Manages conversation history with token-limited summarization. Supports optional pre-processing with a cheaper model. Logs all prompts, tool calls, and responses. |
-| Tom AI: Interrupt Chat | `dartscript.interruptTomAIChat` | `Ctrl+Shift+T, Ctrl+Shift+I` | Cancels the currently active Tom AI Chat request by triggering the cancellation token. Stops any in-progress model request or tool invocation. Shows a confirmation if interrupted, or an info message if nothing is running. |
+| Tom AI: Start Chat | `dartscript.startTomAIChat` | `Ctrl+Shift+T, Ctrl+Shift+N` | Initializes a Tom AI Chat session from a `.chat.md` file open in the active editor. Reads VS Code settings for defaults (`modelId`, `tokenModelId`, `preProcessingModelId`, token limits, iteration caps). If the file doesn't have a `CHAT` header yet, prepends a complete metadata block followed by the `CHAT {chatId}` separator (chatId derived from filename). Creates two companion files: `{chatId}.responses.md` for accumulated responses (newest first) and `{chatId}.response-summary.md` for summarized conversation history. Does not send any prompt — only sets up the file structure. |
+| Tom AI: Send Chat Prompt | `dartscript.sendToTomAIChat` | `Ctrl+Shift+T, Ctrl+Shift+S` | Parses the `.chat.md` file's metadata and prompt text (everything between the `CHAT` header and the next separator), selects the configured language model via `vscode.lm.selectChatModels`, and runs a multi-iteration agentic loop (up to `maxIterations`, default 100). On each iteration, the model can invoke whitelisted workspace tools (file read/write/edit, terminal commands, codebase search, diagnostics, Dart/Flutter tools, debug inspection — 60+ tools total). Tool results are truncated and fed back; the loop continues until the model produces a text-only response. Loop detection warns the model after 3 identical tool calls. Optionally pre-processes the prompt with a cheaper model (`preProcessingModelId`) to gather context first. Previous responses are summarized for conversation continuity. Final response is prepended to `{chatId}.responses.md`, logged to `{chatId}.chat-log.md`, and shown in the "Tom AI Chat Responses" output channel. |
+| Tom AI: Interrupt Chat | `dartscript.interruptTomAIChat` | `Ctrl+Shift+T, Ctrl+Shift+I` | Cancels a running Tom AI Chat request by triggering the cancellation token. The check fires at the start of each agentic loop iteration and during pre-processing. In-flight tool calls at the moment of cancellation will complete before the loop terminates. An `[INTERRUPTED]` marker is written to the chat log. Shows a confirmation if interrupted, or an info message if nothing is running. |
 
 ### Dart Script Execution
 
@@ -1192,7 +1273,7 @@ Complete reference for all 42 extension commands. Open the Command Palette (`Cmd
 
 | Command | ID | Shortcut | Description |
 |---------|----|----------|-------------|
-| DS: Reload Window | `dartscript.reloadWindow` | `Cmd+Shift+R` / `Ctrl+Shift+R` | Notifies the Dart bridge to save state, explicitly stops the bridge process to prevent orphaned processes, then executes VS Code's built-in window reload. Ensures clean shutdown before reloading. |
+| DS: Reload Window | `dartscript.reloadWindow` | — | Notifies the Dart bridge to save state, explicitly stops the bridge process to prevent orphaned processes, then executes VS Code's built-in window reload. Ensures clean shutdown before reloading. |
 | DS: Run Tests | `dartscript.runTests` | — | Creates a `BridgeTestRunner` and runs all bridge integration tests from the `tom_vscode_bridge/test/` directory. Reports test results. |
 | DS: Show Extension Help | `dartscript.showHelp` | — | Opens the extension's documentation in VS Code's markdown preview. Looks for `doc/USER_GUIDE.md` in the extension directory; falls back to `README.md` if not found. |
 | DartScript: Print Configuration | `dartscript.printConfiguration` | — | Prints the complete DartScript interpreter configuration to the output channel — all registered imports, classes, methods, constructors, global variables, and getters available in the DartScript runtime. Useful for debugging what's available to scripts. |

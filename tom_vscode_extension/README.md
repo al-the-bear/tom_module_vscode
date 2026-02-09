@@ -83,7 +83,7 @@ Right-click in the editor to access the "DartScript: Send to Chat..." submenu:
 | Command | Description |
 |---------|-------------|
 | **DS: Expand Prompt (Ollama)** | Expand/process selected text using local Ollama model |
-| **DS: Switch local Ollama model...** | Pick a different Ollama model |
+| **DS: Change local Ollama model...** | Pick a different Ollama model |
 | **DS: Send to local LLM** | Send selected text to local LLM |
 | **DS: Send to local LLM (Standard)** | Send with default profile |
 | **DS: Send to local LLM (Template)...** | Choose a profile template |
@@ -116,7 +116,7 @@ See the [User Guide](doc/USER_GUIDE.md#bot-conversation-ollama--copilot) for pro
 
 | Command | Description |
 |---------|-------------|
-| **DS: Reload Window** | Reload VS Code window (`Cmd+Shift+R` / `Ctrl+Shift+R`) |
+| **DS: Reload Window** | Reload VS Code window (Command Palette only) |
 | **DS: Run Tests** | Run extension tests |
 | **DS: Show Extension Help** | Open extension documentation |
 | **DartScript: Print Configuration** | Print D4rt interpreter configuration to output |
@@ -148,7 +148,7 @@ All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combinatio
 | `Ctrl+Shift+C, Ctrl+Shift+B` | Start Local-Copilot Conversation |
 | `Ctrl+Shift+C, Ctrl+Shift+S` | Stop Local-Copilot Conversation |
 | `Ctrl+Shift+C, Ctrl+Shift+H` | Halt Local-Copilot Conversation |
-| `Ctrl+Shift+C, Ctrl+Shift+J` | Continue Local-Copilot Conversation |
+| `Ctrl+Shift+C, Ctrl+Shift+C` | Continue Local-Copilot Conversation |
 | `Ctrl+Shift+C, Ctrl+Shift+A` | Add to Local-Copilot Conversation |
 
 ### Local LLM (`Ctrl+Shift+L, ...`)
@@ -156,7 +156,7 @@ All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combinatio
 | Shortcut | Command |
 |----------|---------|
 | `Ctrl+Shift+L, Ctrl+Shift+E` | Expand Prompt (Ollama) |
-| `Ctrl+Shift+L, Ctrl+Shift+W` | Switch local Ollama model |
+| `Ctrl+Shift+L, Ctrl+Shift+C` | Change local Ollama model |
 | `Ctrl+Shift+L, Ctrl+Shift+S` | Send to local LLM (Standard) |
 | `Ctrl+Shift+L, Ctrl+Shift+T` | Send to local LLM (Template) |
 
@@ -176,12 +176,6 @@ All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combinatio
 | `Ctrl+Shift+T, Ctrl+Shift+N` | Start Tom AI Chat |
 | `Ctrl+Shift+T, Ctrl+Shift+S` | Send Tom AI Chat Prompt |
 | `Ctrl+Shift+T, Ctrl+Shift+I` | Interrupt Tom AI Chat |
-
-### Standalone
-
-| Shortcut | Command |
-|----------|---------|
-| `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Win/Linux) | Reload Window |
 
 ## Custom Prompt Templates
 
