@@ -260,7 +260,7 @@
       },
       {
         "command": "dartscript.expandPrompt",
-        "key": "ctrl+shift+l ctrl+shift+e",
+        "key": "ctrl+shift+l ctrl+shift+x",
         "when": "editorTextFocus"
       },
       {
@@ -279,22 +279,22 @@
       },
       {
         "command": "dartscript.sendToChat",
-        "key": "ctrl+shift+s ctrl+shift+c",
+        "key": "ctrl+shift+a ctrl+shift+c",
         "when": "editorTextFocus"
       },
       {
         "command": "dartscript.sendToChatStandard",
-        "key": "ctrl+shift+s ctrl+shift+s",
+        "key": "ctrl+shift+a ctrl+shift+s",
         "when": "editorTextFocus"
       },
       {
         "command": "dartscript.sendToChatAdvanced",
-        "key": "ctrl+shift+s ctrl+shift+t",
+        "key": "ctrl+shift+a ctrl+shift+t",
         "when": "editorTextFocus"
       },
       {
         "command": "dartscript.reloadSendToChatConfig",
-        "key": "ctrl+shift+s ctrl+shift+r"
+        "key": "ctrl+shift+a ctrl+shift+r"
       },
       {
         "command": "dartscript.startTomAIChat",

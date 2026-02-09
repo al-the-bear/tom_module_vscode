@@ -1172,19 +1172,19 @@ All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combinatio
 
 | Shortcut | Command |
 |----------|---------|
-| `Ctrl+Shift+L, Ctrl+Shift+E` | Expand Prompt (Ollama) |
+| `Ctrl+Shift+L, Ctrl+Shift+X` | Expand Prompt (Ollama) |
 | `Ctrl+Shift+L, Ctrl+Shift+C` | Change local Ollama model |
 | `Ctrl+Shift+L, Ctrl+Shift+S` | Send to local LLM (Standard) |
 | `Ctrl+Shift+L, Ctrl+Shift+T` | Send to local LLM (Template) |
 
-### Send to Copilot Chat (`Ctrl+Shift+S, ...`)
+### Send to Copilot Chat (`Ctrl+Shift+A, ...`)
 
 | Shortcut | Command |
 |----------|---------|
-| `Ctrl+Shift+S, Ctrl+Shift+C` | Send to Copilot Chat |
-| `Ctrl+Shift+S, Ctrl+Shift+S` | Send to Copilot Chat (Standard) |
-| `Ctrl+Shift+S, Ctrl+Shift+T` | Send to Copilot Chat (Template) |
-| `Ctrl+Shift+S, Ctrl+Shift+R` | Reload Chat Config |
+| `Ctrl+Shift+A, Ctrl+Shift+C` | Send to Copilot Chat |
+| `Ctrl+Shift+A, Ctrl+Shift+S` | Send to Copilot Chat (Standard) |
+| `Ctrl+Shift+A, Ctrl+Shift+T` | Send to Copilot Chat (Template) |
+| `Ctrl+Shift+A, Ctrl+Shift+R` | Reload Chat Config |
 
 ### Tom AI Chat (`Ctrl+Shift+T, ...`)
 
@@ -1194,7 +1194,7 @@ All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combinatio
 | `Ctrl+Shift+T, Ctrl+Shift+S` | Send Tom AI Chat Prompt (in .md files) |
 | `Ctrl+Shift+T, Ctrl+Shift+I` | Interrupt Tom AI Chat |
 
-**Note:** On macOS, `Ctrl+Shift+` chords use the Control key (not Command), so they don't conflict with standard VS Code shortcuts which use `Cmd+Shift+`. On Windows/Linux, some `Ctrl+Shift+` first-chord prefixes may shadow default bindings (e.g., `Ctrl+Shift+S` shadows "Save As"); use the Command Palette as an alternative.
+**Note:** On macOS, `Ctrl+Shift+` chords use the Control key (not Command), so they don't conflict with standard VS Code shortcuts which use `Cmd+Shift+`. On Windows/Linux, some `Ctrl+Shift+` first-chord prefixes may shadow default bindings; use the Command Palette as an alternative.
 
 ---
 
@@ -1216,7 +1216,7 @@ Complete reference for all 42 extension commands. Open the Command Palette (`Cmd
 
 | Command | ID | Shortcut | Description |
 |---------|----|----------|-------------|
-| DS: Expand Prompt (Ollama) | `dartscript.expandPrompt` | `Ctrl+Shift+L, Ctrl+Shift+E` | Takes the selected text (or full file) from the active editor, sends it to a local Ollama model with a configurable system prompt (default: expand terse prompt into detailed one), and **replaces the text in-place** with the LLM's response. Supports `<think>` tag stripping, result templates with placeholder substitution, and cancellable progress notifications. |
+| DS: Expand Prompt (Ollama) | `dartscript.expandPrompt` | `Ctrl+Shift+L, Ctrl+Shift+X` | Takes the selected text (or full file) from the active editor, sends it to a local Ollama model with a configurable system prompt (default: expand terse prompt into detailed one), and **replaces the text in-place** with the LLM's response. Supports `<think>` tag stripping, result templates with placeholder substitution, and cancellable progress notifications. |
 | DS: Change local Ollama model... | `dartscript.switchLocalModel` | `Ctrl+Shift+L, Ctrl+Shift+C` | Queries the local Ollama server (`/api/tags`) for all available models and shows a QuickPick listing them with sizes. When you pick a model, it updates the default model in `send_to_chat.json` and sends a warm-up request to pre-load the model into Ollama's memory for faster first use. |
 | DS: Send to local LLM | `dartscript.sendToLocalLlm` | — | Shows a QuickPick listing all profiles defined in `promptExpander.profiles` in `send_to_chat.json`. When you pick a profile, it sends the selected text (or full file) to Ollama using that profile's system prompt, temperature, and result template, then replaces the text in the editor with the result. |
 | DS: Send to local LLM (Standard) | `dartscript.sendToLocalLlmStandard` | `Ctrl+Shift+L, Ctrl+Shift+S` | Sends the selected text (or full file) to the local Ollama model using the **default profile** (marked `isDefault: true`, or the first profile). Skips the profile picker. Processes the result and replaces text in the editor. |
@@ -1230,10 +1230,10 @@ Complete reference for all 42 extension commands. Open the Command Palette (`Cmd
 
 | Command | ID | Shortcut | Description |
 |---------|----|----------|-------------|
-| DS: Send to Copilot Chat | `dartscript.sendToChat` | `Ctrl+Shift+S, Ctrl+Shift+C` | Takes the currently selected text in the active editor and opens VS Code's Copilot Chat panel with that text as the query. Requires a non-empty selection; shows an error if nothing is selected. |
-| DS: Send to Copilot Chat (Standard) | `dartscript.sendToChatStandard` | `Ctrl+Shift+S, Ctrl+Shift+S` | Sends selected text (or full file) to Copilot Chat using the **default template** from `send_to_chat.json`. Skips the template picker. The text is wrapped with the template's prefix/suffix and placeholder substitution is applied. Shows a warning if no default template is configured. |
-| DS: Send to Copilot Chat (Template)... | `dartscript.sendToChatAdvanced` | `Ctrl+Shift+S, Ctrl+Shift+T` | Shows a QuickPick menu listing all templates from `send_to_chat.json`. The user picks a template, and the selected text (or full file) is wrapped with that template's prefix/suffix. Supports `${placeholder}` substitution from parsed content (JSON, YAML, or colon-delimited values). The combined text is sent to Copilot Chat. |
-| DS: Reload Chat Config | `dartscript.reloadSendToChatConfig` | `Ctrl+Shift+S, Ctrl+Shift+R` | Reloads the `send_to_chat.json` configuration file from disk, re-parsing all templates and the default template name. Updates the template list without restarting the extension. Shows a confirmation message. |
+| DS: Send to Copilot Chat | `dartscript.sendToChat` | `Ctrl+Shift+A, Ctrl+Shift+C` | Takes the currently selected text in the active editor and opens VS Code's Copilot Chat panel with that text as the query. Requires a non-empty selection; shows an error if nothing is selected. |
+| DS: Send to Copilot Chat (Standard) | `dartscript.sendToChatStandard` | `Ctrl+Shift+A, Ctrl+Shift+S` | Sends selected text (or full file) to Copilot Chat using the **default template** from `send_to_chat.json`. Skips the template picker. The text is wrapped with the template's prefix/suffix and placeholder substitution is applied. Shows a warning if no default template is configured. |
+| DS: Send to Copilot Chat (Template)... | `dartscript.sendToChatAdvanced` | `Ctrl+Shift+A, Ctrl+Shift+T` | Shows a QuickPick menu listing all templates from `send_to_chat.json`. The user picks a template, and the selected text (or full file) is wrapped with that template's prefix/suffix. Supports `${placeholder}` substitution from parsed content (JSON, YAML, or colon-delimited values). The combined text is sent to Copilot Chat. |
+| DS: Reload Chat Config | `dartscript.reloadSendToChatConfig` | `Ctrl+Shift+A, Ctrl+Shift+R` | Reloads the `send_to_chat.json` configuration file from disk, re-parsing all templates and the default template name. Updates the template list without restarting the extension. Shows a confirmation message. |
 | Send with Trail Reminder | `dartscript.sendToChatTrailReminder` | — | Sends the selected text (or full file) to Copilot Chat using the `"Trail Reminder"` template from `send_to_chat.json`. Available from the editor context menu submenu. |
 | TODO Execution | `dartscript.sendToChatTodoExecution` | — | Sends the selected text (or full file) to Copilot Chat using the `"TODO Execution"` template from `send_to_chat.json`. Available from the editor context menu submenu. |
 | Code Review | `dartscript.sendToChatCodeReview` | — | Sends the selected text (or full file) to Copilot Chat using the `"Code Review"` template from `send_to_chat.json`. Available from the editor context menu submenu. |

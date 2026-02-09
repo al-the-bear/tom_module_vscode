@@ -155,19 +155,19 @@ All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combinatio
 
 | Shortcut | Command |
 |----------|---------|
-| `Ctrl+Shift+L, Ctrl+Shift+E` | Expand Prompt (Ollama) |
+| `Ctrl+Shift+L, Ctrl+Shift+X` | Expand Prompt (Ollama) |
 | `Ctrl+Shift+L, Ctrl+Shift+C` | Change local Ollama model |
 | `Ctrl+Shift+L, Ctrl+Shift+S` | Send to local LLM (Standard) |
 | `Ctrl+Shift+L, Ctrl+Shift+T` | Send to local LLM (Template) |
 
-### Send to Copilot Chat (`Ctrl+Shift+S, ...`)
+### Send to Copilot Chat (`Ctrl+Shift+A, ...`)
 
 | Shortcut | Command |
 |----------|---------|
-| `Ctrl+Shift+S, Ctrl+Shift+C` | Send to Copilot Chat |
-| `Ctrl+Shift+S, Ctrl+Shift+S` | Send to Copilot Chat (Standard) |
-| `Ctrl+Shift+S, Ctrl+Shift+T` | Send to Copilot Chat (Template) |
-| `Ctrl+Shift+S, Ctrl+Shift+R` | Reload Chat Config |
+| `Ctrl+Shift+A, Ctrl+Shift+C` | Send to Copilot Chat |
+| `Ctrl+Shift+A, Ctrl+Shift+S` | Send to Copilot Chat (Standard) |
+| `Ctrl+Shift+A, Ctrl+Shift+T` | Send to Copilot Chat (Template) |
+| `Ctrl+Shift+A, Ctrl+Shift+R` | Reload Chat Config |
 
 ### Tom AI Chat (`Ctrl+Shift+T, ...`)
 
