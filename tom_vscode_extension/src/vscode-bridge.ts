@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { spawn, ChildProcess } from 'child_process';
-import { getPromptExpanderManager } from './handlers';
+import { getPromptExpanderManager, getBotConversationManager } from './handlers';
 
 const DART_COMMAND = 'dart';
 
@@ -607,6 +607,22 @@ export class DartBridgeClient {
                         throw new Error('Prompt Expander manager not initialized');
                     }
                     result = await mgr.handleBridgeRequest(method, params);
+                    break;
+                }
+
+                // Bot Conversation bridge API
+                case 'botConversation.getConfigVce':
+                case 'botConversation.getProfilesVce':
+                case 'botConversation.startVce':
+                case 'botConversation.stopVce':
+                case 'botConversation.statusVce':
+                case 'botConversation.getLogVce':
+                case 'botConversation.singleTurnVce': {
+                    const botMgr = getBotConversationManager();
+                    if (!botMgr) {
+                        throw new Error('Bot Conversation manager not initialized');
+                    }
+                    result = await botMgr.handleBridgeRequest(method, params);
                     break;
                 }
 

@@ -1008,6 +1008,337 @@ export class BotConversationManager {
     }
 
     // -----------------------------------------------------------------------
+    // Bridge API — scriptable access via vscode-bridge JSON-RPC
+    // -----------------------------------------------------------------------
+
+    /**
+     * Handle a bridge request for the bot conversation subsystem.
+     *
+     * Methods:
+     *   botConversation.getConfigVce      → return current config (profiles, defaults)
+     *   botConversation.getProfilesVce    → list available profiles
+     *   botConversation.startVce          → start a conversation (non-interactive)
+     *   botConversation.stopVce           → stop the active conversation
+     *   botConversation.statusVce         → get conversation status + exchange count
+     *   botConversation.getLogVce         → return the conversation log for a given ID
+     *   botConversation.singleTurnVce     → run one Ollama→Copilot round-trip and return result
+     */
+    async handleBridgeRequest(method: string, params: any): Promise<any> {
+        switch (method) {
+            case 'botConversation.getConfigVce':
+                return this.bridgeGetConfig();
+            case 'botConversation.getProfilesVce':
+                return this.bridgeGetProfiles();
+            case 'botConversation.startVce':
+                return this.bridgeStart(params);
+            case 'botConversation.stopVce':
+                return this.bridgeStop(params);
+            case 'botConversation.statusVce':
+                return this.bridgeStatus();
+            case 'botConversation.getLogVce':
+                return this.bridgeGetLog(params);
+            case 'botConversation.singleTurnVce':
+                return this.bridgeSingleTurn(params);
+            default:
+                throw new Error(`Unknown botConversation method: ${method}`);
+        }
+    }
+
+    /** Return the full resolved config including profile keys. */
+    private bridgeGetConfig(): any {
+        const config = this.loadConfig();
+        return {
+            maxTurns: config.maxTurns,
+            temperature: config.temperature,
+            historyMode: config.historyMode,
+            maxHistoryTokens: config.maxHistoryTokens,
+            modelConfig: config.modelConfig,
+            pauseBetweenTurns: config.pauseBetweenTurns,
+            pauseBeforeFirst: config.pauseBeforeFirst,
+            logConversation: config.logConversation,
+            stripThinkingTags: config.stripThinkingTags,
+            copilotModel: config.copilotModel,
+            conversationLogPath: config.conversationLogPath,
+            goalReachedMarker: config.goalReachedMarker,
+            profileKeys: Object.keys(config.profiles),
+        };
+    }
+
+    /** Return list of profiles with their metadata. */
+    private bridgeGetProfiles(): any {
+        const config = this.loadConfig();
+        return {
+            profiles: Object.entries(config.profiles).map(([key, p]) => ({
+                key,
+                label: p.label,
+                maxTurns: p.maxTurns ?? null,
+                temperature: p.temperature ?? null,
+                modelConfig: p.modelConfig ?? null,
+                historyMode: p.historyMode ?? null,
+                goalReachedMarker: p.goalReachedMarker ?? null,
+            })),
+        };
+    }
+
+    /**
+     * Start a conversation programmatically (no UI prompts).
+     *
+     * Params:
+     *   goal: string           — required, the conversation goal
+     *   description?: string   — optional context
+     *   profile?: string       — profile key (or omit for defaults)
+     *   maxTurns?: number      — override max turns
+     *   temperature?: number   — override temperature
+     *   modelConfig?: string   — override model config key
+     *   historyMode?: string   — override history mode
+     *   includeFileContext?: string[]  — file paths for context
+     *   pauseBetweenTurns?: boolean   — override pause setting
+     *
+     * Returns a promise that resolves when the conversation finishes:
+     *   {
+     *     conversationId: string,
+     *     turns: number,
+     *     goalReached: boolean,
+     *     exchanges: ConversationExchange[],
+     *     logFilePath: string
+     *   }
+     */
+    private async bridgeStart(params: any): Promise<any> {
+        if (!params?.goal || typeof params.goal !== 'string') {
+            throw new Error('Missing required parameter: goal');
+        }
+
+        if (this.activeConversation?.active) {
+            throw new Error('A conversation is already active. Stop it first with botConversation.stopVce.');
+        }
+
+        const manager = getPromptExpanderManager();
+        if (!manager) {
+            throw new Error('Prompt Expander not initialized');
+        }
+
+        const config = this.loadConfig();
+
+        // Apply profile if specified
+        const profileKey = typeof params.profile === 'string' ? params.profile : '_default';
+        const profile = profileKey !== '_default' ? config.profiles[profileKey] : undefined;
+        if (profileKey !== '_default' && !profile) {
+            throw new Error(`Unknown profile: ${profileKey}. Available: ${Object.keys(config.profiles).join(', ')}`);
+        }
+
+        if (profile) {
+            if (profile.maxTurns !== null && profile.maxTurns !== undefined) { config.maxTurns = profile.maxTurns; }
+            if (profile.modelConfig !== null && profile.modelConfig !== undefined) { config.modelConfig = profile.modelConfig; }
+            if (profile.temperature !== null && profile.temperature !== undefined) { config.temperature = profile.temperature; }
+            if (profile.historyMode !== null && profile.historyMode !== undefined) { config.historyMode = profile.historyMode; }
+            if (profile.initialPromptTemplate) { config.initialPromptTemplate = profile.initialPromptTemplate; }
+            if (profile.followUpTemplate) { config.followUpTemplate = profile.followUpTemplate; }
+            if (profile.copilotSuffix) { config.copilotSuffix = profile.copilotSuffix; }
+            if (profile.goalReachedMarker) { config.goalReachedMarker = profile.goalReachedMarker; }
+            if (profile.includeFileContext) { config.includeFileContext = profile.includeFileContext; }
+        }
+
+        // Apply per-call overrides (take precedence over profile)
+        if (typeof params.maxTurns === 'number') { config.maxTurns = params.maxTurns; }
+        if (typeof params.temperature === 'number') { config.temperature = params.temperature; }
+        if (typeof params.modelConfig === 'string') { config.modelConfig = params.modelConfig; }
+        if (typeof params.historyMode === 'string' &&
+            ['full', 'last', 'summary', 'trim_and_summary'].includes(params.historyMode)) {
+            config.historyMode = params.historyMode as HistoryMode;
+        }
+        if (Array.isArray(params.includeFileContext)) { config.includeFileContext = params.includeFileContext; }
+        if (typeof params.pauseBetweenTurns === 'boolean') { config.pauseBetweenTurns = params.pauseBetweenTurns; }
+
+        const goal = params.goal.trim();
+        const description = typeof params.description === 'string' ? params.description.trim() : '';
+
+        // Create conversation state
+        const conversationId = this.generateConversationId();
+        const cancellationSource = new vscode.CancellationTokenSource();
+        const state: ConversationState = {
+            conversationId,
+            goal,
+            description,
+            exchanges: [],
+            config,
+            profileKey,
+            active: true,
+            cancellationSource,
+            logFilePath: '',
+        };
+        this.activeConversation = state;
+
+        bridgeLog(`[Bot Conversation] Bridge start: ${conversationId} | Goal: ${goal.substring(0, 80)}...`);
+
+        let goalReached = false;
+        try {
+            await this.runConversationLoop(state, manager);
+            // If we get here without an error, check if goal was reached
+            // (the loop itself logs "[Bot Conversation] Goal reached at turn X")
+            const lastExchange = state.exchanges[state.exchanges.length - 1];
+            if (lastExchange) {
+                const lastLocalOutput = lastExchange.promptToCopilot;
+                goalReached = lastLocalOutput.includes(config.goalReachedMarker);
+            }
+        } catch (err: any) {
+            if (err.message !== 'Cancelled') {
+                throw err;
+            }
+        } finally {
+            state.active = false;
+            this.writeConversationLog(state);
+            if (this.activeConversation === state) {
+                this.activeConversation = null;
+            }
+            cancellationSource.dispose();
+        }
+
+        return {
+            conversationId: state.conversationId,
+            turns: state.exchanges.length,
+            goalReached,
+            logFilePath: state.logFilePath,
+            exchanges: state.exchanges.map((ex) => ({
+                turn: ex.turn,
+                timestamp: ex.timestamp.toISOString(),
+                promptToCopilot: ex.promptToCopilot,
+                copilotResponse: ex.copilotResponse,
+                localModelStats: ex.localModelStats ?? null,
+            })),
+        };
+    }
+
+    /** Stop the active conversation via bridge. */
+    private bridgeStop(params: any): any {
+        if (!this.activeConversation?.active) {
+            return { success: false, message: 'No active conversation' };
+        }
+        const reason = typeof params?.reason === 'string' ? params.reason : 'Stopped via bridge';
+        this.stopConversation(reason);
+        return { success: true, message: reason };
+    }
+
+    /** Return status of the active conversation. */
+    private bridgeStatus(): any {
+        if (!this.activeConversation) {
+            return { active: false };
+        }
+        const state = this.activeConversation;
+        return {
+            active: state.active,
+            conversationId: state.conversationId,
+            goal: state.goal,
+            profileKey: state.profileKey,
+            turnsCompleted: state.exchanges.length,
+            maxTurns: state.config.maxTurns,
+        };
+    }
+
+    /** Return a conversation log by ID (reads from disk). */
+    private bridgeGetLog(params: any): any {
+        const conversationId = params?.conversationId;
+        if (!conversationId || typeof conversationId !== 'string') {
+            throw new Error('Missing required parameter: conversationId');
+        }
+
+        const wsRoot = getWorkspaceRoot();
+        const config = this.loadConfig();
+        const logDir = wsRoot
+            ? path.join(wsRoot, config.conversationLogPath)
+            : path.join(require('os').homedir(), '.tom', 'bot_conversations');
+        const logPath = path.join(logDir, `${conversationId}.md`);
+
+        if (!fs.existsSync(logPath)) {
+            return { found: false, conversationId };
+        }
+
+        return {
+            found: true,
+            conversationId,
+            logFilePath: logPath,
+            content: fs.readFileSync(logPath, 'utf-8'),
+        };
+    }
+
+    /**
+     * Run a single Ollama→Copilot round-trip without managing conversation state.
+     *
+     * Params:
+     *   prompt: string             — the prompt for the local model
+     *   systemPrompt?: string      — system prompt for local model (default: orchestrator)
+     *   modelConfig?: string       — model config key
+     *   temperature?: number       — generation temperature
+     *   sendToCopilot?: boolean    — whether to actually send to Copilot (default: true)
+     *   copilotSuffix?: string     — suffix appended to Copilot prompt
+     *
+     * Returns:
+     *   {
+     *     localModelOutput: string,
+     *     localModelStats: OllamaStats | null,
+     *     copilotResponse: CopilotResponse | null  (null if sendToCopilot=false)
+     *   }
+     */
+    private async bridgeSingleTurn(params: any): Promise<any> {
+        if (!params?.prompt || typeof params.prompt !== 'string') {
+            throw new Error('Missing required parameter: prompt');
+        }
+
+        const manager = getPromptExpanderManager();
+        if (!manager) {
+            throw new Error('Prompt Expander not initialized');
+        }
+
+        const config = this.loadConfig();
+
+        // Step 1: Generate with local model
+        const genResult = await manager.chatWithOllama({
+            systemPrompt: typeof params.systemPrompt === 'string'
+                ? params.systemPrompt
+                : 'You are a conversation orchestrator generating prompts for an AI assistant.',
+            userPrompt: params.prompt,
+            modelConfigKey: typeof params.modelConfig === 'string' ? params.modelConfig : config.modelConfig ?? undefined,
+            temperature: typeof params.temperature === 'number' ? params.temperature : config.temperature,
+            stripThinkingTags: config.stripThinkingTags,
+        });
+
+        const localOutput = genResult.text.trim();
+
+        // Step 2: Optionally send to Copilot
+        const sendToCopilot = params.sendToCopilot !== false;
+
+        if (!sendToCopilot) {
+            return {
+                localModelOutput: localOutput,
+                localModelStats: genResult.stats ?? null,
+                copilotResponse: null,
+            };
+        }
+
+        const copilotModel = await getCopilotModel();
+        if (!copilotModel) {
+            throw new Error('No Copilot model available');
+        }
+
+        const suffix = typeof params.copilotSuffix === 'string' ? params.copilotSuffix : '';
+        const fullPrompt = localOutput + suffix;
+
+        const copilotResponseText = await sendCopilotRequest(
+            copilotModel,
+            fullPrompt,
+            new vscode.CancellationTokenSource().token,
+        );
+
+        const requestId = `single_${Date.now()}`;
+        const copilotResponse = this.parseInlineResponse(copilotResponseText, requestId);
+
+        return {
+            localModelOutput: localOutput,
+            localModelStats: genResult.stats ?? null,
+            copilotResponse,
+        };
+    }
+
+    // -----------------------------------------------------------------------
     // Stop
     // -----------------------------------------------------------------------
 
