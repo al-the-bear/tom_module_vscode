@@ -808,6 +808,36 @@ export class PromptExpanderManager {
             fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf-8');
 
             bridgeLog(`[Prompt Expander] Switched default model to: ${picked.modelName}`);
+
+            // Pre-load the model by sending a minimal generation request.
+            // Ollama loads models on demand — this ensures the model is warm
+            // in memory so the first real expansion is fast.
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: `Loading ${picked.modelName} into memory...`,
+                    cancellable: true,
+                },
+                async (_progress, token) => {
+                    try {
+                        await this.ollamaGenerate(
+                            config.ollamaUrl,
+                            picked.modelName,
+                            'Respond with OK.',
+                            'OK',
+                            0,
+                            undefined,
+                            token,
+                        );
+                        bridgeLog(`[Prompt Expander] Model ${picked.modelName} loaded successfully`);
+                    } catch (err: any) {
+                        if (err.message !== 'Cancelled') {
+                            bridgeLog(`[Prompt Expander] Warning: pre-load failed: ${err.message}`);
+                        }
+                    }
+                },
+            );
+
             vscode.window.showInformationMessage(`Local LLM model switched to: ${picked.modelName}`);
         } catch (err: any) {
             vscode.window.showErrorMessage(`Failed to update config: ${err.message}`);
