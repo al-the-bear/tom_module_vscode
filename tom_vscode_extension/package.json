@@ -172,6 +172,11 @@
         "category": "DartScript"
       },
       {
+        "command": "dartscript.switchLocalModel",
+        "title": "DS: Switch local Ollama model...",
+        "category": "DartScript"
+      },
+      {
         "command": "dartscript.sendToLocalLlm",
         "title": "DS: Send to local LLM",
         "category": "DartScript"

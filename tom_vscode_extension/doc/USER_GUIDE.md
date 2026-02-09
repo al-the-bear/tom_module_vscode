@@ -293,19 +293,22 @@ The `models` section lets you define named model configs. One must be marked `is
     "model": "qwen3:8b",
     "temperature": 0.4,
     "stripThinkingTags": true,
+    "description": "Qwen 3 8B — fast reasoning model with thinking tags",
     "isDefault": true
   },
   "llama3-70b": {
     "ollamaUrl": "http://gpu-server:11434",
     "model": "llama3:70b",
     "temperature": 0.6,
-    "stripThinkingTags": false
+    "stripThinkingTags": false,
+    "description": "Llama 3 70B — high quality, slower"
   },
   "codestral": {
     "ollamaUrl": "http://localhost:11434",
     "model": "codestral:latest",
     "temperature": 0.2,
-    "stripThinkingTags": false
+    "stripThinkingTags": false,
+    "description": "Codestral — code-focused model"
   }
 }
 ```
@@ -316,6 +319,7 @@ The `models` section lets you define named model configs. One must be marked `is
 | `model` | string | Model name as known to Ollama (e.g. `qwen3:8b`, `llama3:70b`) |
 | `temperature` | number | Sampling temperature. `0` = deterministic, `2` = very random |
 | `stripThinkingTags` | boolean | Whether to strip `<think>…</think>` tags (useful for Qwen 3 reasoning models) |
+| `description` | string | Human-readable description shown in the model selection quick-pick |
 | `isDefault` | boolean | If `true`, this model is used when no model is specified. Exactly one model should have this set. |
 
 **When no `models` section exists**, the top-level `ollamaUrl`, `model`, `temperature`, and `stripThinkingTags` are used as a default model config. This maintains backward compatibility with earlier configurations.
@@ -403,6 +407,24 @@ Placeholders can be used in both `systemPrompt` and `resultTemplate`:
 #### VS Code Settings Fallback
 
 The `dartscript.ollama.url` and `dartscript.ollama.model` VS Code settings serve as fallbacks when `ollamaUrl`/`model` are not specified in the JSON config. The JSON config always takes precedence.
+
+### Switching Ollama Models
+
+**Command:** `DS: Switch local Ollama model...` (Command Palette only)
+
+Queries the Ollama server for all locally available models and shows a quick-pick with model names and sizes. The currently active model is marked with a checkmark. Selecting a model updates the default model configuration in `send_to_chat.json`.
+
+This is useful when you've pulled multiple models (`ollama pull llama3:70b`, `ollama pull codestral:latest`, etc.) and want to quickly switch between them without editing the config file.
+
+### Model Selection Flow
+
+When **multiple model configurations** are defined in the `models` section, the expand prompt command flow is:
+
+1. **Choose model** — quick-pick showing model config keys with descriptions
+2. **Choose profile** — quick-pick showing expansion profiles
+3. **Expand** — runs the selected profile with the selected model
+
+When only one model configuration exists, step 1 is skipped automatically.
 
 ### Bridge API
 

@@ -43,6 +43,7 @@ export { startTomAiChatHandler, sendToTomAiChatHandler, interruptTomAiChatHandle
 export {
     expandPromptHandler,
     createProfileHandler,
+    switchModelHandler,
     PromptExpanderManager,
     setPromptExpanderManager,
     getPromptExpanderManager,

@@ -35,6 +35,8 @@ export interface ModelConfig {
     temperature: number;
     /** Whether to strip `<think>…</think>` tags from the response. */
     stripThinkingTags: boolean;
+    /** Human-readable description shown in model selection quick-pick. */
+    description?: string;
     /** If true this is the default model when no model is specified. */
     isDefault?: boolean;
 }
@@ -197,6 +199,7 @@ export class PromptExpanderManager {
                             model: typeof m.model === 'string' ? m.model : config.model,
                             temperature: typeof m.temperature === 'number' ? m.temperature : config.temperature,
                             stripThinkingTags: typeof m.stripThinkingTags === 'boolean' ? m.stripThinkingTags : config.stripThinkingTags,
+                            description: typeof m.description === 'string' ? m.description : undefined,
                             isDefault: m.isDefault === true,
                         };
                     }
@@ -258,9 +261,9 @@ export class PromptExpanderManager {
         return keys.length > 0 ? keys[0] : undefined;
     }
 
-    /** Resolve model config: profile override → default model → top-level values. */
-    resolveModelConfig(config: PromptExpanderConfig, profile?: ExpanderProfile): { key: string; mc: ModelConfig } {
-        const modelKey = profile?.modelConfig ?? this.getDefaultModelKey(config);
+    /** Resolve model config: explicit key → profile override → default model → top-level values. */
+    resolveModelConfig(config: PromptExpanderConfig, profile?: ExpanderProfile, explicitModelKey?: string): { key: string; mc: ModelConfig } {
+        const modelKey = explicitModelKey ?? profile?.modelConfig ?? this.getDefaultModelKey(config);
         if (modelKey && config.models[modelKey]) {
             return { key: modelKey, mc: config.models[modelKey] };
         }
@@ -641,6 +644,7 @@ export class PromptExpanderManager {
                 model: m.model,
                 temperature: m.temperature,
                 stripThinkingTags: m.stripThinkingTags,
+                description: m.description ?? null,
                 isDefault: key === defaultKey,
             })),
             // Include synthesized default if no models are configured
@@ -684,6 +688,130 @@ export class PromptExpanderManager {
             params.model ?? null,
             vscode.window.activeTextEditor,
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Ollama model listing + switch
+    // -----------------------------------------------------------------------
+
+    /** Query Ollama /api/tags to list locally available models. */
+    async listOllamaModels(baseUrl?: string): Promise<Array<{ name: string; size: number; modifiedAt: string }>> {
+        const config = this.loadConfig();
+        const url = baseUrl ?? config.ollamaUrl;
+
+        return new Promise((resolve) => {
+            const u = new URL('/api/tags', url);
+            const req = http.request(
+                { hostname: u.hostname, port: u.port, path: u.pathname, method: 'GET', timeout: 5000 },
+                (res) => {
+                    let body = '';
+                    res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+                    res.on('end', () => {
+                        try {
+                            const parsed = JSON.parse(body);
+                            const models = (parsed.models ?? []).map((m: any) => ({
+                                name: m.name ?? m.model ?? '',
+                                size: m.size ?? 0,
+                                modifiedAt: m.modified_at ?? '',
+                            }));
+                            resolve(models);
+                        } catch {
+                            resolve([]);
+                        }
+                    });
+                    res.on('error', () => resolve([]));
+                },
+            );
+            req.on('error', () => resolve([]));
+            req.on('timeout', () => { req.destroy(); resolve([]); });
+            req.end();
+        });
+    }
+
+    /** Format bytes as human-readable size. */
+    private formatSize(bytes: number): string {
+        if (bytes < 1024) { return `${bytes} B`; }
+        if (bytes < 1024 * 1024) { return `${(bytes / 1024).toFixed(1)} KB`; }
+        if (bytes < 1024 * 1024 * 1024) { return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
+        return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    }
+
+    /**
+     * Interactive command: switch the default Ollama model.
+     * Queries the Ollama API for locally available models, shows a quick-pick,
+     * and updates the default model config in send_to_chat.json.
+     */
+    async switchModelCommand(): Promise<void> {
+        const config = this.loadConfig();
+
+        // Query Ollama for available models
+        const ollamaModels = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: 'Querying Ollama for available models...' },
+            async () => this.listOllamaModels(),
+        );
+
+        if (ollamaModels.length === 0) {
+            vscode.window.showErrorMessage(
+                `No models found. Is Ollama running at ${config.ollamaUrl}? Pull models with: ollama pull <model>`,
+            );
+            return;
+        }
+
+        // Find current default model
+        const defaultModelKey = this.getDefaultModelKey(config);
+        const currentDefault = defaultModelKey ? config.models[defaultModelKey] : undefined;
+        const currentModelName = currentDefault?.model ?? config.model;
+
+        // Build quick-pick items
+        const items = ollamaModels.map((m) => {
+            const isCurrent = m.name === currentModelName;
+            return {
+                label: `${isCurrent ? '$(check) ' : ''}${m.name}`,
+                description: `${this.formatSize(m.size)}${isCurrent ? ' (current)' : ''}`,
+                modelName: m.name,
+            };
+        });
+
+        const picked = await vscode.window.showQuickPick(items, {
+            placeHolder: `Current model: ${currentModelName} — select new default model`,
+        });
+        if (!picked) { return; }
+
+        // Update the default model config
+        const configPath = this.getConfigPath();
+        if (!configPath) {
+            vscode.window.showErrorMessage('No config file path found');
+            return;
+        }
+
+        try {
+            let data: any = {};
+            if (fs.existsSync(configPath)) {
+                data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+            }
+            if (!data.promptExpander) { data.promptExpander = {}; }
+
+            // Update the default model config entry, or create one
+            if (defaultModelKey && data.promptExpander.models?.[defaultModelKey]) {
+                data.promptExpander.models[defaultModelKey].model = picked.modelName;
+            } else if (data.promptExpander.models && Object.keys(data.promptExpander.models).length > 0) {
+                // Find the default one
+                const key = Object.entries(data.promptExpander.models as Record<string, any>)
+                    .find(([_, v]) => v.isDefault)?.[0]
+                    ?? Object.keys(data.promptExpander.models)[0];
+                data.promptExpander.models[key].model = picked.modelName;
+            } else {
+                // Also update top-level fallback
+                data.promptExpander.model = picked.modelName;
+            }
+
+            fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf-8');
+
+            bridgeLog(`[Prompt Expander] Switched default model to: ${picked.modelName}`);
+            vscode.window.showInformationMessage(`Local LLM model switched to: ${picked.modelName}`);
+        } catch (err: any) {
+            vscode.window.showErrorMessage(`Failed to update config: ${err.message}`);
+        }
     }
 
     /** Write a section update to the config file. */
@@ -732,11 +860,12 @@ export class PromptExpanderManager {
     // -----------------------------------------------------------------------
 
     /**
-     * Interactive expand: shows profile quick-pick, progress, replaces in editor.
+     * Interactive expand: shows model quick-pick (if multiple), then profile quick-pick, progress, replaces in editor.
      *
-     * @param forceProfileKey  If set, skip the quick-pick and use this profile.
+     * @param forceProfileKey  If set, skip the profile quick-pick and use this profile.
+     * @param forceModelKey    If set, skip the model quick-pick and use this model.
      */
-    async expandPromptCommand(forceProfileKey?: string): Promise<void> {
+    async expandPromptCommand(forceProfileKey?: string, forceModelKey?: string): Promise<void> {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
             vscode.window.showErrorMessage('No active editor');
@@ -744,6 +873,26 @@ export class PromptExpanderManager {
         }
 
         const config = this.loadConfig();
+
+        // Resolve model config — ask if multiple and not forced
+        let selectedModelKey: string | null = forceModelKey ?? null;
+        const modelKeys = Object.keys(config.models);
+        if (!selectedModelKey && modelKeys.length > 1) {
+            const defaultModelKey = this.getDefaultModelKey(config);
+            const modelItems = modelKeys.map((key) => {
+                const m = config.models[key];
+                const isDefault = key === defaultModelKey;
+                const desc = m.description
+                    ? `${m.model} — ${m.description}${isDefault ? ' (default)' : ''}`
+                    : `${m.model}${isDefault ? ' (default)' : ''}`;
+                return { label: key, description: desc, key };
+            });
+            const pickedModel = await vscode.window.showQuickPick(modelItems, {
+                placeHolder: 'Select model configuration',
+            });
+            if (!pickedModel) { return; }
+            selectedModelKey = pickedModel.key;
+        }
 
         // Resolve profile
         let profileKey: string;
@@ -783,7 +932,7 @@ export class PromptExpanderManager {
         }
 
         const profile = config.profiles[profileKey];
-        const { mc } = this.resolveModelConfig(config, profile);
+        const { mc } = this.resolveModelConfig(config, profile, selectedModelKey ?? undefined);
 
         try {
             // Check Ollama
@@ -807,7 +956,7 @@ export class PromptExpanderManager {
                     cancellable: true,
                 },
                 async (_progress, cancellationToken) => {
-                    return this.process(originalText, profileKey, null, editor, cancellationToken);
+                    return this.process(originalText, profileKey, selectedModelKey, editor, cancellationToken);
                 },
             );
 
@@ -888,4 +1037,16 @@ export function createProfileHandler(profileKey: string): () => Promise<void> {
         }
         await _manager.expandPromptCommand(profileKey);
     };
+}
+
+/**
+ * Command handler for `dartscript.switchLocalModel`.
+ * Shows available Ollama models and switches the default.
+ */
+export async function switchModelHandler(): Promise<void> {
+    if (!_manager) {
+        vscode.window.showErrorMessage('Prompt Expander not initialized');
+        return;
+    }
+    await _manager.switchModelCommand();
 }

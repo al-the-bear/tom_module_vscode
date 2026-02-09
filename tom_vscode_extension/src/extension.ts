@@ -43,6 +43,7 @@ import {
     setPromptExpanderManager,
     getPromptExpanderManager,
     createProfileHandler,
+    switchModelHandler,
 } from './handlers';
 
 // Tom AI Chat tools
@@ -276,6 +277,14 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
+    // Switch local Ollama model
+    const switchLocalModelCmd = vscode.commands.registerCommand(
+        'dartscript.switchLocalModel',
+        async () => {
+            await switchModelHandler();
+        }
+    );
+
     // Add all commands to subscriptions
     context.subscriptions.push(
         sendToChatCmd,
@@ -296,7 +305,8 @@ function registerCommands(context: vscode.ExtensionContext) {
         startTomAiChatCmd,
         sendToTomAiChatCmd,
         interruptTomAiChatCmd,
-        expandPromptCmd
+        expandPromptCmd,
+        switchLocalModelCmd
     );
 }
 
