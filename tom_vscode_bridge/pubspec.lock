@@ -949,16 +949,18 @@ packages:
   tom_basics_console:
     dependency: transitive
     description:
-      path: "../../tom_module_basics/tom_basics_console"
-      relative: true
-    source: path
+      name: tom_basics_console
+      sha256: "5afcd8d103ecf23cd300338a5f28fc29c3dea6017545a1d062be651c1aef0d6f"
+      url: "https://pub.dev"
+    source: hosted
     version: "1.0.0"
   tom_basics_network:
     dependency: transitive
     description:
-      path: "../../tom_module_basics/tom_basics_network"
-      relative: true
-    source: path
+      name: tom_basics_network
+      sha256: cf11360f2a60e3bd37207af8a1e19bd6e3568fde2be7236d0d042d288773ff9c
+      url: "https://pub.dev"
+    source: hosted
     version: "1.0.0"
   tom_build:
     dependency: transitive
@@ -985,9 +987,10 @@ packages:
   tom_chattools:
     dependency: transitive
     description:
-      path: "../../tom_module_communication/tom_chattools"
-      relative: true
-    source: path
+      name: tom_chattools
+      sha256: "47767f9ae1890580b22c4a8c7a3e32cc4eb05bfe17df85f07f4f6d7d0c25492b"
+      url: "https://pub.dev"
+    source: hosted
     version: "1.0.1"
   tom_core_kernel:
     dependency: transitive
@@ -1014,23 +1017,26 @@ packages:
   tom_d4rt:
     dependency: "direct main"
     description:
-      path: "../../tom_module_d4rt/tom_d4rt"
-      relative: true
-    source: path
+      name: tom_d4rt
+      sha256: "162b992b1454a9a361d0317ffd45c81a690531a467aaee3b33ca5456422ffbe7"
+      url: "https://pub.dev"
+    source: hosted
     version: "1.6.1"
   tom_d4rt_dcli:
     dependency: transitive
     description:
-      path: "../../tom_module_d4rt/tom_d4rt_dcli"
-      relative: true
-    source: path
+      name: tom_d4rt_dcli
+      sha256: "7ea3ab6fb42eb2f5f7ffd69e8bdc6c880488e0fed4ef16e85735e39abaff76e2"
+      url: "https://pub.dev"
+    source: hosted
     version: "1.0.0"
   tom_d4rt_generator:
     dependency: "direct dev"
     description:
-      path: "../../tom_module_d4rt/tom_d4rt_generator"
-      relative: true
-    source: path
+      name: tom_d4rt_generator
+      sha256: a26e38a0673ccd7a96991720cad6b41d3d47f012e5a5ec48ec98b0c62be03617
+      url: "https://pub.dev"
+    source: hosted
     version: "1.4.0"
   tom_dartscript_bridges:
     dependency: "direct main"
@@ -1064,9 +1070,10 @@ packages:
   tom_vscode_scripting_api:
     dependency: "direct main"
     description:
-      path: "../../tom_module_d4rt/tom_vscode_scripting_api"
-      relative: true
-    source: path
+      name: tom_vscode_scripting_api
+      sha256: da82cbcdbebb3eddaacfae795be9e8cebd2d171d6720bd0c07137d4544287e9b
+      url: "https://pub.dev"
+    source: hosted
     version: "1.0.1"
   tuple:
     dependency: transitive
