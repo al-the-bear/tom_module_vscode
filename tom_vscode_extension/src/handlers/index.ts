@@ -58,3 +58,4 @@ export {
     setBotConversationManager,
     getBotConversationManager,
 } from './botConversation-handler';
+export { registerChordMenuCommands } from './chordMenu-handler';

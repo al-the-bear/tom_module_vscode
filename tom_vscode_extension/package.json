@@ -235,80 +235,44 @@
         "command": "dartscript.addToBotConversation",
         "title": "DS: Add to Local-Copilot Conversation",
         "category": "DartScript"
+      },
+      {
+        "command": "dartscript.chordMenu.conversation",
+        "title": "DS: Conversation Shortcuts...",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.chordMenu.llm",
+        "title": "DS: Local LLM Shortcuts...",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.chordMenu.chat",
+        "title": "DS: Send to Chat Shortcuts...",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.chordMenu.tomAiChat",
+        "title": "DS: Tom AI Chat Shortcuts...",
+        "category": "DartScript"
       }
     ],
     "keybindings": [
       {
-        "command": "dartscript.startBotConversation",
-        "key": "ctrl+shift+c ctrl+shift+b"
+        "command": "dartscript.chordMenu.conversation",
+        "key": "ctrl+shift+c"
       },
       {
-        "command": "dartscript.stopBotConversation",
-        "key": "ctrl+shift+c ctrl+shift+s"
+        "command": "dartscript.chordMenu.llm",
+        "key": "ctrl+shift+l"
       },
       {
-        "command": "dartscript.haltBotConversation",
-        "key": "ctrl+shift+c ctrl+shift+h"
+        "command": "dartscript.chordMenu.chat",
+        "key": "ctrl+shift+a"
       },
       {
-        "command": "dartscript.continueBotConversation",
-        "key": "ctrl+shift+c ctrl+shift+c"
-      },
-      {
-        "command": "dartscript.addToBotConversation",
-        "key": "ctrl+shift+c ctrl+shift+a"
-      },
-      {
-        "command": "dartscript.expandPrompt",
-        "key": "ctrl+shift+l ctrl+shift+x",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "dartscript.switchLocalModel",
-        "key": "ctrl+shift+l ctrl+shift+c"
-      },
-      {
-        "command": "dartscript.sendToLocalLlmStandard",
-        "key": "ctrl+shift+l ctrl+shift+s",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "dartscript.sendToLocalLlmAdvanced",
-        "key": "ctrl+shift+l ctrl+shift+t",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "dartscript.sendToChat",
-        "key": "ctrl+shift+a ctrl+shift+c",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "dartscript.sendToChatStandard",
-        "key": "ctrl+shift+a ctrl+shift+s",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "dartscript.sendToChatAdvanced",
-        "key": "ctrl+shift+a ctrl+shift+t",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "dartscript.reloadSendToChatConfig",
-        "key": "ctrl+shift+a ctrl+shift+r"
-      },
-      {
-        "command": "dartscript.startTomAIChat",
-        "key": "ctrl+shift+t ctrl+shift+n",
-        "when": "editorTextFocus && resourceExtname == .md"
-      },
-      {
-        "command": "dartscript.sendToTomAIChat",
-        "key": "ctrl+shift+t ctrl+shift+s",
-        "when": "editorTextFocus && resourceExtname == .md"
-      },
-      {
-        "command": "dartscript.interruptTomAIChat",
-        "key": "ctrl+shift+t ctrl+shift+i"
+        "command": "dartscript.chordMenu.tomAiChat",
+        "key": "ctrl+shift+t"
       }
     ],
     "menus": {

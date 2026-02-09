@@ -137,45 +137,16 @@ See the [User Guide](doc/USER_GUIDE.md#bot-conversation-ollama--copilot) for pro
 - **DS: Send to Copilot Chat** - Send selection (when text selected)
 - **DS: Execute as Script** - Run current Dart file
 
-## Keyboard Shortcuts
+## Keyboard Shortcuts (Which-Key Menus)
 
-All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combination, release, then press the second.
+Shortcuts use a **which-key menu** system — press a trigger key to open a popup showing all available commands, then press the indicated letter to execute instantly (no Enter needed).
 
-### Conversation Control (`Ctrl+Shift+C, ...`)
-
-| Shortcut | Command |
-|----------|---------|
-| `Ctrl+Shift+C, Ctrl+Shift+B` | Start Local-Copilot Conversation |
-| `Ctrl+Shift+C, Ctrl+Shift+S` | Stop Local-Copilot Conversation |
-| `Ctrl+Shift+C, Ctrl+Shift+H` | Halt Local-Copilot Conversation |
-| `Ctrl+Shift+C, Ctrl+Shift+C` | Continue Local-Copilot Conversation |
-| `Ctrl+Shift+C, Ctrl+Shift+A` | Add to Local-Copilot Conversation |
-
-### Local LLM (`Ctrl+Shift+L, ...`)
-
-| Shortcut | Command |
-|----------|---------|
-| `Ctrl+Shift+L, Ctrl+Shift+X` | Expand Prompt (Ollama) |
-| `Ctrl+Shift+L, Ctrl+Shift+C` | Change local Ollama model |
-| `Ctrl+Shift+L, Ctrl+Shift+S` | Send to local LLM (Standard) |
-| `Ctrl+Shift+L, Ctrl+Shift+T` | Send to local LLM (Template) |
-
-### Send to Copilot Chat (`Ctrl+Shift+A, ...`)
-
-| Shortcut | Command |
-|----------|---------|
-| `Ctrl+Shift+A, Ctrl+Shift+C` | Send to Copilot Chat |
-| `Ctrl+Shift+A, Ctrl+Shift+S` | Send to Copilot Chat (Standard) |
-| `Ctrl+Shift+A, Ctrl+Shift+T` | Send to Copilot Chat (Template) |
-| `Ctrl+Shift+A, Ctrl+Shift+R` | Reload Chat Config |
-
-### Tom AI Chat (`Ctrl+Shift+T, ...`)
-
-| Shortcut | Command |
-|----------|---------|
-| `Ctrl+Shift+T, Ctrl+Shift+N` | Start Tom AI Chat |
-| `Ctrl+Shift+T, Ctrl+Shift+S` | Send Tom AI Chat Prompt |
-| `Ctrl+Shift+T, Ctrl+Shift+I` | Interrupt Tom AI Chat |
+| Trigger Key | Menu | Available Commands |
+|-------------|------|--------------------|
+| `Ctrl+Shift+C` | Conversation | **B**egin, **S**top, **H**alt, **C**ontinue, **A**dd info |
+| `Ctrl+Shift+L` | Local LLM | E**x**pand, **C**hange model, **S**tandard, **T**emplate |
+| `Ctrl+Shift+A` | Send to Chat | Send to **C**hat, **S**tandard, **T**emplate, **R**eload config |
+| `Ctrl+Shift+T` | Tom AI Chat | **N**ew chat, **S**end prompt, **I**nterrupt |
 
 ## Custom Prompt Templates
 
