@@ -23,11 +23,16 @@ Complete guide to using the DartScript VS Code extension for enhanced Dart/Flutt
   - [Prompt Expander (Ollama)](#prompt-expander-ollama)
     - [Prerequisites](#prerequisites)
     - [Basic Usage](#basic-usage)
+    - [Context Menu](#context-menu)
     - [Configuration](#configuration)
       - [Configuration Properties](#configuration-properties)
+      - [Model Configurations](#model-configurations)
       - [Profiles](#profiles)
       - [Available Placeholders](#available-placeholders)
       - [VS Code Settings Fallback](#vs-code-settings-fallback)
+    - [Bridge API](#bridge-api)
+      - [Available Methods](#available-methods)
+      - [Examples](#examples)
   - [Dart Script Execution](#dart-script-execution)
     - [Execute File](#execute-file)
     - [Execute as Script](#execute-as-script)
@@ -230,11 +235,24 @@ Use a local Ollama model to expand terse, shorthand prompts into detailed, well-
 4. If multiple profiles are configured, choose one from the quick pick
 5. The selected text is replaced in-place with the expanded version
 
+### Context Menu
+
+The editor right-click context menu shows **Send to local LLM** entries mirroring the Send to Chat pattern:
+
+| Entry | Description |
+|-------|-------------|
+| **DartScript: Send to local LLM…** | Submenu listing all configured profiles |
+| **DS: Send to local LLM (Standard)** | Runs the default profile immediately |
+| **DS: Send to local LLM (Template)…** | Shows profile picker (same as Ctrl+Cmd+E) |
+| **DS: Send to local LLM** | Visible only when text is selected; sends selection |
+
 ### Configuration
 
-All settings live in the `promptExpander` section of your `send_to_chat.json` config file:
+All settings live in the `promptExpander` section of your `send_to_chat.json` config file.
 
 **Default location:** `${workspaceFolder}/_ai/send_to_chat/send_to_chat.json`
+
+The configuration is loaded **fresh from disk on every invocation** — changes take effect immediately without reloading.
 
 ```json
 {
@@ -243,9 +261,9 @@ All settings live in the `promptExpander` section of your `send_to_chat.json` co
     "model": "qwen3:8b",
     "temperature": 0.4,
     "stripThinkingTags": true,
-    "defaultProfile": "expand",
     "systemPrompt": "You are a prompt expansion assistant...",
     "resultTemplate": "${response}",
+    "models": { ... },
     "profiles": { ... }
   }
 }
@@ -255,18 +273,56 @@ All settings live in the `promptExpander` section of your `send_to_chat.json` co
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `ollamaUrl` | string | `http://localhost:11434` | Ollama server URL |
-| `model` | string | `qwen3:8b` | Model name to use |
-| `temperature` | number | `0.4` | LLM temperature (0.0–2.0). Lower = more deterministic |
-| `stripThinkingTags` | boolean | `true` | Strip `<think>...</think>` tags from Qwen 3 output |
-| `defaultProfile` | string | `expand` | Profile to use when only one exists |
+| `ollamaUrl` | string | `http://localhost:11434` | Default Ollama server URL (backward compat) |
+| `model` | string | `qwen3:8b` | Default model name (backward compat) |
+| `temperature` | number | `0.4` | Default LLM temperature (0.0–2.0) |
+| `stripThinkingTags` | boolean | `true` | Strip `<think>...</think>` tags from output |
 | `systemPrompt` | string | *(see below)* | Default system prompt sent to the LLM |
 | `resultTemplate` | string | `${response}` | Template for the text that replaces the selection |
+| `models` | object | `{}` | Named model configurations (see below) |
 | `profiles` | object | `{}` | Named expansion profiles (see below) |
+
+#### Model Configurations
+
+The `models` section lets you define named model configs. One must be marked `isDefault: true`.
+
+```json
+"models": {
+  "qwen3-8b": {
+    "ollamaUrl": "http://localhost:11434",
+    "model": "qwen3:8b",
+    "temperature": 0.4,
+    "stripThinkingTags": true,
+    "isDefault": true
+  },
+  "llama3-70b": {
+    "ollamaUrl": "http://gpu-server:11434",
+    "model": "llama3:70b",
+    "temperature": 0.6,
+    "stripThinkingTags": false
+  },
+  "codestral": {
+    "ollamaUrl": "http://localhost:11434",
+    "model": "codestral:latest",
+    "temperature": 0.2,
+    "stripThinkingTags": false
+  }
+}
+```
+
+| Model Property | Type | Description |
+|----------------|------|-------------|
+| `ollamaUrl` | string | Ollama server URL for this model |
+| `model` | string | Model name as known to Ollama (e.g. `qwen3:8b`, `llama3:70b`) |
+| `temperature` | number | Sampling temperature. `0` = deterministic, `2` = very random |
+| `stripThinkingTags` | boolean | Whether to strip `<think>…</think>` tags (useful for Qwen 3 reasoning models) |
+| `isDefault` | boolean | If `true`, this model is used when no model is specified. Exactly one model should have this set. |
+
+**When no `models` section exists**, the top-level `ollamaUrl`, `model`, `temperature`, and `stripThinkingTags` are used as a default model config. This maintains backward compatibility with earlier configurations.
 
 #### Profiles
 
-Profiles let you define different expansion behaviors. Each profile can override `systemPrompt`, `resultTemplate`, and `temperature`. Values set to `null` inherit from the top-level config.
+Profiles define expansion behaviors. Each profile can override `systemPrompt`, `resultTemplate`, `temperature`, and which model to use. Values set to `null` inherit from the top-level config. One profile must be marked `isDefault: true`.
 
 ```json
 "profiles": {
@@ -274,24 +330,44 @@ Profiles let you define different expansion behaviors. Each profile can override
     "label": "Expand Prompt",
     "systemPrompt": null,
     "resultTemplate": null,
-    "temperature": null
+    "temperature": null,
+    "modelConfig": null,
+    "isDefault": true
   },
   "rewrite": {
     "label": "Rewrite for Clarity",
-    "systemPrompt": "You are a technical writing assistant. Rewrite the following prompt...",
+    "systemPrompt": "You are a technical writing assistant...",
     "resultTemplate": null,
-    "temperature": 0.3
+    "temperature": 0.3,
+    "modelConfig": null
+  },
+  "code-expand": {
+    "label": "Code-focused Expansion",
+    "systemPrompt": "...",
+    "resultTemplate": null,
+    "temperature": 0.2,
+    "modelConfig": "codestral"
   },
   "annotated": {
     "label": "Expand with Original",
     "systemPrompt": null,
     "resultTemplate": "<!-- Original prompt:\n${original}\n-->\n\n${response}",
-    "temperature": null
+    "temperature": null,
+    "modelConfig": null
   }
 }
 ```
 
-When multiple profiles exist, pressing **Ctrl+Cmd+E** shows a quick pick to choose one. If only one profile is defined (or none), it runs immediately.
+| Profile Property | Type | Description |
+|------------------|------|-------------|
+| `label` | string | Human-readable label shown in quick-pick and context menu |
+| `systemPrompt` | string \| null | System prompt override. `null` = inherit top-level |
+| `resultTemplate` | string \| null | Result template override. `null` = inherit top-level |
+| `temperature` | number \| null | Temperature override. `null` = inherit from model config |
+| `modelConfig` | string \| null | Key into `models` section. `null` = use default model |
+| `isDefault` | boolean | If `true`, this profile is used for the Standard context menu entry |
+
+When multiple profiles exist, pressing **Ctrl+Cmd+E** shows a quick pick. The default profile is pre-selected.
 
 #### Available Placeholders
 
@@ -300,22 +376,99 @@ Placeholders can be used in both `systemPrompt` and `resultTemplate`:
 | Placeholder | Description |
 |-------------|-------------|
 | `${original}` | The original text before expansion |
-| `${response}` | The raw LLM response (after thinking-tag stripping) |
+| `${response}` | The LLM response after think-tag stripping |
+| `${rawResponse}` | The unprocessed LLM response (before any stripping) |
+| `${thinkTagInfo}` | Content extracted from `<think>…</think>` tags (empty if none) |
 | `${filename}` | Basename of the active file (e.g., `main.dart`) |
 | `${filePath}` | Full path to the active file |
 | `${languageId}` | VS Code language identifier (e.g., `dart`, `typescript`) |
 | `${workspaceName}` | Name of the first workspace folder |
 | `${datetime}` | Current date/time as `yyyymmdd_hhmmss` |
-| `${model}` | The Ollama model used |
-| `${profile}` | The profile name used |
+| `${model}` | The Ollama model name used |
+| `${modelConfig}` | The model configuration key used |
+| `${profile}` | The profile key used |
 | `${lineStart}` | Start line of the selection (1-based) |
 | `${lineEnd}` | End line of the selection (1-based) |
 
-**Note:** In `systemPrompt`, `${response}` is empty (it hasn't been generated yet). Use the other placeholders to give the LLM file/language context. In `resultTemplate`, all placeholders are available.
+**Note:** In `systemPrompt`, `${response}`, `${rawResponse}`, and `${thinkTagInfo}` are empty (the response hasn't been generated yet). Use context placeholders (`${filename}`, `${languageId}`, etc.) to give the LLM file/language context. In `resultTemplate`, all placeholders are available.
+
+**`${rawResponse}` vs `${response}`:** When `stripThinkingTags` is enabled, `${response}` contains the cleaned text (without `<think>` blocks), while `${rawResponse}` preserves everything the LLM returned. Use `${rawResponse}` if you need the full output for debugging or logging.
+
+**`${thinkTagInfo}`:** If the model wraps reasoning in `<think>…</think>` tags (like Qwen 3), this placeholder contains the extracted thinking content. Useful for annotated templates:
+
+```json
+"resultTemplate": "${response}\n\n<!-- Model reasoning:\n${thinkTagInfo}\n-->"
+```
 
 #### VS Code Settings Fallback
 
-The `dartscript.ollama.url` and `dartscript.ollama.model` VS Code settings serve as fallbacks when `ollamaUrl`/`model` are not specified in the JSON config. The JSON config takes precedence.
+The `dartscript.ollama.url` and `dartscript.ollama.model` VS Code settings serve as fallbacks when `ollamaUrl`/`model` are not specified in the JSON config. The JSON config always takes precedence.
+
+### Bridge API
+
+The Prompt Expander provides a JSON-RPC bridge API accessible from Dart/JavaScript scripts through the VS Code bridge. All methods use the `Vce` suffix (handled on the VS Code extension side).
+
+#### Available Methods
+
+| Method | Description |
+|--------|-------------|
+| `localLlm.getProfilesVce` | List all configured profiles |
+| `localLlm.getModelsVce` | List all configured model configs |
+| `localLlm.updateProfileVce` | Add or update a profile |
+| `localLlm.removeProfileVce` | Remove a profile |
+| `localLlm.updateModelVce` | Add or update a model config |
+| `localLlm.removeModelVce` | Remove a model config |
+| `localLlm.processVce` | Process a prompt through a profile |
+
+#### Examples
+
+**Get all profiles:**
+
+```javascript
+const profiles = await bridge.call('localLlm.getProfilesVce', {});
+// Returns: { profiles: { expand: { label: "Expand Prompt", ... }, ... } }
+```
+
+**Process a prompt:**
+
+```javascript
+const result = await bridge.call('localLlm.processVce', {
+  prompt: 'add error handling to save function',
+  profile: 'expand',        // optional — uses default if omitted
+  model: 'codestral'        // optional — uses default if omitted
+});
+// Returns: { success: true, result: "...", rawResponse: "...", response: "...",
+//            thinkTagContent: "...", profile: "expand", modelConfig: "qwen3-8b" }
+```
+
+**Add a new profile:**
+
+```javascript
+await bridge.call('localLlm.updateProfileVce', {
+  key: 'summarize',
+  profile: {
+    label: 'Summarize Code',
+    systemPrompt: 'Summarize the following code in 2-3 sentences...',
+    resultTemplate: null,
+    temperature: 0.3,
+    modelConfig: null
+  }
+});
+```
+
+**Add a new model:**
+
+```javascript
+await bridge.call('localLlm.updateModelVce', {
+  key: 'deepseek',
+  model: {
+    ollamaUrl: 'http://localhost:11434',
+    model: 'deepseek-coder:33b',
+    temperature: 0.3,
+    stripThinkingTags: false
+  }
+});
+```
 
 ---
 
@@ -692,8 +845,12 @@ These VS Code settings serve as fallbacks. Prefer configuring via the `promptExp
 - DS: Execute as Script
 
 ### Editor Context Menu
-- DartScript: Send to Chat... (submenu)
+- DartScript: Send to Chat... (submenu with templates)
 - DS: Send to Copilot Chat (Standard)
 - DS: Send to Copilot Chat (Template)...
 - DS: Send to Copilot Chat (on selection)
+- DartScript: Send to local LLM... (submenu with profiles)
+- DS: Send to local LLM (Standard) — uses default profile
+- DS: Send to local LLM (Template)... — shows profile picker
+- DS: Send to local LLM (on selection)
 - DS: Execute as Script (on .dart files)

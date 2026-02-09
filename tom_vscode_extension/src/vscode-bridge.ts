@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { spawn, ChildProcess } from 'child_process';
+import { getPromptExpanderManager } from './handlers';
 
 const DART_COMMAND = 'dart';
 
@@ -592,6 +593,22 @@ export class DartBridgeClient {
                 case 'sendToChatVce':
                     result = await this.sendToChat(params.prompt);
                     break;
+
+                // Local LLM / Prompt Expander bridge API
+                case 'localLlm.getProfilesVce':
+                case 'localLlm.getModelsVce':
+                case 'localLlm.updateProfileVce':
+                case 'localLlm.removeProfileVce':
+                case 'localLlm.updateModelVce':
+                case 'localLlm.removeModelVce':
+                case 'localLlm.processVce': {
+                    const mgr = getPromptExpanderManager();
+                    if (!mgr) {
+                        throw new Error('Prompt Expander manager not initialized');
+                    }
+                    result = await mgr.handleBridgeRequest(method, params);
+                    break;
+                }
 
                 default:
                     throw new Error(`Unknown method: ${method}`);

@@ -19,6 +19,10 @@
       {
         "id": "dartscript.sendToChatSubmenu",
         "label": "DartScript: Send to Chat..."
+      },
+      {
+        "id": "dartscript.sendToLocalLlmSubmenu",
+        "label": "DartScript: Send to local LLM..."
       }
     ],
     "commands": [
@@ -166,6 +170,41 @@
         "command": "dartscript.expandPrompt",
         "title": "DS: Expand Prompt (Ollama)",
         "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToLocalLlm",
+        "title": "DS: Send to local LLM",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToLocalLlmAdvanced",
+        "title": "DS: Send to local LLM (Template)...",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToLocalLlmStandard",
+        "title": "DS: Send to local LLM (Standard)",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToLocalLlm.expand",
+        "title": "Expand Prompt",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToLocalLlm.rewrite",
+        "title": "Rewrite",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToLocalLlm.detailed",
+        "title": "Detailed Expansion",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.sendToLocalLlm.annotated",
+        "title": "Annotated Expansion",
+        "category": "DartScript"
       }
     ],
     "keybindings": [
@@ -230,6 +269,23 @@
           "group": "copilot@3"
         },
         {
+          "submenu": "dartscript.sendToLocalLlmSubmenu",
+          "group": "localLlm@0"
+        },
+        {
+          "command": "dartscript.sendToLocalLlmStandard",
+          "group": "localLlm@1"
+        },
+        {
+          "command": "dartscript.sendToLocalLlmAdvanced",
+          "group": "localLlm@2"
+        },
+        {
+          "command": "dartscript.sendToLocalLlm",
+          "when": "editorHasSelection",
+          "group": "localLlm@3"
+        },
+        {
           "command": "dartscript.executeScript",
           "when": "resourceExtname == .dart",
           "group": "dartscript@2"
@@ -269,6 +325,24 @@
         {
           "command": "dartscript.sendToChatFixMarkdown",
           "group": "standard@6"
+        }
+      ],
+      "dartscript.sendToLocalLlmSubmenu": [
+        {
+          "command": "dartscript.sendToLocalLlm.expand",
+          "group": "profiles@1"
+        },
+        {
+          "command": "dartscript.sendToLocalLlm.rewrite",
+          "group": "profiles@2"
+        },
+        {
+          "command": "dartscript.sendToLocalLlm.detailed",
+          "group": "profiles@3"
+        },
+        {
+          "command": "dartscript.sendToLocalLlm.annotated",
+          "group": "profiles@4"
         }
       ]
     },

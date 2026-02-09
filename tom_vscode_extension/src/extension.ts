@@ -38,7 +38,11 @@ import {
     startTomAiChatHandler,
     sendToTomAiChatHandler,
     interruptTomAiChatHandler,
-    expandPromptHandler
+    expandPromptHandler,
+    PromptExpanderManager,
+    setPromptExpanderManager,
+    getPromptExpanderManager,
+    createProfileHandler,
 } from './handlers';
 
 // Tom AI Chat tools
@@ -46,6 +50,9 @@ import { registerTomAiChatTools } from './tools/tomAiChat-tools';
 
 // Global manager instance for SendToChatAdvanced
 let sendToChatAdvancedManager: SendToChatAdvancedManager | undefined;
+
+// Global manager instance for Prompt Expander
+let promptExpanderManager: PromptExpanderManager | undefined;
 
 // ============================================================================
 // Extension Lifecycle
@@ -73,6 +80,12 @@ export async function activate(context: vscode.ExtensionContext) {
     sendToChatAdvancedManager = new SendToChatAdvancedManager(context, DartBridgeClient.outputChannel);
     await sendToChatAdvancedManager.initialize();
     context.subscriptions.push({ dispose: () => sendToChatAdvancedManager?.dispose() });
+
+    // Initialize Prompt Expander manager
+    promptExpanderManager = new PromptExpanderManager(context);
+    setPromptExpanderManager(promptExpanderManager);
+    registerLocalLlmContextMenuCommands(context);
+    context.subscriptions.push({ dispose: () => promptExpanderManager?.dispose() });
 
     // Register Tom AI Chat tools
     registerTomAiChatTools(context);
@@ -285,6 +298,69 @@ function registerCommands(context: vscode.ExtensionContext) {
         interruptTomAiChatCmd,
         expandPromptCmd
     );
+}
+
+// ============================================================================
+// Local LLM Context Menu Registration
+// ============================================================================
+
+/**
+ * Dynamically register context menu commands for each profile defined in
+ * the Prompt Expander config. Also registers the three base commands:
+ *  - dartscript.sendToLocalLlm          (shows profile picker)
+ *  - dartscript.sendToLocalLlmStandard  (uses default profile)
+ *  - dartscript.sendToLocalLlmAdvanced  (shows profile picker — alias)
+ */
+function registerLocalLlmContextMenuCommands(context: vscode.ExtensionContext): void {
+    if (!promptExpanderManager) { return; }
+
+    // Base command — shows quick-pick of profiles
+    const sendToLocalLlm = vscode.commands.registerCommand(
+        'dartscript.sendToLocalLlm',
+        async () => {
+            await promptExpanderManager?.expandPromptCommand();
+        }
+    );
+
+    // Standard — uses default profile without asking
+    const sendToLocalLlmStandard = vscode.commands.registerCommand(
+        'dartscript.sendToLocalLlmStandard',
+        async () => {
+            if (!promptExpanderManager) { return; }
+            const config = promptExpanderManager.loadConfig();
+            // Find the default profile key
+            const defaultKey = Object.entries(config.profiles)
+                .find(([_, p]) => p.isDefault)?.[0]
+                ?? Object.keys(config.profiles)[0]
+                ?? undefined;
+            await promptExpanderManager.expandPromptCommand(defaultKey);
+        }
+    );
+
+    // Advanced — same as base (shows picker)
+    const sendToLocalLlmAdvanced = vscode.commands.registerCommand(
+        'dartscript.sendToLocalLlmAdvanced',
+        async () => {
+            await promptExpanderManager?.expandPromptCommand();
+        }
+    );
+
+    context.subscriptions.push(sendToLocalLlm, sendToLocalLlmStandard, sendToLocalLlmAdvanced);
+
+    // Dynamic per-profile commands (dartscript.sendToLocalLlm.<profileKey>)
+    try {
+        const config = promptExpanderManager.loadConfig();
+        for (const profileKey of Object.keys(config.profiles)) {
+            const cmd = vscode.commands.registerCommand(
+                `dartscript.sendToLocalLlm.${profileKey}`,
+                createProfileHandler(profileKey)
+            );
+            context.subscriptions.push(cmd);
+            promptExpanderManager['registeredCommands'].push(cmd);
+        }
+    } catch (e) {
+        bridgeLog(`Failed to register local LLM profile commands: ${e}`, 'ERROR');
+    }
 }
 
 // ============================================================================
