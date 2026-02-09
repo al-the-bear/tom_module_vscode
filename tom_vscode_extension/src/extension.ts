@@ -46,6 +46,9 @@ import {
     switchModelHandler,
     startBotConversationHandler,
     stopBotConversationHandler,
+    haltBotConversationHandler,
+    continueBotConversationHandler,
+    addToBotConversationHandler,
     BotConversationManager,
     setBotConversationManager,
 } from './handlers';
@@ -313,6 +316,30 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
+    // Halt Bot Conversation
+    const haltBotConversationCmd = vscode.commands.registerCommand(
+        'dartscript.haltBotConversation',
+        async () => {
+            await haltBotConversationHandler();
+        }
+    );
+
+    // Continue Bot Conversation
+    const continueBotConversationCmd = vscode.commands.registerCommand(
+        'dartscript.continueBotConversation',
+        async () => {
+            await continueBotConversationHandler();
+        }
+    );
+
+    // Add to Bot Conversation
+    const addToBotConversationCmd = vscode.commands.registerCommand(
+        'dartscript.addToBotConversation',
+        async () => {
+            await addToBotConversationHandler();
+        }
+    );
+
     // Add all commands to subscriptions
     context.subscriptions.push(
         sendToChatCmd,
@@ -336,7 +363,10 @@ function registerCommands(context: vscode.ExtensionContext) {
         expandPromptCmd,
         switchLocalModelCmd,
         startBotConversationCmd,
-        stopBotConversationCmd
+        stopBotConversationCmd,
+        haltBotConversationCmd,
+        continueBotConversationCmd,
+        addToBotConversationCmd
     );
 }
 

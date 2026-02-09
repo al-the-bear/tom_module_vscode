@@ -51,6 +51,9 @@ export {
 export {
     startBotConversationHandler,
     stopBotConversationHandler,
+    haltBotConversationHandler,
+    continueBotConversationHandler,
+    addToBotConversationHandler,
     BotConversationManager,
     setBotConversationManager,
     getBotConversationManager,

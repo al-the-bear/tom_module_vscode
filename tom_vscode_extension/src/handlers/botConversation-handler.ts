@@ -955,6 +955,10 @@ export class BotConversationManager {
 
         bridgeLog(`[Bot Conversation] Starting: ${conversationId} | Goal: ${goal.trim().substring(0, 80)}...`);
 
+        // Set up Telegram integration (if enabled)
+        this.setupTelegram(config);
+        this.telegram?.notifyStart(conversationId, goal.trim(), profileKey);
+
         try {
             await this.runConversationLoop(state, manager);
         } catch (err: any) {
@@ -985,6 +989,10 @@ export class BotConversationManager {
             if (this.activeConversation === state) {
                 this.activeConversation = null;
             }
+            // Clean up Telegram polling
+            if (this.telegram) {
+                this.telegram.stopPolling();
+            }
             cancellationSource.dispose();
         }
     }
@@ -995,6 +1003,12 @@ export class BotConversationManager {
         manager: ReturnType<typeof getPromptExpanderManager> & object,
     ): Promise<void> {
         const { config } = state;
+
+        // Branch: self-talk mode runs an entirely different loop
+        if (config.conversationMode === 'ollama-ollama') {
+            return this.runSelfTalkLoop(state, manager);
+        }
+
         const token = state.cancellationSource.token;
 
         // Ensure Copilot model is available
@@ -1009,6 +1023,13 @@ export class BotConversationManager {
         for (let turn = 1; turn <= config.maxTurns; turn++) {
             if (token.isCancellationRequested) { throw new Error('Cancelled'); }
 
+            // ------- Halt check -------
+            await this.waitForContinue(state);
+            if (token.isCancellationRequested) { throw new Error('Cancelled'); }
+
+            // Drain any additional user input
+            const additionalUserInfo = this.drainUserInput(state);
+
             const requestId = `${state.conversationId}_t${turn}`;
 
             // ------- Step 1: Generate Copilot prompt with local model -------
@@ -1017,13 +1038,16 @@ export class BotConversationManager {
 
             if (turn === 1) {
                 // Initial prompt
-                const templateValues = {
+                const templateValues: Record<string, string> = {
                     goal: state.goal,
                     description: state.description,
                     fileContext,
                     turnNumber: String(turn),
                     maxTurns: String(config.maxTurns),
                     goalReachedMarker: config.goalReachedMarker,
+                    additionalUserInfo: additionalUserInfo
+                        ? `\nAdditional user input:\n${additionalUserInfo}\n`
+                        : '',
                 };
                 const prompt = this.resolvePlaceholders(config.initialPromptTemplate, templateValues);
 
@@ -1056,7 +1080,7 @@ export class BotConversationManager {
                     config,
                 );
 
-                const templateValues = {
+                const templateValues: Record<string, string> = {
                     goal: state.goal,
                     description: state.description,
                     turnNumber: String(turn),
@@ -1066,6 +1090,9 @@ export class BotConversationManager {
                     historySection: historySection !== '(No previous exchanges.)' ? `Conversation history:\n${historySection}` : '',
                     fileContext,
                     goalReachedMarker: config.goalReachedMarker,
+                    additionalUserInfo: additionalUserInfo
+                        ? `\nAdditional user input:\n${additionalUserInfo}\n`
+                        : '',
                 };
                 const prompt = this.resolvePlaceholders(config.followUpTemplate, templateValues);
 
@@ -1096,6 +1123,7 @@ export class BotConversationManager {
                     vscode.window.showInformationMessage(
                         `Bot conversation: goal reached after ${state.exchanges.length} turns!`,
                     );
+                    this.telegram?.notifyEnd(state.conversationId, state.exchanges.length, true);
                     return;
                 }
             }
@@ -1180,6 +1208,9 @@ export class BotConversationManager {
                 ? ` | Local: ${localStats.promptTokens}+${localStats.completionTokens}t`
                 : '';
             bridgeLog(`[Bot Conversation] Turn ${turn} complete | Response: ${copilotResponse.generatedMarkdown.length} chars${statsStr}`);
+
+            // Telegram turn notification
+            this.telegram?.notifyTurn(turn, config.maxTurns, copilotPrompt, copilotResponse.generatedMarkdown, localStats);
         }
 
         // Max turns reached
@@ -1187,6 +1218,182 @@ export class BotConversationManager {
         vscode.window.showWarningMessage(
             `Bot conversation reached max turns (${config.maxTurns}) without achieving the goal.`,
         );
+        this.telegram?.notifyEnd(state.conversationId, config.maxTurns, false, 'Max turns reached');
+    }
+
+    // -----------------------------------------------------------------------
+    // Self-talk loop (ollama-ollama mode)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Run a self-talk conversation between two local model personas.
+     *
+     * Person A generates a message, then Person B responds, back and forth.
+     * Both sides use the local Ollama model (potentially with different
+     * system prompts, model configs, and temperatures).
+     *
+     * Exchanges are logged as if Person A's output is the "prompt to Copilot"
+     * and Person B's output is the "Copilot response" — this lets us reuse
+     * the existing log format.
+     */
+    private async runSelfTalkLoop(
+        state: ConversationState,
+        manager: ReturnType<typeof getPromptExpanderManager> & object,
+    ): Promise<void> {
+        const { config } = state;
+        const token = state.cancellationSource.token;
+        const personA = config.selfTalk.personA;
+        const personB = config.selfTalk.personB;
+
+        // Read file context once
+        const fileContext = this.readFileContext(config.includeFileContext);
+
+        // Build initial context for Person A
+        let lastMessage = '';
+
+        for (let turn = 1; turn <= config.maxTurns; turn++) {
+            if (token.isCancellationRequested) { throw new Error('Cancelled'); }
+
+            // ------- Halt check -------
+            await this.waitForContinue(state);
+            if (token.isCancellationRequested) { throw new Error('Cancelled'); }
+
+            // Drain any additional user input
+            const additionalUserInfo = this.drainUserInput(state);
+
+            // ------- Person A generates -------
+            let personAPrompt: string;
+            if (turn === 1) {
+                personAPrompt = `Goal: ${state.goal}\n`;
+                if (state.description) { personAPrompt += `Context: ${state.description}\n`; }
+                if (fileContext) { personAPrompt += `\nFiles:\n${fileContext}\n`; }
+                personAPrompt += '\nStart the discussion. Present your initial analysis or approach.';
+            } else {
+                personAPrompt = `Goal: ${state.goal}\n\n` +
+                    `Person B said (turn ${turn - 1}):\n---\n${lastMessage}\n---\n\n`;
+                if (additionalUserInfo) {
+                    personAPrompt += `Additional input from the user:\n${additionalUserInfo}\n\n`;
+                }
+                personAPrompt += `Turn ${turn} of ${config.maxTurns}. Respond to Person B's points and advance the discussion.\n` +
+                    `If the goal is fully achieved, include: ${config.goalReachedMarker}`;
+            }
+
+            const personAResult = await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: `[Self-Talk ${turn}/${config.maxTurns}] Person A thinking...`,
+                    cancellable: true,
+                },
+                async (_progress, cancelToken) => {
+                    return manager.chatWithOllama({
+                        systemPrompt: personA.systemPrompt,
+                        userPrompt: personAPrompt,
+                        modelConfigKey: personA.modelConfig ?? config.modelConfig ?? undefined,
+                        temperature: personA.temperature ?? config.temperature,
+                        stripThinkingTags: config.stripThinkingTags,
+                        cancellationToken: cancelToken,
+                    });
+                },
+            );
+
+            const personAOutput = personAResult.text.trim();
+            const personAStats = personAResult.stats;
+
+            // Check goal reached in Person A's output
+            if (personAOutput.includes(config.goalReachedMarker)) {
+                bridgeLog(`[Bot Conversation] Self-talk goal reached by Person A at turn ${turn}`);
+                // Still record this exchange with A's output
+                state.exchanges.push({
+                    turn,
+                    timestamp: new Date(),
+                    promptToCopilot: personAOutput,
+                    copilotResponse: { requestId: `${state.conversationId}_t${turn}`, generatedMarkdown: '(Goal reached by Person A)', references: [], requestedAttachments: [] },
+                    localModelStats: personAStats,
+                });
+                this.writeConversationLog(state);
+                vscode.window.showInformationMessage(
+                    `Self-talk: goal reached by Person A after ${turn} turns!`,
+                );
+                this.telegram?.notifyEnd(state.conversationId, turn, true);
+                return;
+            }
+
+            // ------- Person B responds -------
+            const personBPrompt = `Goal: ${state.goal}\n\n` +
+                `Person A said (turn ${turn}):\n---\n${personAOutput}\n---\n\n` +
+                (additionalUserInfo && turn === 1
+                    ? `Additional input from the user:\n${additionalUserInfo}\n\n`
+                    : '') +
+                `Turn ${turn} of ${config.maxTurns}. Provide your perspective, challenge assumptions, or build on Person A's ideas.\n` +
+                `If the goal is fully achieved, include: ${config.goalReachedMarker}`;
+
+            const personBResult = await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: `[Self-Talk ${turn}/${config.maxTurns}] Person B responding...`,
+                    cancellable: true,
+                },
+                async (_progress, cancelToken) => {
+                    return manager.chatWithOllama({
+                        systemPrompt: personB.systemPrompt,
+                        userPrompt: personBPrompt,
+                        modelConfigKey: personB.modelConfig ?? config.modelConfig ?? undefined,
+                        temperature: personB.temperature ?? config.temperature,
+                        stripThinkingTags: config.stripThinkingTags,
+                        cancellationToken: cancelToken,
+                    });
+                },
+            );
+
+            const personBOutput = personBResult.text.trim();
+            lastMessage = personBOutput;
+
+            // Record as exchange (A's output → "prompt", B's output → "response")
+            const combinedStats: OllamaStats = {
+                promptTokens: (personAStats?.promptTokens ?? 0) + (personBResult.stats?.promptTokens ?? 0),
+                completionTokens: (personAStats?.completionTokens ?? 0) + (personBResult.stats?.completionTokens ?? 0),
+                totalDurationMs: (personAStats?.totalDurationMs ?? 0) + (personBResult.stats?.totalDurationMs ?? 0),
+                loadDurationMs: (personAStats?.loadDurationMs ?? 0) + (personBResult.stats?.loadDurationMs ?? 0),
+            };
+
+            const exchange: ConversationExchange = {
+                turn,
+                timestamp: new Date(),
+                promptToCopilot: personAOutput, // Reuse field: Person A's message
+                copilotResponse: {
+                    requestId: `${state.conversationId}_t${turn}`,
+                    generatedMarkdown: personBOutput,
+                    references: [],
+                    requestedAttachments: [],
+                },
+                localModelStats: combinedStats,
+            };
+            state.exchanges.push(exchange);
+            this.writeConversationLog(state);
+
+            const statsStr = ` | A: ${personAStats?.promptTokens ?? 0}+${personAStats?.completionTokens ?? 0}t | B: ${personBResult.stats?.promptTokens ?? 0}+${personBResult.stats?.completionTokens ?? 0}t`;
+            bridgeLog(`[Bot Conversation] Self-talk turn ${turn} complete${statsStr}`);
+
+            // Telegram turn notification (Person A's output as "prompt", B's as "response")
+            this.telegram?.notifyTurn(turn, config.maxTurns, personAOutput, personBOutput, combinedStats);
+
+            // Check goal reached in Person B's output
+            if (personBOutput.includes(config.goalReachedMarker)) {
+                bridgeLog(`[Bot Conversation] Self-talk goal reached by Person B at turn ${turn}`);
+                vscode.window.showInformationMessage(
+                    `Self-talk: goal reached by Person B after ${turn} turns!`,
+                );
+                this.telegram?.notifyEnd(state.conversationId, turn, true);
+                return;
+            }
+        }
+
+        // Max turns reached
+        bridgeLog(`[Bot Conversation] Self-talk max turns (${config.maxTurns}) reached`);
+        vscode.window.showWarningMessage(
+            `Self-talk reached max turns (${config.maxTurns}) without achieving the goal.`,
+        );
+        this.telegram?.notifyEnd(state.conversationId, config.maxTurns, false, 'Max turns reached');
     }
 
     /** Try to parse a Copilot response that may contain inline JSON. */
@@ -1229,6 +1436,9 @@ export class BotConversationManager {
      *   botConversation.getProfilesVce    → list available profiles
      *   botConversation.startVce          → start a conversation (non-interactive)
      *   botConversation.stopVce           → stop the active conversation
+     *   botConversation.haltVce           → halt (pause) the active conversation
+     *   botConversation.continueVce       → continue a halted conversation
+     *   botConversation.addInfoVce        → add additional user input to next prompt
      *   botConversation.statusVce         → get conversation status + exchange count
      *   botConversation.getLogVce         → return the conversation log for a given ID
      *   botConversation.singleTurnVce     → run one Ollama→Copilot round-trip and return result
@@ -1243,6 +1453,12 @@ export class BotConversationManager {
                 return this.bridgeStart(params);
             case 'botConversation.stopVce':
                 return this.bridgeStop(params);
+            case 'botConversation.haltVce':
+                return this.bridgeHalt(params);
+            case 'botConversation.continueVce':
+                return this.bridgeContinue();
+            case 'botConversation.addInfoVce':
+                return this.bridgeAddInfo(params);
             case 'botConversation.statusVce':
                 return this.bridgeStatus();
             case 'botConversation.getLogVce':
@@ -1358,6 +1574,10 @@ export class BotConversationManager {
         }
         if (Array.isArray(params.includeFileContext)) { config.includeFileContext = params.includeFileContext; }
         if (typeof params.pauseBetweenTurns === 'boolean') { config.pauseBetweenTurns = params.pauseBetweenTurns; }
+        if (typeof params.conversationMode === 'string' &&
+            ['ollama-copilot', 'ollama-ollama'].includes(params.conversationMode)) {
+            config.conversationMode = params.conversationMode as ConversationMode;
+        }
 
         const goal = params.goal.trim();
         const description = typeof params.description === 'string' ? params.description.trim() : '';
@@ -1382,6 +1602,10 @@ export class BotConversationManager {
 
         bridgeLog(`[Bot Conversation] Bridge start: ${conversationId} | Goal: ${goal.substring(0, 80)}...`);
 
+        // Set up Telegram integration (if enabled)
+        this.setupTelegram(config);
+        this.telegram?.notifyStart(conversationId, goal, profileKey);
+
         let goalReached = false;
         try {
             await this.runConversationLoop(state, manager);
@@ -1401,6 +1625,10 @@ export class BotConversationManager {
             this.writeConversationLog(state);
             if (this.activeConversation === state) {
                 this.activeConversation = null;
+            }
+            // Clean up Telegram polling
+            if (this.telegram) {
+                this.telegram.stopPolling();
             }
             cancellationSource.dispose();
         }
@@ -1430,6 +1658,39 @@ export class BotConversationManager {
         return { success: true, message: reason };
     }
 
+    /** Halt the active conversation via bridge. */
+    private bridgeHalt(params: any): any {
+        const reason = typeof params?.reason === 'string' ? params.reason : 'Halted via bridge';
+        const success = this.haltConversation(reason);
+        return {
+            success,
+            message: success ? reason : 'No active conversation to halt (or already halted)',
+            halted: this.isHalted,
+        };
+    }
+
+    /** Continue a halted conversation via bridge. */
+    private bridgeContinue(): any {
+        const success = this.continueConversation();
+        return {
+            success,
+            message: success ? 'Conversation continued' : 'Conversation is not halted',
+            halted: this.isHalted,
+        };
+    }
+
+    /** Add additional user input via bridge. */
+    private bridgeAddInfo(params: any): any {
+        if (!params?.text || typeof params.text !== 'string') {
+            throw new Error('Missing required parameter: text');
+        }
+        const success = this.addUserInput(params.text);
+        return {
+            success,
+            message: success ? `Added ${params.text.length} chars to next prompt` : 'No active conversation',
+        };
+    }
+
     /** Return status of the active conversation. */
     private bridgeStatus(): any {
         if (!this.activeConversation) {
@@ -1438,11 +1699,14 @@ export class BotConversationManager {
         const state = this.activeConversation;
         return {
             active: state.active,
+            halted: state.halted,
             conversationId: state.conversationId,
             goal: state.goal,
             profileKey: state.profileKey,
+            conversationMode: state.config.conversationMode,
             turnsCompleted: state.exchanges.length,
             maxTurns: state.config.maxTurns,
+            pendingUserInput: state.additionalUserInput.length,
         };
     }
 
@@ -1602,4 +1866,61 @@ export async function stopBotConversationHandler(): Promise<void> {
     }
     _botManager.stopConversation('Stopped by user command');
     vscode.window.showInformationMessage('Bot conversation stopped.');
+}
+
+export async function haltBotConversationHandler(): Promise<void> {
+    if (!_botManager) {
+        vscode.window.showErrorMessage('Bot Conversation not initialized');
+        return;
+    }
+    if (!_botManager.isActive) {
+        vscode.window.showInformationMessage('No active bot conversation to halt.');
+        return;
+    }
+    if (_botManager.isHalted) {
+        vscode.window.showInformationMessage('Bot conversation is already halted.');
+        return;
+    }
+    _botManager.haltConversation('Halted by user command');
+    vscode.window.showInformationMessage('Bot conversation halted. Use "Continue" to resume.');
+}
+
+export async function continueBotConversationHandler(): Promise<void> {
+    if (!_botManager) {
+        vscode.window.showErrorMessage('Bot Conversation not initialized');
+        return;
+    }
+    if (!_botManager.isHalted) {
+        vscode.window.showInformationMessage('Bot conversation is not halted.');
+        return;
+    }
+    _botManager.continueConversation();
+    vscode.window.showInformationMessage('Bot conversation continued.');
+}
+
+export async function addToBotConversationHandler(): Promise<void> {
+    if (!_botManager) {
+        vscode.window.showErrorMessage('Bot Conversation not initialized');
+        return;
+    }
+    if (!_botManager.isActive) {
+        vscode.window.showInformationMessage('No active bot conversation.');
+        return;
+    }
+
+    // Check if there's selected text in the editor
+    const editor = vscode.window.activeTextEditor;
+    const selectedText = editor && !editor.selection.isEmpty
+        ? editor.document.getText(editor.selection)
+        : undefined;
+
+    const text = await vscode.window.showInputBox({
+        prompt: 'Enter additional context for the bot conversation',
+        placeHolder: 'Extra instructions, corrections, file references...',
+        value: selectedText ?? '',
+    });
+    if (!text?.trim()) { return; }
+
+    _botManager.addUserInput(text.trim());
+    vscode.window.showInformationMessage(`Added ${text.trim().length} chars to bot conversation.`);
 }

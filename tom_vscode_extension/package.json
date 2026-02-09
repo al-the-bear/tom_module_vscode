@@ -213,12 +213,27 @@
       },
       {
         "command": "dartscript.startBotConversation",
-        "title": "DS: Start Bot Conversation",
+        "title": "DS: Start Local-Copilot Conversation",
         "category": "DartScript"
       },
       {
         "command": "dartscript.stopBotConversation",
-        "title": "DS: Stop Bot Conversation",
+        "title": "DS: Stop Local-Copilot Conversation",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.haltBotConversation",
+        "title": "DS: Halt Local-Copilot Conversation",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.continueBotConversation",
+        "title": "DS: Continue Local-Copilot Conversation",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.addToBotConversation",
+        "title": "DS: Add to Local-Copilot Conversation",
         "category": "DartScript"
       }
     ],
@@ -250,6 +265,26 @@
         "key": "ctrl+cmd+e",
         "mac": "ctrl+cmd+e",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "dartscript.startBotConversation",
+        "key": "ctrl+cmd+b",
+        "mac": "ctrl+cmd+b"
+      },
+      {
+        "command": "dartscript.haltBotConversation",
+        "key": "ctrl+cmd+h",
+        "mac": "ctrl+cmd+h"
+      },
+      {
+        "command": "dartscript.continueBotConversation",
+        "key": "ctrl+cmd+j",
+        "mac": "ctrl+cmd+j"
+      },
+      {
+        "command": "dartscript.addToBotConversation",
+        "key": "ctrl+cmd+a",
+        "mac": "ctrl+cmd+a"
       }
     ],
     "menus": {

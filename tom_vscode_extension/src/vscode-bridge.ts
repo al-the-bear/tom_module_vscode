@@ -615,6 +615,9 @@ export class DartBridgeClient {
                 case 'botConversation.getProfilesVce':
                 case 'botConversation.startVce':
                 case 'botConversation.stopVce':
+                case 'botConversation.haltVce':
+                case 'botConversation.continueVce':
+                case 'botConversation.addInfoVce':
                 case 'botConversation.statusVce':
                 case 'botConversation.getLogVce':
                 case 'botConversation.singleTurnVce': {
