@@ -40,3 +40,4 @@ export { printConfigurationHandler } from './printConfiguration-handler';
 export { showHelpHandler } from './showHelp-handler';
 export { showApiInfoHandler } from './showApiInfo-handler';
 export { startTomAiChatHandler, sendToTomAiChatHandler, interruptTomAiChatHandler } from './tomAiChat-handler';
+export { expandPromptHandler } from './expandPrompt-handler';

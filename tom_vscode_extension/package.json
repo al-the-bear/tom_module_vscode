@@ -161,6 +161,11 @@
         "command": "dartscript.interruptTomAIChat",
         "title": "Tom AI: Interrupt Chat",
         "category": "DartScript"
+      },
+      {
+        "command": "dartscript.expandPrompt",
+        "title": "DS: Expand Prompt (Ollama)",
+        "category": "DartScript"
       }
     ],
     "keybindings": [
@@ -185,6 +190,12 @@
         "command": "dartscript.interruptTomAIChat",
         "key": "ctrl+cmd+i",
         "mac": "ctrl+cmd+i"
+      },
+      {
+        "command": "dartscript.expandPrompt",
+        "key": "ctrl+cmd+e",
+        "mac": "ctrl+cmd+e",
+        "when": "editorTextFocus"
       }
     ],
     "menus": {
@@ -637,6 +648,16 @@
           "type": "boolean",
           "default": false,
           "description": "Enable pre-processing step with cheap model to gather context before main processing"
+        },
+        "dartscript.ollama.url": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama server URL for local model inference"
+        },
+        "dartscript.ollama.model": {
+          "type": "string",
+          "default": "qwen3:8b",
+          "description": "Ollama model to use for prompt expansion"
         }
       }
     }

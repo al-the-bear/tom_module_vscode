@@ -37,7 +37,8 @@ import {
     showApiInfoHandler,
     startTomAiChatHandler,
     sendToTomAiChatHandler,
-    interruptTomAiChatHandler
+    interruptTomAiChatHandler,
+    expandPromptHandler
 } from './handlers';
 
 // Tom AI Chat tools
@@ -254,6 +255,14 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
+    // Expand Prompt with local Ollama model
+    const expandPromptCmd = vscode.commands.registerCommand(
+        'dartscript.expandPrompt',
+        async () => {
+            await expandPromptHandler();
+        }
+    );
+
     // Add all commands to subscriptions
     context.subscriptions.push(
         sendToChatCmd,
@@ -273,7 +282,8 @@ function registerCommands(context: vscode.ExtensionContext) {
         showApiInfoCmd,
         startTomAiChatCmd,
         sendToTomAiChatCmd,
-        interruptTomAiChatCmd
+        interruptTomAiChatCmd,
+        expandPromptCmd
     );
 }
 
