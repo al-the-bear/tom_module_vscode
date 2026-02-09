@@ -48,3 +48,10 @@ export {
     setPromptExpanderManager,
     getPromptExpanderManager,
 } from './expandPrompt-handler';
+export {
+    startBotConversationHandler,
+    stopBotConversationHandler,
+    BotConversationManager,
+    setBotConversationManager,
+    getBotConversationManager,
+} from './botConversation-handler';

@@ -1,0 +1,1062 @@
+/**
+ * Handler for the Bot Conversation feature.
+ *
+ * Orchestrates a multi-turn conversation between a local Ollama model and
+ * Copilot Chat.  The local model receives a goal description, generates
+ * prompts for Copilot, evaluates Copilot's responses, and decides whether
+ * to send follow-up prompts or declare the goal reached.
+ *
+ * Flow:
+ *  1. User triggers "DS: Start Bot Conversation" → enters goal description
+ *  2. Local model generates the first Copilot prompt
+ *  3. Prompt is sent to Copilot via the VS Code Language Model API
+ *  4. Copilot response is written to a JSON answer file (window-unique)
+ *  5. Local model evaluates the response + history, and either:
+ *     a) Generates a follow-up prompt → goto 3
+ *     b) Outputs the goal-reached marker → conversation ends
+ *  6. Full conversation log is persisted to a timestamped markdown file
+ *
+ * Configuration lives in the `botConversation` section of send_to_chat.json.
+ */
+
+import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import { bridgeLog, getCopilotModel, sendCopilotRequest, getWorkspaceRoot } from './handler_shared';
+import { getPromptExpanderManager } from './expandPrompt-handler';
+import type { OllamaStats } from './expandPrompt-handler';
+
+// ============================================================================
+// Interfaces
+// ============================================================================
+
+/** Copilot response in the structured JSON format (matches dcli convention). */
+export interface CopilotResponse {
+    /** Unique request ID to correlate prompt/response pairs. */
+    requestId: string;
+    /** Main response content. */
+    generatedMarkdown: string;
+    /** Optional comments/notes from Copilot. */
+    comments?: string;
+    /** Files Copilot referenced while forming the response. */
+    references: string[];
+    /** Files explicitly requested by the prompt. */
+    requestedAttachments: string[];
+}
+
+/** A single exchange in the bot conversation. */
+export interface ConversationExchange {
+    /** Turn number (1-based). */
+    turn: number;
+    /** Timestamp of the exchange. */
+    timestamp: Date;
+    /** The prompt sent to Copilot. */
+    promptToCopilot: string;
+    /** The structured response from Copilot. */
+    copilotResponse: CopilotResponse;
+    /** Token stats from the local model for this turn's prompt generation. */
+    localModelStats?: OllamaStats;
+}
+
+/** History mode for the local model. */
+export type HistoryMode = 'full' | 'last' | 'summary' | 'trim_and_summary';
+
+/** A named bot conversation profile. */
+export interface BotConversationProfile {
+    /** Human-readable label. */
+    label: string;
+    /** Override initial prompt template (null → inherit top-level). */
+    initialPromptTemplate?: string | null;
+    /** Override follow-up template (null → inherit top-level). */
+    followUpTemplate?: string | null;
+    /** Override copilot suffix (null → inherit top-level). */
+    copilotSuffix?: string | null;
+    /** Override max turns (null → inherit top-level). */
+    maxTurns?: number | null;
+    /** Override model config key (null → default). */
+    modelConfig?: string | null;
+    /** Override temperature (null → inherit top-level). */
+    temperature?: number | null;
+    /** Override history mode (null → inherit top-level). */
+    historyMode?: HistoryMode | null;
+    /** Files to include as context for the local model. */
+    includeFileContext?: string[];
+    /** Override goal-reached marker (null → inherit top-level). */
+    goalReachedMarker?: string | null;
+}
+
+/** Full botConversation section from send_to_chat.json. */
+export interface BotConversationConfig {
+    /** Maximum conversation turns before stopping. */
+    maxTurns: number;
+    /** Which model config from promptExpander.models to use. */
+    modelConfig: string | null;
+    /** Temperature for the orchestrator model. */
+    temperature: number;
+    /** Maximum token count for history passed to local model. */
+    maxHistoryTokens: number;
+    /** Path for conversation log files. */
+    conversationLogPath: string;
+    /** Template for the local model to generate the first Copilot prompt. */
+    initialPromptTemplate: string;
+    /** Template for the local model to evaluate response + generate follow-up. */
+    followUpTemplate: string;
+    /** Suffix appended to every prompt sent to Copilot. */
+    copilotSuffix: string;
+    /** Summary template used when historyMode includes summarization. */
+    summaryTemplate: string;
+    /** Marker string the local model outputs when the goal is reached. */
+    goalReachedMarker: string;
+    /** Whether to pause for user review between turns. */
+    pauseBetweenTurns: boolean;
+    /** Whether to let the user review/edit the first generated prompt. */
+    pauseBeforeFirst: boolean;
+    /** Extra file paths to include as context. */
+    includeFileContext: string[];
+    /** How much history to pass to the local model. */
+    historyMode: HistoryMode;
+    /** Whether to persist the full conversation log. */
+    logConversation: boolean;
+    /** Whether to strip thinking tags from local model output. */
+    stripThinkingTags: boolean;
+    /** Preferred Copilot model family (e.g. 'gpt-4o', 'claude-sonnet-4'). */
+    copilotModel: string | null;
+    /** Named conversation profiles. */
+    profiles: { [key: string]: BotConversationProfile };
+}
+
+/** Conversation state for a running bot conversation. */
+interface ConversationState {
+    /** Unique conversation ID. */
+    conversationId: string;
+    /** The user's goal description. */
+    goal: string;
+    /** The user's optional description/context. */
+    description: string;
+    /** All exchanges so far. */
+    exchanges: ConversationExchange[];
+    /** Resolved config for this conversation. */
+    config: BotConversationConfig;
+    /** Profile key being used. */
+    profileKey: string;
+    /** Whether the conversation is still active. */
+    active: boolean;
+    /** Cancellation token source. */
+    cancellationSource: vscode.CancellationTokenSource;
+    /** Log file path. */
+    logFilePath: string;
+}
+
+// ============================================================================
+// Default templates
+// ============================================================================
+
+const DEFAULT_INITIAL_PROMPT_TEMPLATE = `You are an AI conversation orchestrator. Your job is to generate a detailed, actionable prompt that will be sent to GitHub Copilot (an AI coding assistant) to work toward a specific goal.
+
+Goal: \${goal}
+Description: \${description}
+
+Context files:
+\${fileContext}
+
+Generate a clear, specific prompt for Copilot that will make progress toward the goal. The prompt should:
+- Be detailed enough that Copilot can take concrete action
+- Focus on the most important next step
+- Reference specific files, patterns, or technologies when relevant
+- Include any necessary constraints or requirements
+
+Output ONLY the prompt text. No explanations, no preamble, no markdown fences.`;
+
+const DEFAULT_FOLLOW_UP_TEMPLATE = `You are an AI conversation orchestrator evaluating progress toward a goal.
+
+Goal: \${goal}
+Description: \${description}
+
+Turn \${turnNumber} of \${maxTurns}.
+
+Previous prompt sent to Copilot:
+---
+\${lastPrompt}
+---
+
+Copilot's response:
+---
+\${copilotResponse}
+---
+
+\${historySection}
+
+Evaluate whether the goal has been fully achieved based on Copilot's response and the conversation history.
+
+If the goal is FULLY achieved, respond with exactly: \${goalReachedMarker}
+If more work is needed, generate the next prompt for Copilot that builds on what was accomplished. Focus on what remains to be done.
+
+Output ONLY either the goal-reached marker OR the next prompt text. No explanations, no preamble.`;
+
+const DEFAULT_COPILOT_SUFFIX = `
+
+---
+IMPORTANT: Structure your response as valid JSON and write it to the file:
+\${answerFilePath}
+
+The file must be valid JSON with this structure:
+{
+  "requestId": "\${requestId}",
+  "generatedMarkdown": "<your complete response as a JSON-escaped string>",
+  "comments": "<optional comments or notes>",
+  "references": ["<workspace-relative paths of files you referenced>"],
+  "requestedAttachments": ["<workspace-relative paths of files you created or modified>"]
+}
+
+Request ID: \${requestId}`;
+
+const DEFAULT_SUMMARY_TEMPLATE = `Summarize the following conversation history concisely, preserving key decisions, code changes, and outcomes. Keep it under \${maxTokens} tokens.
+
+\${history}
+
+Output ONLY the summary. No preamble.`;
+
+const DEFAULT_GOAL_REACHED_MARKER = '__GOAL_REACHED__';
+
+const DEFAULTS: BotConversationConfig = {
+    maxTurns: 10,
+    modelConfig: null,
+    temperature: 0.5,
+    maxHistoryTokens: 4000,
+    conversationLogPath: '_ai/bot_conversations',
+    initialPromptTemplate: DEFAULT_INITIAL_PROMPT_TEMPLATE,
+    followUpTemplate: DEFAULT_FOLLOW_UP_TEMPLATE,
+    copilotSuffix: DEFAULT_COPILOT_SUFFIX,
+    summaryTemplate: DEFAULT_SUMMARY_TEMPLATE,
+    goalReachedMarker: DEFAULT_GOAL_REACHED_MARKER,
+    pauseBetweenTurns: false,
+    pauseBeforeFirst: false,
+    includeFileContext: [],
+    historyMode: 'trim_and_summary',
+    logConversation: true,
+    stripThinkingTags: true,
+    copilotModel: null,
+    profiles: {},
+};
+
+// ============================================================================
+// BotConversationManager
+// ============================================================================
+
+export class BotConversationManager {
+    private context: vscode.ExtensionContext;
+    private activeConversation: ConversationState | null = null;
+
+    constructor(context: vscode.ExtensionContext) {
+        this.context = context;
+    }
+
+    dispose(): void {
+        this.stopConversation('Manager disposed');
+    }
+
+    // -----------------------------------------------------------------------
+    // Config loading — always fresh
+    // -----------------------------------------------------------------------
+
+    private getConfigPath(): string | undefined {
+        const configSetting = vscode.workspace
+            .getConfiguration('dartscript.sendToChat')
+            .get<string>('configPath');
+        if (configSetting) {
+            const wf = vscode.workspace.workspaceFolders;
+            if (wf && wf.length > 0) {
+                return configSetting.replace(/\$\{workspaceFolder\}/g, wf[0].uri.fsPath);
+            }
+            return configSetting;
+        }
+        const wf = vscode.workspace.workspaceFolders;
+        if (wf && wf.length > 0) {
+            return path.join(wf[0].uri.fsPath, '_ai', 'send_to_chat', 'send_to_chat.json');
+        }
+        return undefined;
+    }
+
+    loadConfig(): BotConversationConfig {
+        const config: BotConversationConfig = { ...DEFAULTS, profiles: {} };
+
+        const configPath = this.getConfigPath();
+        if (!configPath || !fs.existsSync(configPath)) { return config; }
+
+        try {
+            const raw = fs.readFileSync(configPath, 'utf-8');
+            const parsed = JSON.parse(raw);
+            const sec = parsed?.botConversation;
+            if (!sec || typeof sec !== 'object') { return config; }
+
+            // Scalars
+            if (typeof sec.maxTurns === 'number') { config.maxTurns = sec.maxTurns; }
+            if (typeof sec.modelConfig === 'string') { config.modelConfig = sec.modelConfig; }
+            if (typeof sec.temperature === 'number') { config.temperature = sec.temperature; }
+            if (typeof sec.maxHistoryTokens === 'number') { config.maxHistoryTokens = sec.maxHistoryTokens; }
+            if (typeof sec.conversationLogPath === 'string') { config.conversationLogPath = sec.conversationLogPath; }
+            if (typeof sec.initialPromptTemplate === 'string') { config.initialPromptTemplate = sec.initialPromptTemplate; }
+            if (typeof sec.followUpTemplate === 'string') { config.followUpTemplate = sec.followUpTemplate; }
+            if (typeof sec.copilotSuffix === 'string') { config.copilotSuffix = sec.copilotSuffix; }
+            if (typeof sec.summaryTemplate === 'string') { config.summaryTemplate = sec.summaryTemplate; }
+            if (typeof sec.goalReachedMarker === 'string') { config.goalReachedMarker = sec.goalReachedMarker; }
+            if (typeof sec.pauseBetweenTurns === 'boolean') { config.pauseBetweenTurns = sec.pauseBetweenTurns; }
+            if (typeof sec.pauseBeforeFirst === 'boolean') { config.pauseBeforeFirst = sec.pauseBeforeFirst; }
+            if (typeof sec.logConversation === 'boolean') { config.logConversation = sec.logConversation; }
+            if (typeof sec.stripThinkingTags === 'boolean') { config.stripThinkingTags = sec.stripThinkingTags; }
+            if (typeof sec.copilotModel === 'string') { config.copilotModel = sec.copilotModel; }
+            if (typeof sec.historyMode === 'string' &&
+                ['full', 'last', 'summary', 'trim_and_summary'].includes(sec.historyMode)) {
+                config.historyMode = sec.historyMode;
+            }
+            if (Array.isArray(sec.includeFileContext)) {
+                config.includeFileContext = sec.includeFileContext.filter((f: any) => typeof f === 'string');
+            }
+
+            // Profiles
+            if (sec.profiles && typeof sec.profiles === 'object') {
+                for (const [key, val] of Object.entries(sec.profiles)) {
+                    const p = val as any;
+                    if (p && typeof p === 'object') {
+                        config.profiles[key] = {
+                            label: typeof p.label === 'string' ? p.label : key,
+                            initialPromptTemplate: typeof p.initialPromptTemplate === 'string' ? p.initialPromptTemplate : null,
+                            followUpTemplate: typeof p.followUpTemplate === 'string' ? p.followUpTemplate : null,
+                            copilotSuffix: typeof p.copilotSuffix === 'string' ? p.copilotSuffix : null,
+                            maxTurns: typeof p.maxTurns === 'number' ? p.maxTurns : null,
+                            modelConfig: typeof p.modelConfig === 'string' ? p.modelConfig : null,
+                            temperature: typeof p.temperature === 'number' ? p.temperature : null,
+                            historyMode: typeof p.historyMode === 'string' ? p.historyMode as HistoryMode : null,
+                            includeFileContext: Array.isArray(p.includeFileContext) ? p.includeFileContext : undefined,
+                            goalReachedMarker: typeof p.goalReachedMarker === 'string' ? p.goalReachedMarker : null,
+                        };
+                    }
+                }
+            }
+        } catch (err) {
+            bridgeLog(`[Bot Conversation] Failed to parse config: ${err}`);
+        }
+
+        return config;
+    }
+
+    // -----------------------------------------------------------------------
+    // Window-unique file naming
+    // -----------------------------------------------------------------------
+
+    /** Get a short window identifier: first 8 chars of sessionId + first 8 of machineId. */
+    private getWindowId(): string {
+        const session = vscode.env.sessionId.substring(0, 8);
+        const machine = vscode.env.machineId.substring(0, 8);
+        return `${session}_${machine}`;
+    }
+
+    /** Generate a conversation ID: timestamp + window ID. */
+    private generateConversationId(): string {
+        const now = new Date();
+        const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+        return `bot_${ts}_${this.getWindowId()}`;
+    }
+
+    // -----------------------------------------------------------------------
+    // Answer file (JSON) — consistent with dcli pattern
+    // -----------------------------------------------------------------------
+
+    /** Get the answer file path for the current window. */
+    private getAnswerFilePath(): string {
+        const wsRoot = getWorkspaceRoot();
+        const folder = wsRoot
+            ? path.join(wsRoot, '_ai', 'bot_conversations')
+            : path.join(require('os').homedir(), '.tom', 'bot-conversation-answers');
+        return path.join(folder, `${this.getWindowId()}_answer.json`);
+    }
+
+    /** Delete the answer file (before sending a new prompt). */
+    private deleteAnswerFile(): void {
+        const filePath = this.getAnswerFilePath();
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+    }
+
+    /** Read and parse the answer file. Returns undefined if not found/invalid. */
+    private readAnswerFile(expectedRequestId: string): CopilotResponse | undefined {
+        const filePath = this.getAnswerFilePath();
+        if (!fs.existsSync(filePath)) { return undefined; }
+
+        try {
+            const raw = fs.readFileSync(filePath, 'utf-8').trim();
+            if (!raw) { return undefined; }
+
+            const parsed = JSON.parse(raw);
+            if (parsed.requestId !== expectedRequestId) { return undefined; }
+            if (!parsed.generatedMarkdown) { return undefined; }
+
+            return {
+                requestId: parsed.requestId,
+                generatedMarkdown: parsed.generatedMarkdown,
+                comments: parsed.comments ?? undefined,
+                references: Array.isArray(parsed.references) ? parsed.references : [],
+                requestedAttachments: Array.isArray(parsed.requestedAttachments) ? parsed.requestedAttachments : [],
+            };
+        } catch {
+            return undefined;
+        }
+    }
+
+    /** Watch for the answer file to appear/change. */
+    private async waitForAnswerFile(
+        requestId: string,
+        timeoutMs: number,
+        cancellationToken: vscode.CancellationToken,
+    ): Promise<CopilotResponse | undefined> {
+        const answerPath = this.getAnswerFilePath();
+        const dir = path.dirname(answerPath);
+
+        return new Promise<CopilotResponse | undefined>((resolve) => {
+            let resolved = false;
+            const finish = (result: CopilotResponse | undefined) => {
+                if (resolved) { return; }
+                resolved = true;
+                watcher?.close();
+                clearTimeout(timer);
+                clearInterval(pollTimer);
+                resolve(result);
+            };
+
+            // Timeout
+            const timer = setTimeout(() => finish(undefined), timeoutMs);
+
+            // Cancellation
+            cancellationToken.onCancellationRequested(() => finish(undefined));
+
+            // File watcher
+            let watcher: fs.FSWatcher | undefined;
+            try {
+                if (!fs.existsSync(dir)) {
+                    fs.mkdirSync(dir, { recursive: true });
+                }
+                watcher = fs.watch(dir, (_event, filename) => {
+                    if (filename === path.basename(answerPath)) {
+                        // Small delay to let the file finish writing
+                        setTimeout(() => {
+                            const result = this.readAnswerFile(requestId);
+                            if (result) { finish(result); }
+                        }, 500);
+                    }
+                });
+            } catch {
+                // Fallback to polling only
+            }
+
+            // Also poll every 5s as backup
+            const pollTimer = setInterval(() => {
+                const result = this.readAnswerFile(requestId);
+                if (result) { finish(result); }
+            }, 5000);
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // History management
+    // -----------------------------------------------------------------------
+
+    /** Build the history section for the follow-up template. */
+    private async buildHistorySection(
+        exchanges: ConversationExchange[],
+        config: BotConversationConfig,
+    ): Promise<string> {
+        if (exchanges.length === 0) { return '(No previous exchanges.)'; }
+
+        const mode = config.historyMode;
+
+        if (mode === 'last') {
+            const last = exchanges[exchanges.length - 1];
+            return `Previous exchange (turn ${last.turn}):\nPrompt: ${last.promptToCopilot.substring(0, 500)}...\nResponse: ${last.copilotResponse.generatedMarkdown.substring(0, 1000)}...`;
+        }
+
+        const fullHistory = this.formatFullHistory(exchanges);
+
+        if (mode === 'full') {
+            return `Full conversation history:\n${fullHistory}`;
+        }
+
+        // For 'summary' and 'trim_and_summary', estimate tokens
+        const estimatedTokens = Math.ceil(fullHistory.length / 4); // rough estimate
+
+        if (mode === 'summary' || (mode === 'trim_and_summary' && estimatedTokens > config.maxHistoryTokens)) {
+            // Summarize using the local model
+            const summary = await this.summarizeHistory(fullHistory, config);
+
+            if (mode === 'trim_and_summary') {
+                // After summary, include the last 1-2 exchanges in full for recency
+                const recentCount = Math.min(2, exchanges.length);
+                const recentExchanges = exchanges.slice(-recentCount);
+                const recentHistory = this.formatFullHistory(recentExchanges);
+                return `Conversation summary (turns 1-${exchanges.length - recentCount}):\n${summary}\n\nRecent exchanges:\n${recentHistory}`;
+            }
+
+            return `Conversation summary:\n${summary}`;
+        }
+
+        // trim_and_summary but within token limits — use full history
+        return `Full conversation history:\n${fullHistory}`;
+    }
+
+    /** Format all exchanges as markdown. */
+    private formatFullHistory(exchanges: ConversationExchange[]): string {
+        return exchanges.map((ex) => {
+            const refs = ex.copilotResponse.references.length > 0
+                ? `\nReferences: ${ex.copilotResponse.references.join(', ')}`
+                : '';
+            return `### Turn ${ex.turn}\n**Prompt:**\n${ex.promptToCopilot}\n\n**Copilot Response:**\n${ex.copilotResponse.generatedMarkdown}${refs}`;
+        }).join('\n\n---\n\n');
+    }
+
+    /** Use the local model to summarize conversation history. */
+    private async summarizeHistory(
+        fullHistory: string,
+        config: BotConversationConfig,
+    ): Promise<string> {
+        const manager = getPromptExpanderManager();
+        if (!manager) { return fullHistory; } // fallback to full if no manager
+
+        const prompt = config.summaryTemplate
+            .replace(/\$\{maxTokens\}/g, String(config.maxHistoryTokens))
+            .replace(/\$\{history\}/g, fullHistory);
+
+        try {
+            const result = await manager.chatWithOllama({
+                systemPrompt: 'You are a conversation summarizer. Be concise and preserve key technical details.',
+                userPrompt: prompt,
+                modelConfigKey: config.modelConfig ?? undefined,
+                temperature: 0.3,
+                stripThinkingTags: config.stripThinkingTags,
+            });
+            return result.text;
+        } catch (err: any) {
+            bridgeLog(`[Bot Conversation] Summarization failed: ${err.message}`);
+            // Trim to approximate token count by characters
+            const maxChars = config.maxHistoryTokens * 4;
+            if (fullHistory.length > maxChars) {
+                return fullHistory.substring(fullHistory.length - maxChars) + '\n...(earlier history trimmed)';
+            }
+            return fullHistory;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // File context
+    // -----------------------------------------------------------------------
+
+    /** Read and concatenate context files. */
+    private readFileContext(filePaths: string[]): string {
+        if (filePaths.length === 0) { return '(No additional context files.)'; }
+        const wsRoot = getWorkspaceRoot();
+
+        return filePaths.map((fp) => {
+            const resolved = wsRoot ? fp.replace(/\$\{workspaceFolder\}/g, wsRoot) : fp;
+            try {
+                if (fs.existsSync(resolved)) {
+                    const content = fs.readFileSync(resolved, 'utf-8');
+                    return `--- ${fp} ---\n${content}`;
+                }
+                return `--- ${fp} --- (file not found)`;
+            } catch {
+                return `--- ${fp} --- (read error)`;
+            }
+        }).join('\n\n');
+    }
+
+    // -----------------------------------------------------------------------
+    // Placeholder resolution
+    // -----------------------------------------------------------------------
+
+    private resolvePlaceholders(template: string, values: { [key: string]: string }): string {
+        let result = template;
+        for (const [key, value] of Object.entries(values)) {
+            result = result.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), value);
+        }
+        return result;
+    }
+
+    // -----------------------------------------------------------------------
+    // Conversation log
+    // -----------------------------------------------------------------------
+
+    /** Write or update the conversation log file. */
+    private writeConversationLog(state: ConversationState): void {
+        if (!state.config.logConversation) { return; }
+
+        const wsRoot = getWorkspaceRoot();
+        const logDir = wsRoot
+            ? path.join(wsRoot, state.config.conversationLogPath)
+            : path.join(require('os').homedir(), '.tom', 'bot_conversations');
+
+        if (!fs.existsSync(logDir)) {
+            fs.mkdirSync(logDir, { recursive: true });
+        }
+
+        const logPath = path.join(logDir, `${state.conversationId}.md`);
+        state.logFilePath = logPath;
+
+        const lines: string[] = [];
+        lines.push(`# Bot Conversation: ${state.conversationId}`);
+        lines.push('');
+        lines.push(`**Goal:** ${state.goal}`);
+        if (state.description) {
+            lines.push(`**Description:** ${state.description}`);
+        }
+        lines.push(`**Profile:** ${state.profileKey}`);
+        lines.push(`**Max turns:** ${state.config.maxTurns}`);
+        lines.push(`**Status:** ${state.active ? 'In progress' : 'Completed'}`);
+        lines.push(`**Turns completed:** ${state.exchanges.length}`);
+        lines.push('');
+
+        for (const ex of state.exchanges) {
+            lines.push(`## Turn ${ex.turn}`);
+            lines.push(`*${ex.timestamp.toISOString()}*`);
+            if (ex.localModelStats) {
+                lines.push(`*Local model: ${ex.localModelStats.promptTokens}+${ex.localModelStats.completionTokens} tokens, ${(ex.localModelStats.totalDurationMs / 1000).toFixed(1)}s*`);
+            }
+            lines.push('');
+            lines.push('### Prompt to Copilot');
+            lines.push('');
+            lines.push(ex.promptToCopilot);
+            lines.push('');
+            lines.push('### Copilot Response');
+            lines.push('');
+            lines.push(ex.copilotResponse.generatedMarkdown);
+            if (ex.copilotResponse.comments) {
+                lines.push('');
+                lines.push(`**Comments:** ${ex.copilotResponse.comments}`);
+            }
+            if (ex.copilotResponse.references.length > 0) {
+                lines.push('');
+                lines.push(`**References:** ${ex.copilotResponse.references.join(', ')}`);
+            }
+            if (ex.copilotResponse.requestedAttachments.length > 0) {
+                lines.push('');
+                lines.push(`**Attachments:** ${ex.copilotResponse.requestedAttachments.join(', ')}`);
+            }
+            lines.push('');
+            lines.push('---');
+            lines.push('');
+        }
+
+        fs.writeFileSync(logPath, lines.join('\n'), 'utf-8');
+    }
+
+    // -----------------------------------------------------------------------
+    // Core conversation loop
+    // -----------------------------------------------------------------------
+
+    /**
+     * Start a bot conversation.
+     * This is the main entry point triggered by the command.
+     */
+    async startConversationCommand(): Promise<void> {
+        // Check if a conversation is already active
+        if (this.activeConversation?.active) {
+            const action = await vscode.window.showWarningMessage(
+                'A bot conversation is already in progress. Stop it and start a new one?',
+                'Stop & Start New', 'Cancel',
+            );
+            if (action !== 'Stop & Start New') { return; }
+            this.stopConversation('Replaced by new conversation');
+        }
+
+        const manager = getPromptExpanderManager();
+        if (!manager) {
+            vscode.window.showErrorMessage('Prompt Expander not initialized. Cannot use local LLM.');
+            return;
+        }
+
+        const config = this.loadConfig();
+
+        // If there are profiles, let the user pick
+        let profileKey = '_default';
+        const profileKeys = Object.keys(config.profiles);
+        if (profileKeys.length > 0) {
+            const items = profileKeys.map((key) => ({
+                label: config.profiles[key].label,
+                description: key,
+                key,
+            }));
+            items.unshift({ label: 'Default (no profile)', description: 'Use top-level config', key: '_default' });
+            const picked = await vscode.window.showQuickPick(items, {
+                placeHolder: 'Select conversation profile',
+            });
+            if (!picked) { return; }
+            profileKey = picked.key;
+        }
+
+        // Apply profile overrides
+        const profile = profileKey !== '_default' ? config.profiles[profileKey] : undefined;
+        if (profile) {
+            if (profile.maxTurns !== null && profile.maxTurns !== undefined) { config.maxTurns = profile.maxTurns; }
+            if (profile.modelConfig !== null && profile.modelConfig !== undefined) { config.modelConfig = profile.modelConfig; }
+            if (profile.temperature !== null && profile.temperature !== undefined) { config.temperature = profile.temperature; }
+            if (profile.historyMode !== null && profile.historyMode !== undefined) { config.historyMode = profile.historyMode; }
+            if (profile.initialPromptTemplate) { config.initialPromptTemplate = profile.initialPromptTemplate; }
+            if (profile.followUpTemplate) { config.followUpTemplate = profile.followUpTemplate; }
+            if (profile.copilotSuffix) { config.copilotSuffix = profile.copilotSuffix; }
+            if (profile.goalReachedMarker) { config.goalReachedMarker = profile.goalReachedMarker; }
+            if (profile.includeFileContext) { config.includeFileContext = profile.includeFileContext; }
+        }
+
+        // Get goal from user — check if there's selected text in the editor first
+        const editor = vscode.window.activeTextEditor;
+        const selectedText = editor && !editor.selection.isEmpty
+            ? editor.document.getText(editor.selection)
+            : undefined;
+
+        const goal = await vscode.window.showInputBox({
+            prompt: 'Enter the conversation goal',
+            placeHolder: 'What should the bot conversation achieve?',
+            value: selectedText ?? '',
+        });
+        if (!goal?.trim()) { return; }
+
+        const description = await vscode.window.showInputBox({
+            prompt: 'Optional: Add context or constraints (press Enter to skip)',
+            placeHolder: 'Additional description, constraints, file references...',
+        });
+
+        // Create conversation state
+        const conversationId = this.generateConversationId();
+        const cancellationSource = new vscode.CancellationTokenSource();
+        const state: ConversationState = {
+            conversationId,
+            goal: goal.trim(),
+            description: description?.trim() ?? '',
+            exchanges: [],
+            config,
+            profileKey,
+            active: true,
+            cancellationSource,
+            logFilePath: '',
+        };
+        this.activeConversation = state;
+
+        bridgeLog(`[Bot Conversation] Starting: ${conversationId} | Goal: ${goal.trim().substring(0, 80)}...`);
+
+        try {
+            await this.runConversationLoop(state, manager);
+        } catch (err: any) {
+            if (err.message === 'Cancelled') {
+                bridgeLog(`[Bot Conversation] Cancelled by user at turn ${state.exchanges.length}`);
+                vscode.window.showInformationMessage(
+                    `Bot conversation cancelled after ${state.exchanges.length} turns.`,
+                );
+            } else {
+                bridgeLog(`[Bot Conversation] Error: ${err.message}`);
+                vscode.window.showErrorMessage(`Bot conversation error: ${err.message}`);
+            }
+        } finally {
+            state.active = false;
+            this.writeConversationLog(state);
+
+            if (state.logFilePath && fs.existsSync(state.logFilePath)) {
+                const action = await vscode.window.showInformationMessage(
+                    `Bot conversation completed (${state.exchanges.length} turns).`,
+                    'Open Log',
+                );
+                if (action === 'Open Log') {
+                    const doc = await vscode.workspace.openTextDocument(state.logFilePath);
+                    await vscode.window.showTextDocument(doc);
+                }
+            }
+
+            if (this.activeConversation === state) {
+                this.activeConversation = null;
+            }
+            cancellationSource.dispose();
+        }
+    }
+
+    /** The main conversation loop. */
+    private async runConversationLoop(
+        state: ConversationState,
+        manager: ReturnType<typeof getPromptExpanderManager> & object,
+    ): Promise<void> {
+        const { config } = state;
+        const token = state.cancellationSource.token;
+
+        // Ensure Copilot model is available
+        const copilotModel = await getCopilotModel();
+        if (!copilotModel) {
+            throw new Error('No Copilot model available');
+        }
+
+        // Read file context once
+        const fileContext = this.readFileContext(config.includeFileContext);
+
+        for (let turn = 1; turn <= config.maxTurns; turn++) {
+            if (token.isCancellationRequested) { throw new Error('Cancelled'); }
+
+            const requestId = `${state.conversationId}_t${turn}`;
+
+            // ------- Step 1: Generate Copilot prompt with local model -------
+            let copilotPrompt: string;
+            let localStats: OllamaStats | undefined;
+
+            if (turn === 1) {
+                // Initial prompt
+                const templateValues = {
+                    goal: state.goal,
+                    description: state.description,
+                    fileContext,
+                    turnNumber: String(turn),
+                    maxTurns: String(config.maxTurns),
+                    goalReachedMarker: config.goalReachedMarker,
+                };
+                const prompt = this.resolvePlaceholders(config.initialPromptTemplate, templateValues);
+
+                const genResult = await vscode.window.withProgress(
+                    {
+                        location: vscode.ProgressLocation.Notification,
+                        title: `[Bot ${turn}/${config.maxTurns}] Generating initial prompt with ${manager.getResolvedModelName(config.modelConfig ?? undefined)}...`,
+                        cancellable: true,
+                    },
+                    async (_progress, cancelToken) => {
+                        state.cancellationSource.token.onCancellationRequested(() => { /* propagate */ });
+                        return manager.chatWithOllama({
+                            systemPrompt: 'You are a conversation orchestrator generating prompts for an AI assistant.',
+                            userPrompt: prompt,
+                            modelConfigKey: config.modelConfig ?? undefined,
+                            temperature: config.temperature,
+                            stripThinkingTags: config.stripThinkingTags,
+                            cancellationToken: cancelToken,
+                        });
+                    },
+                );
+
+                copilotPrompt = genResult.text.trim();
+                localStats = genResult.stats;
+            } else {
+                // Follow-up prompt
+                const lastExchange = state.exchanges[state.exchanges.length - 1];
+                const historySection = await this.buildHistorySection(
+                    state.exchanges.slice(0, -1), // everything except the last (which is in lastPrompt/copilotResponse)
+                    config,
+                );
+
+                const templateValues = {
+                    goal: state.goal,
+                    description: state.description,
+                    turnNumber: String(turn),
+                    maxTurns: String(config.maxTurns),
+                    lastPrompt: lastExchange.promptToCopilot,
+                    copilotResponse: lastExchange.copilotResponse.generatedMarkdown,
+                    historySection: historySection !== '(No previous exchanges.)' ? `Conversation history:\n${historySection}` : '',
+                    fileContext,
+                    goalReachedMarker: config.goalReachedMarker,
+                };
+                const prompt = this.resolvePlaceholders(config.followUpTemplate, templateValues);
+
+                const genResult = await vscode.window.withProgress(
+                    {
+                        location: vscode.ProgressLocation.Notification,
+                        title: `[Bot ${turn}/${config.maxTurns}] Evaluating progress with ${manager.getResolvedModelName(config.modelConfig ?? undefined)}...`,
+                        cancellable: true,
+                    },
+                    async (_progress, cancelToken) => {
+                        return manager.chatWithOllama({
+                            systemPrompt: 'You are a conversation orchestrator evaluating AI assistant responses.',
+                            userPrompt: prompt,
+                            modelConfigKey: config.modelConfig ?? undefined,
+                            temperature: config.temperature,
+                            stripThinkingTags: config.stripThinkingTags,
+                            cancellationToken: cancelToken,
+                        });
+                    },
+                );
+
+                copilotPrompt = genResult.text.trim();
+                localStats = genResult.stats;
+
+                // Check if goal is reached
+                if (copilotPrompt.includes(config.goalReachedMarker)) {
+                    bridgeLog(`[Bot Conversation] Goal reached at turn ${turn}`);
+                    vscode.window.showInformationMessage(
+                        `Bot conversation: goal reached after ${state.exchanges.length} turns!`,
+                    );
+                    return;
+                }
+            }
+
+            // ------- Step 1b: Optional pause for user review -------
+            if ((turn === 1 && config.pauseBeforeFirst) || (turn > 1 && config.pauseBetweenTurns)) {
+                const action = await vscode.window.showInformationMessage(
+                    `[Bot Turn ${turn}] Review prompt before sending to Copilot?`,
+                    { modal: false },
+                    'Send', 'Edit', 'Stop',
+                );
+                if (action === 'Stop') {
+                    this.stopConversation('Stopped by user during review');
+                    return;
+                }
+                if (action === 'Edit') {
+                    const edited = await vscode.window.showInputBox({
+                        prompt: `Edit prompt for turn ${turn}`,
+                        value: copilotPrompt,
+                    });
+                    if (!edited) {
+                        this.stopConversation('Cancelled during edit');
+                        return;
+                    }
+                    copilotPrompt = edited;
+                }
+                // 'Send' or dialog dismissed → proceed
+            }
+
+            // ------- Step 2: Append suffix and send to Copilot -------
+            const answerFilePath = this.getAnswerFilePath();
+            const suffixValues = {
+                answerFilePath,
+                requestId,
+            };
+            const fullCopilotPrompt = copilotPrompt + this.resolvePlaceholders(config.copilotSuffix, suffixValues);
+
+            // Delete old answer file
+            this.deleteAnswerFile();
+
+            // Send to Copilot via LM API
+            const copilotResponseText = await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: `[Bot ${turn}/${config.maxTurns}] Waiting for Copilot response...`,
+                    cancellable: true,
+                },
+                async (_progress, cancelToken) => {
+                    return sendCopilotRequest(copilotModel, fullCopilotPrompt, cancelToken);
+                },
+            );
+
+            // ------- Step 3: Parse response -------
+            // First check if there's a JSON answer file (preferred)
+            let copilotResponse: CopilotResponse;
+
+            // Give the file watcher a moment
+            await new Promise((r) => setTimeout(r, 1000));
+            const fileResponse = this.readAnswerFile(requestId);
+
+            if (fileResponse) {
+                copilotResponse = fileResponse;
+            } else {
+                // Fallback: try to parse the streamed response as JSON
+                copilotResponse = this.parseInlineResponse(copilotResponseText, requestId);
+            }
+
+            // ------- Step 4: Record exchange -------
+            const exchange: ConversationExchange = {
+                turn,
+                timestamp: new Date(),
+                promptToCopilot: copilotPrompt,
+                copilotResponse,
+                localModelStats: localStats,
+            };
+            state.exchanges.push(exchange);
+
+            // Update log after each turn
+            this.writeConversationLog(state);
+
+            const statsStr = localStats
+                ? ` | Local: ${localStats.promptTokens}+${localStats.completionTokens}t`
+                : '';
+            bridgeLog(`[Bot Conversation] Turn ${turn} complete | Response: ${copilotResponse.generatedMarkdown.length} chars${statsStr}`);
+        }
+
+        // Max turns reached
+        bridgeLog(`[Bot Conversation] Max turns (${config.maxTurns}) reached`);
+        vscode.window.showWarningMessage(
+            `Bot conversation reached max turns (${config.maxTurns}) without achieving the goal.`,
+        );
+    }
+
+    /** Try to parse a Copilot response that may contain inline JSON. */
+    private parseInlineResponse(text: string, requestId: string): CopilotResponse {
+        // Try to find JSON in the response (Copilot sometimes wraps it in markdown code blocks)
+        const jsonMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/) ?? text.match(/(\{[\s\S]*"generatedMarkdown"[\s\S]*\})/);
+        if (jsonMatch) {
+            try {
+                const parsed = JSON.parse(jsonMatch[1]);
+                if (parsed.generatedMarkdown) {
+                    return {
+                        requestId: parsed.requestId ?? requestId,
+                        generatedMarkdown: parsed.generatedMarkdown,
+                        comments: parsed.comments ?? undefined,
+                        references: Array.isArray(parsed.references) ? parsed.references : [],
+                        requestedAttachments: Array.isArray(parsed.requestedAttachments) ? parsed.requestedAttachments : [],
+                    };
+                }
+            } catch { /* not valid JSON */ }
+        }
+
+        // Fallback: use the raw text as the response
+        return {
+            requestId,
+            generatedMarkdown: text,
+            references: [],
+            requestedAttachments: [],
+        };
+    }
+
+    // -----------------------------------------------------------------------
+    // Stop
+    // -----------------------------------------------------------------------
+
+    /** Stop the active conversation. */
+    stopConversation(reason?: string): void {
+        if (this.activeConversation?.active) {
+            this.activeConversation.active = false;
+            this.activeConversation.cancellationSource.cancel();
+            bridgeLog(`[Bot Conversation] Stopped: ${reason ?? 'user requested'}`);
+        }
+    }
+
+    /** Whether a conversation is currently active. */
+    get isActive(): boolean {
+        return this.activeConversation?.active === true;
+    }
+}
+
+// ============================================================================
+// Exported handlers
+// ============================================================================
+
+let _botManager: BotConversationManager | undefined;
+
+export function setBotConversationManager(mgr: BotConversationManager): void {
+    _botManager = mgr;
+}
+
+export function getBotConversationManager(): BotConversationManager | undefined {
+    return _botManager;
+}
+
+export async function startBotConversationHandler(): Promise<void> {
+    if (!_botManager) {
+        vscode.window.showErrorMessage('Bot Conversation not initialized');
+        return;
+    }
+    await _botManager.startConversationCommand();
+}
+
+export async function stopBotConversationHandler(): Promise<void> {
+    if (!_botManager) {
+        vscode.window.showErrorMessage('Bot Conversation not initialized');
+        return;
+    }
+    if (!_botManager.isActive) {
+        vscode.window.showInformationMessage('No active bot conversation to stop.');
+        return;
+    }
+    _botManager.stopConversation('Stopped by user command');
+    vscode.window.showInformationMessage('Bot conversation stopped.');
+}

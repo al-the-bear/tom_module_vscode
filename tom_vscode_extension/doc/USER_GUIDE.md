@@ -33,6 +33,17 @@ Complete guide to using the DartScript VS Code extension for enhanced Dart/Flutt
     - [Bridge API](#bridge-api)
       - [Available Methods](#available-methods)
       - [Examples](#examples)
+  - [Bot Conversation (Ollama → Copilot)](#bot-conversation-ollama--copilot)
+    - [How It Works](#how-it-works)
+    - [Commands](#commands)
+    - [Starting a Conversation](#starting-a-conversation)
+    - [Conversation Profiles](#conversation-profiles)
+    - [Configuration](#configuration-1)
+      - [Configuration Properties](#configuration-properties-1)
+      - [History Modes](#history-modes)
+      - [Custom Profiles](#custom-profiles)
+    - [Conversation Logs](#conversation-logs)
+    - [Stopping a Conversation](#stopping-a-conversation)
   - [Dart Script Execution](#dart-script-execution)
     - [Execute File](#execute-file)
     - [Execute as Script](#execute-as-script)
@@ -494,6 +505,135 @@ await bridge.call('localLlm.updateModelVce', {
   }
 });
 ```
+
+---
+
+## Bot Conversation (Ollama → Copilot)
+
+The Bot Conversation feature lets a local Ollama model orchestrate multi-turn conversations with GitHub Copilot Chat. The local model generates prompts, sends them to Copilot, reads the responses, and iterates toward a user-defined goal.
+
+### How It Works
+
+1. **You define a goal** — what you want Copilot to accomplish
+2. **Local model generates a prompt** — tailored to drive Copilot toward the goal
+3. **Prompt is sent to Copilot** via the VS Code Language Model API
+4. **Copilot's response is captured** and fed back to the local model
+5. **Local model evaluates progress** and generates the next prompt
+6. **Loop continues** until the goal is reached or max turns exhausted
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `DS: Start Bot Conversation` | Start a new bot conversation session |
+| `DS: Stop Bot Conversation` | Stop the currently active conversation |
+
+### Starting a Conversation
+
+1. Open the Command Palette (`Cmd+Shift+P`)
+2. Run **DS: Start Bot Conversation**
+3. Select a conversation profile (research, implement, debug, or custom)
+4. Enter your goal (e.g., "Find all usages of the Logger class and document them")
+5. Optionally add a description for more context
+6. The conversation begins automatically
+
+If you have text selected in the editor, it will be pre-filled as the goal.
+
+### Conversation Profiles
+
+Profiles define how the local model approaches the conversation:
+
+| Profile | Purpose | Default Max Turns |
+|---------|---------|-------------------|
+| `research` | Gather information across the codebase | 8 |
+| `implement` | Guide Copilot through step-by-step implementation | 12 |
+| `debug` | Systematically investigate and fix a bug | 10 |
+
+Each profile has customizable `initialPromptTemplate` and `followUpTemplate` that control what the local model generates.
+
+### Configuration
+
+Add a `botConversation` section to `send_to_chat.json`:
+
+```json
+{
+  "botConversation": {
+    "maxTurns": 10,
+    "temperature": 0.5,
+    "historyMode": "trim_and_summary",
+    "maxHistoryChars": 8000,
+    "pauseBetweenTurns": false,
+    "modelConfig": null,
+    "answerFolder": "_ai/bot_conversations",
+    "logFolder": "_ai/bot_conversations/logs",
+    "profiles": {
+      "research": { ... },
+      "implement": { ... },
+      "debug": { ... }
+    }
+  }
+}
+```
+
+#### Configuration Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `maxTurns` | number | 10 | Maximum conversation turns before auto-stopping |
+| `temperature` | number | 0.5 | Ollama generation temperature |
+| `historyMode` | string | `trim_and_summary` | How conversation history is managed |
+| `maxHistoryChars` | number | 8000 | Max characters for history in prompts |
+| `pauseBetweenTurns` | boolean | false | Pause for review between each turn |
+| `modelConfig` | string\|null | null | Ollama model config key (null = default) |
+| `answerFolder` | string | `_ai/bot_conversations` | Where answer exchange files are stored |
+| `logFolder` | string | `_ai/bot_conversations/logs` | Where conversation logs are written |
+
+#### History Modes
+
+| Mode | Description |
+|------|-------------|
+| `full` | Include all previous exchanges verbatim |
+| `last` | Include only the most recent exchange |
+| `summary` | Summarize all exchanges using the local model |
+| `trim_and_summary` | Summarize older exchanges, keep last 2 in full (recommended) |
+
+The `trim_and_summary` mode balances context retention with token efficiency — older exchanges are compressed into a summary by the local model, while the most recent exchanges remain in full detail.
+
+#### Custom Profiles
+
+Add profiles to the `botConversation.profiles` section with these properties:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `label` | string | Display name shown in the profile picker |
+| `description` | string | Description of what this profile does |
+| `goal` | string | Default goal text (user can override) |
+| `maxTurns` | number | Override default max turns |
+| `temperature` | number | Override default temperature |
+| `modelConfig` | string | Override model config key |
+| `initialPromptTemplate` | string | Template for generating the first Copilot prompt |
+| `followUpTemplate` | string | Template for generating follow-up prompts |
+
+Templates support these placeholders: `${goal}`, `${description}`, `${turn}`, `${maxTurns}`, `${history}`.
+
+### Conversation Logs
+
+Each conversation produces a markdown log in the configured `logFolder` with:
+
+- Conversation metadata (profile, goal, timestamps)
+- Full exchange history with turn numbers
+- Copilot responses (markdown content, references, attachments)
+- Goal completion status
+
+Log filenames include a timestamp and window ID for uniqueness.
+
+### Stopping a Conversation
+
+- Run **DS: Stop Bot Conversation** from the Command Palette
+- The conversation also stops automatically when:
+  - The local model includes `[GOAL_REACHED]` in its output
+  - The maximum number of turns is reached
+  - An unrecoverable error occurs
 
 ---
 

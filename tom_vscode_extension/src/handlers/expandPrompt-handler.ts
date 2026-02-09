@@ -102,7 +102,7 @@ export interface ExpanderProcessResult {
 }
 
 /** Stats returned by Ollama in the final streaming chunk. */
-interface OllamaStats {
+export interface OllamaStats {
     promptTokens: number;
     completionTokens: number;
     totalDurationMs: number;
@@ -536,6 +536,62 @@ export class PromptExpanderManager {
 
     // -----------------------------------------------------------------------
     // Core processing — used by both the command handler and the bridge API
+    // -----------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------
+    // Public API — for use by other handlers (e.g. BotConversationManager)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Public method to chat with Ollama using the configured model.
+     * Used by other handlers that need Ollama interaction without full prompt-expansion logic.
+     */
+    public async chatWithOllama(options: {
+        systemPrompt: string;
+        userPrompt: string;
+        modelConfigKey?: string;
+        temperature?: number;
+        stripThinkingTags?: boolean;
+        cancellationToken?: vscode.CancellationToken;
+    }): Promise<{ text: string; rawText: string; thinkContent: string; stats?: OllamaStats }> {
+        const config = this.loadConfig();
+        const { mc } = this.resolveModelConfig(config, undefined, options.modelConfigKey);
+        const temp = options.temperature ?? mc.temperature;
+        const strip = options.stripThinkingTags ?? mc.stripThinkingTags;
+
+        // Check Ollama is running
+        const running = await this.isOllamaRunning(mc.ollamaUrl);
+        if (!running) {
+            throw new Error(`Ollama is not running at ${mc.ollamaUrl}`);
+        }
+
+        const { text, stats } = await this.ollamaGenerate(
+            mc.ollamaUrl, mc.model, options.systemPrompt, options.userPrompt,
+            temp, undefined, options.cancellationToken, mc.keepAlive,
+        );
+
+        const { cleaned, thinkContent } = this.processThinkTags(text, strip);
+
+        return { text: cleaned, rawText: text, thinkContent, stats };
+    }
+
+    /** Check if a specific model is loaded in Ollama. Uses configured URL if no baseUrl given. */
+    public async checkModelLoaded(modelName?: string, baseUrl?: string): Promise<boolean> {
+        const config = this.loadConfig();
+        const name = modelName ?? config.model;
+        const url = baseUrl ?? config.ollamaUrl;
+        return this.isModelLoaded(url, name);
+    }
+
+    /** Get the resolved model name for a given config key (or default). */
+    public getResolvedModelName(modelConfigKey?: string): string {
+        const config = this.loadConfig();
+        const { mc } = this.resolveModelConfig(config, undefined, modelConfigKey);
+        return mc.model;
+    }
+
+    // -----------------------------------------------------------------------
+    // Core process()
     // -----------------------------------------------------------------------
 
     /**

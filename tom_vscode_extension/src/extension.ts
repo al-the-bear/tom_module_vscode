@@ -44,6 +44,10 @@ import {
     getPromptExpanderManager,
     createProfileHandler,
     switchModelHandler,
+    startBotConversationHandler,
+    stopBotConversationHandler,
+    BotConversationManager,
+    setBotConversationManager,
 } from './handlers';
 
 // Tom AI Chat tools
@@ -54,6 +58,9 @@ let sendToChatAdvancedManager: SendToChatAdvancedManager | undefined;
 
 // Global manager instance for Prompt Expander
 let promptExpanderManager: PromptExpanderManager | undefined;
+
+// Global manager instance for Bot Conversation
+let botConversationManager: BotConversationManager | undefined;
 
 // ============================================================================
 // Extension Lifecycle
@@ -87,6 +94,11 @@ export async function activate(context: vscode.ExtensionContext) {
     setPromptExpanderManager(promptExpanderManager);
     registerLocalLlmContextMenuCommands(context);
     context.subscriptions.push({ dispose: () => promptExpanderManager?.dispose() });
+
+    // Initialize Bot Conversation manager
+    botConversationManager = new BotConversationManager(context);
+    setBotConversationManager(botConversationManager);
+    context.subscriptions.push({ dispose: () => botConversationManager?.dispose() });
 
     // Register Tom AI Chat tools
     registerTomAiChatTools(context);
@@ -285,6 +297,22 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
+    // Start Bot Conversation
+    const startBotConversationCmd = vscode.commands.registerCommand(
+        'dartscript.startBotConversation',
+        async () => {
+            await startBotConversationHandler();
+        }
+    );
+
+    // Stop Bot Conversation
+    const stopBotConversationCmd = vscode.commands.registerCommand(
+        'dartscript.stopBotConversation',
+        async () => {
+            await stopBotConversationHandler();
+        }
+    );
+
     // Add all commands to subscriptions
     context.subscriptions.push(
         sendToChatCmd,
@@ -306,7 +334,9 @@ function registerCommands(context: vscode.ExtensionContext) {
         sendToTomAiChatCmd,
         interruptTomAiChatCmd,
         expandPromptCmd,
-        switchLocalModelCmd
+        switchLocalModelCmd,
+        startBotConversationCmd,
+        stopBotConversationCmd
     );
 }
 

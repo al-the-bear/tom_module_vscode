@@ -210,6 +210,16 @@
         "command": "dartscript.sendToLocalLlm.annotated",
         "title": "Annotated Expansion",
         "category": "DartScript"
+      },
+      {
+        "command": "dartscript.startBotConversation",
+        "title": "DS: Start Bot Conversation",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.stopBotConversation",
+        "title": "DS: Stop Bot Conversation",
+        "category": "DartScript"
       }
     ],
     "keybindings": [
