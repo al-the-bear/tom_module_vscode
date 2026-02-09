@@ -1156,20 +1156,24 @@ These VS Code settings serve as fallbacks. Prefer configuring via the `promptExp
 
 ## Keyboard Shortcuts Summary
 
-Keyboard shortcuts use a **which-key menu system**: press the shortcut key and a popup appears showing available commands. Type a single letter to execute, or click/arrow-select from the menu.
+Keyboard shortcuts use a **which-key menu system**: press the trigger key and a popup appears showing available commands. Type a letter to execute — works whether you release the modifier keys first or keep `Ctrl+Shift` held down.
 
 | Shortcut | Menu | Available Commands |
 |----------|------|--------------------|
-| `Ctrl+Shift+C` | Bot Conversation | (B) Start, (S) Stop, (H) Halt, (C) Continue, (A) Add Info |
-| `Ctrl+Shift+L` | Local LLM | (X) Expand Prompt, (C) Change Model, (S) Standard, (T) Template |
-| `Ctrl+Shift+A` | Send to Copilot Chat | (C) Send, (S) Standard, (T) Template, (R) Reload Config |
-| `Ctrl+Shift+T` | Tom AI Chat | (N) Start Chat, (S) Send Prompt, (I) Interrupt |
+| `Ctrl+Shift+C` | Bot Conversation | (B) Start, (S) Stop, (H) Halt, (C) Continue, (A) Add Info, (?) Help |
+| `Ctrl+Shift+L` | Local LLM | (X) Expand Prompt, (C) Change Model, (S) Standard, (T) Template, (?) Help |
+| `Ctrl+Shift+A` | Send to Copilot Chat | (C) Send, (S) Standard, (T) Template, (R) Reload Config, (?) Help |
+| `Ctrl+Shift+T` | Tom AI Chat | (N) Start Chat, (S) Send Prompt, (I) Interrupt, (?) Help |
 
 **How it works:**
-1. Press the shortcut (e.g., `Ctrl+Shift+A`)
+1. Press the trigger key (e.g., `Ctrl+Shift+A`)
 2. A menu appears showing all available commands with their key letters
-3. Type the letter (e.g., `s`) — the command executes **instantly** (no Enter needed)
-4. Or use arrow keys and Enter, or click
+3. Type the letter — works two ways:
+   - **Release** `Ctrl+Shift` first, then press the letter (e.g., `s`)
+   - **Keep holding** `Ctrl+Shift` and press the letter (e.g., `Ctrl+Shift+S`)
+4. The command executes **instantly** (no Enter needed)
+5. Or use arrow keys and Enter, or click
+6. Press `?` (or `Ctrl+Shift+/`) in any menu to open the **Quick Reference** cheat sheet
 
 **Note:** On macOS, `Ctrl+Shift` uses the Control key (not Command), so no conflicts with standard VS Code shortcuts which use `Cmd+Shift`.
 
@@ -1177,7 +1181,7 @@ Keyboard shortcuts use a **which-key menu system**: press the shortcut key and a
 
 ## Command & Keybinding Reference
 
-Complete reference for all 46 extension commands. Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and type "DS:" to see most commands. Shortcuts use **which-key menus** — press the trigger key (e.g., `Ctrl+Shift+C`) to open a popup, then press the indicated letter to execute (e.g., `B` for Start).
+Complete reference for all 48 extension commands. Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and type "DS:" to see most commands. Shortcuts use **which-key menus** — press the trigger key (e.g., `Ctrl+Shift+C`) to open a popup, then press the indicated letter to execute (with or without `Ctrl+Shift` held). Press `?` in any menu for the Quick Reference.
 
 ### Bot Conversation Control
 

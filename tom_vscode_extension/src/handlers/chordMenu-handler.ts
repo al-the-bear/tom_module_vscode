@@ -5,15 +5,20 @@
  * Instead of VS Code's native chord keybindings (which provide no visual feedback),
  * the first key press shows a QuickPick with available second-key options.
  * Typing a single character auto-executes the matching command immediately.
+ * Holding Ctrl+Shift also works — keybindings with "when": "dartscript.chordMenuOpen"
+ * route the letter to executeChordKey().
  *
  * Groups:
  *   Ctrl+Shift+C → Conversation Control
  *   Ctrl+Shift+L → Local LLM
  *   Ctrl+Shift+A → Send to Copilot Chat
  *   Ctrl+Shift+T → Tom AI Chat
+ *
+ * All groups include a "?" item that opens the Quick Reference document.
  */
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 
 // ============================================================================
 // Types
@@ -40,6 +45,44 @@ interface ChordGroup {
 }
 
 // ============================================================================
+// Quick Reference Helper
+// ============================================================================
+
+const QUICK_REFERENCE_COMMAND = 'dartscript.showQuickReference';
+
+/**
+ * Opens the QUICK_REFERENCE.md file from the extension's doc/ folder.
+ */
+async function openQuickReference(): Promise<void> {
+    // Find the extension by its ID
+    const ext = vscode.extensions.getExtension('tom.dartscript-vscode');
+    if (!ext) {
+        vscode.window.showErrorMessage('DartScript extension not found.');
+        return;
+    }
+    const refPath = path.join(ext.extensionPath, 'doc', 'QUICK_REFERENCE.md');
+    try {
+        const uri = vscode.Uri.file(refPath);
+        await vscode.commands.executeCommand('markdown.showPreview', uri);
+    } catch {
+        // Fallback: open as plain text if markdown preview fails
+        try {
+            const uri = vscode.Uri.file(refPath);
+            await vscode.window.showTextDocument(uri, { preview: true });
+        } catch (e) {
+            vscode.window.showErrorMessage(`Could not open quick reference: ${e}`);
+        }
+    }
+}
+
+// The "?" help item appended to every group
+const HELP_ITEM: ChordMenuItem = {
+    key: '?',
+    label: 'Quick Reference',
+    commandId: QUICK_REFERENCE_COMMAND,
+};
+
+// ============================================================================
 // Chord Group Definitions
 // ============================================================================
 
@@ -53,6 +96,7 @@ const CHORD_GROUPS: Record<string, ChordGroup> = {
             { key: 'h', label: 'Halt Conversation', commandId: 'dartscript.haltBotConversation' },
             { key: 'c', label: 'Continue Conversation', commandId: 'dartscript.continueBotConversation' },
             { key: 'a', label: 'Add Info to Conversation', commandId: 'dartscript.addToBotConversation' },
+            HELP_ITEM,
         ]
     },
     llm: {
@@ -63,6 +107,7 @@ const CHORD_GROUPS: Record<string, ChordGroup> = {
             { key: 'c', label: 'Change Ollama Model', commandId: 'dartscript.switchLocalModel' },
             { key: 's', label: 'Send to LLM (Standard)', commandId: 'dartscript.sendToLocalLlmStandard' },
             { key: 't', label: 'Send to LLM (Template)', commandId: 'dartscript.sendToLocalLlmAdvanced' },
+            HELP_ITEM,
         ]
     },
     chat: {
@@ -73,6 +118,7 @@ const CHORD_GROUPS: Record<string, ChordGroup> = {
             { key: 's', label: 'Send to Chat (Standard)', commandId: 'dartscript.sendToChatStandard' },
             { key: 't', label: 'Send to Chat (Template)', commandId: 'dartscript.sendToChatAdvanced' },
             { key: 'r', label: 'Reload Chat Config', commandId: 'dartscript.reloadSendToChatConfig' },
+            HELP_ITEM,
         ]
     },
     tomAiChat: {
@@ -82,9 +128,20 @@ const CHORD_GROUPS: Record<string, ChordGroup> = {
             { key: 'n', label: 'Start Chat', commandId: 'dartscript.startTomAIChat' },
             { key: 's', label: 'Send Chat Prompt', commandId: 'dartscript.sendToTomAIChat' },
             { key: 'i', label: 'Interrupt Chat', commandId: 'dartscript.interruptTomAIChat' },
+            HELP_ITEM,
         ]
     }
 };
+
+// ============================================================================
+// Active Menu State (for Ctrl+Shift held-down keybinding dispatch)
+// ============================================================================
+
+/** The currently open chord group ID, or null if no menu is showing */
+let activeGroupId: string | null = null;
+
+/** Reference to the active QuickPick so we can dismiss it from keybindings */
+let activeQuickPick: vscode.QuickPick<vscode.QuickPickItem & { _chordItem?: ChordMenuItem }> | null = null;
 
 // ============================================================================
 // Show Chord Menu
@@ -92,6 +149,8 @@ const CHORD_GROUPS: Record<string, ChordGroup> = {
 
 /**
  * Shows a QuickPick for a chord group. Auto-executes on single unique keypress.
+ * Also sets the `dartscript.chordMenuOpen` context key so that Ctrl+Shift+<letter>
+ * keybindings work while the menu is visible.
  */
 async function showChordMenu(groupId: string): Promise<void> {
     const group = CHORD_GROUPS[groupId];
@@ -103,9 +162,14 @@ async function showChordMenu(groupId: string): Promise<void> {
     // Filter items by their `when` condition (if any)
     const activeItems = group.items.filter(item => !item.when || item.when());
 
+    // Set context for keybinding dispatch
+    activeGroupId = groupId;
+    vscode.commands.executeCommand('setContext', 'dartscript.chordMenuOpen', true);
+
     // Build QuickPick items
-    const quickPick = vscode.window.createQuickPick();
-    quickPick.title = `${group.title}  (${group.prefix}, ...)`;
+    const quickPick = vscode.window.createQuickPick<vscode.QuickPickItem & { _chordItem?: ChordMenuItem }>();
+    activeQuickPick = quickPick;
+    quickPick.title = `${group.title}  (${group.prefix} → ...)`;
     quickPick.placeholder = 'Type a letter to execute, or select with arrow keys';
     quickPick.matchOnDescription = true;
     quickPick.matchOnDetail = false;
@@ -114,44 +178,78 @@ async function showChordMenu(groupId: string): Promise<void> {
         label: `$(key) ${item.key.toUpperCase()}`,
         description: item.label,
         detail: undefined,
-        // Store the item data for retrieval
         _chordItem: item
-    } as vscode.QuickPickItem & { _chordItem: ChordMenuItem }));
+    }));
 
     let executed = false;
 
-    // Auto-execute on single unique character match
+    const executeItem = (item: ChordMenuItem) => {
+        if (executed) { return; }
+        executed = true;
+        quickPick.hide();
+        vscode.commands.executeCommand(item.commandId);
+    };
+
+    // Auto-execute on single unique character match (plain typing)
     quickPick.onDidChangeValue((value) => {
         if (executed) { return; }
         const typed = value.toLowerCase().trim();
         if (typed.length !== 1) { return; }
 
-        // Find exact key match
         const match = activeItems.filter(item => item.key === typed);
         if (match.length === 1) {
-            executed = true;
-            quickPick.hide();
-            vscode.commands.executeCommand(match[0].commandId);
+            executeItem(match[0]);
         }
     });
 
     // Handle explicit selection (click or Enter)
     quickPick.onDidAccept(() => {
         if (executed) { return; }
-        const selected = quickPick.selectedItems[0] as vscode.QuickPickItem & { _chordItem?: ChordMenuItem };
+        const selected = quickPick.selectedItems[0];
         if (selected?._chordItem) {
-            executed = true;
-            quickPick.hide();
-            vscode.commands.executeCommand(selected._chordItem.commandId);
+            executeItem(selected._chordItem);
         }
     });
 
     // Clean up on hide
     quickPick.onDidHide(() => {
+        activeGroupId = null;
+        activeQuickPick = null;
+        vscode.commands.executeCommand('setContext', 'dartscript.chordMenuOpen', false);
         quickPick.dispose();
     });
 
     quickPick.show();
+}
+
+// ============================================================================
+// Execute Key from Keybinding (Ctrl+Shift held down)
+// ============================================================================
+
+/**
+ * Called from keybindings when a Ctrl+Shift+<letter> is pressed while the
+ * chord menu is open. Looks up the letter in the active group and executes.
+ */
+export function executeChordKey(key: string): void {
+    if (!activeGroupId || !activeQuickPick) { return; }
+
+    const group = CHORD_GROUPS[activeGroupId];
+    if (!group) { return; }
+
+    const normalizedKey = key.toLowerCase();
+    const match = group.items.filter(item =>
+        item.key === normalizedKey && (!item.when || item.when())
+    );
+
+    if (match.length === 1) {
+        // Dismiss the QuickPick and execute the command
+        const quickPick = activeQuickPick;
+        activeGroupId = null;
+        activeQuickPick = null;
+        vscode.commands.executeCommand('setContext', 'dartscript.chordMenuOpen', false);
+        quickPick.hide();
+        vscode.commands.executeCommand(match[0].commandId);
+    }
 }
 
 // ============================================================================
@@ -175,7 +273,7 @@ export function chordMenuTomAiChatHandler(): void {
 }
 
 /**
- * Registers all four chord menu commands and returns the disposables.
+ * Registers all chord menu commands, the key dispatcher, and the quick reference command.
  */
 export function registerChordMenuCommands(context: vscode.ExtensionContext): void {
     const cmds = [
@@ -183,6 +281,8 @@ export function registerChordMenuCommands(context: vscode.ExtensionContext): voi
         vscode.commands.registerCommand('dartscript.chordMenu.llm', chordMenuLlmHandler),
         vscode.commands.registerCommand('dartscript.chordMenu.chat', chordMenuChatHandler),
         vscode.commands.registerCommand('dartscript.chordMenu.tomAiChat', chordMenuTomAiChatHandler),
+        vscode.commands.registerCommand('dartscript.chordMenu.executeKey', (key: string) => executeChordKey(key)),
+        vscode.commands.registerCommand(QUICK_REFERENCE_COMMAND, openQuickReference),
     ];
     context.subscriptions.push(...cmds);
 }

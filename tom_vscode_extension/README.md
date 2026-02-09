@@ -139,14 +139,14 @@ See the [User Guide](doc/USER_GUIDE.md#bot-conversation-ollama--copilot) for pro
 
 ## Keyboard Shortcuts (Which-Key Menus)
 
-Shortcuts use a **which-key menu** system — press a trigger key to open a popup showing all available commands, then press the indicated letter to execute instantly (no Enter needed).
+Shortcuts use a **which-key menu** system — press a trigger key to open a popup, then press the indicated letter to execute instantly (no Enter needed). Works whether you release `Ctrl+Shift` first or keep it held.
 
 | Trigger Key | Menu | Available Commands |
 |-------------|------|--------------------|
-| `Ctrl+Shift+C` | Conversation | **B**egin, **S**top, **H**alt, **C**ontinue, **A**dd info |
-| `Ctrl+Shift+L` | Local LLM | E**x**pand, **C**hange model, **S**tandard, **T**emplate |
-| `Ctrl+Shift+A` | Send to Chat | Send to **C**hat, **S**tandard, **T**emplate, **R**eload config |
-| `Ctrl+Shift+T` | Tom AI Chat | **N**ew chat, **S**end prompt, **I**nterrupt |
+| `Ctrl+Shift+C` | Conversation | **B**egin, **S**top, **H**alt, **C**ontinue, **A**dd info, **?** Help |
+| `Ctrl+Shift+L` | Local LLM | E**x**pand, **C**hange model, **S**tandard, **T**emplate, **?** Help |
+| `Ctrl+Shift+A` | Send to Chat | Send to **C**hat, **S**tandard, **T**emplate, **R**eload config, **?** Help |
+| `Ctrl+Shift+T` | Tom AI Chat | **N**ew chat, **S**end prompt, **I**nterrupt, **?** Help |
 
 ## Custom Prompt Templates
 
