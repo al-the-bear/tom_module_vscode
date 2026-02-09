@@ -38,6 +38,10 @@ Complete guide to using the DartScript VS Code extension for enhanced Dart/Flutt
     - [Commands](#commands)
     - [Starting a Conversation](#starting-a-conversation)
     - [Conversation Profiles](#conversation-profiles)
+    - [Conversation Modes](#conversation-modes)
+    - [Halting and Resuming](#halting-and-resuming)
+    - [Adding Information Mid-Conversation](#adding-information-mid-conversation)
+    - [Telegram Notifications](#telegram-notifications)
     - [Configuration](#configuration-1)
       - [Configuration Properties](#configuration-properties-1)
       - [History Modes](#history-modes)
@@ -523,10 +527,13 @@ The Bot Conversation feature lets a local Ollama model orchestrate multi-turn co
 
 ### Commands
 
-| Command | Description |
-|---------|-------------|
-| `DS: Start Bot Conversation` | Start a new bot conversation session |
-| `DS: Stop Bot Conversation` | Stop the currently active conversation |
+| Command | Shortcut | Description |
+|---------|----------|-------------|
+| `DS: Start Local-Copilot Conversation` | `Ctrl+Shift+C, Ctrl+Shift+B` | Start a new bot conversation session |
+| `DS: Stop Local-Copilot Conversation` | `Ctrl+Shift+C, Ctrl+Shift+S` | Stop the currently active conversation |
+| `DS: Halt Local-Copilot Conversation` | `Ctrl+Shift+C, Ctrl+Shift+H` | Pause the conversation between turns |
+| `DS: Continue Local-Copilot Conversation` | `Ctrl+Shift+C, Ctrl+Shift+J` | Resume a halted conversation |
+| `DS: Add to Local-Copilot Conversation` | `Ctrl+Shift+C, Ctrl+Shift+A` | Inject additional context into the next turn |
 
 ### Starting a Conversation
 
@@ -550,6 +557,62 @@ Profiles define how the local model approaches the conversation:
 | `debug` | Systematically investigate and fix a bug | 10 |
 
 Each profile has customizable `initialPromptTemplate` and `followUpTemplate` that control what the local model generates.
+
+### Conversation Modes
+
+The bot conversation supports two modes:
+
+| Mode | Description |
+|------|-------------|
+| **ollama-copilot** (default) | Local Ollama model generates prompts → sends to GitHub Copilot → reads response → iterates |
+| **ollama-ollama** (self-talk) | Two local Ollama model personas (Person A and Person B) discuss the goal with each other, without involving Copilot |
+
+Self-talk mode is useful for brainstorming, design exploration, or when you want two AI perspectives to debate a topic. Each persona can have its own system prompt, model, and temperature.
+
+To start a self-talk conversation, select `ollama-ollama` when prompted for the conversation mode, or set `conversationMode` in the config.
+
+### Halting and Resuming
+
+You can pause a running conversation between turns:
+
+1. Run **DS: Halt Local-Copilot Conversation** (`Ctrl+Shift+C, Ctrl+Shift+H`)
+2. The conversation pauses after the current turn completes
+3. Review the conversation state, add context if needed
+4. Run **DS: Continue Local-Copilot Conversation** (`Ctrl+Shift+C, Ctrl+Shift+J`) to resume
+
+Halting is useful when you want to review intermediate results or steer the conversation in a different direction.
+
+### Adding Information Mid-Conversation
+
+While a conversation is active (running or halted), you can inject additional context:
+
+1. Run **DS: Add to Local-Copilot Conversation** (`Ctrl+Shift+C, Ctrl+Shift+A`)
+2. Enter the additional text (instructions, constraints, corrections)
+3. The text is queued and injected into the local model’s prompt at the next turn
+
+Multiple calls are concatenated. This is useful for course-correcting a conversation without stopping it.
+
+### Telegram Notifications
+
+Optionally receive Telegram notifications about conversation progress:
+
+- Notification when a conversation starts
+- Per-turn updates with prompt/response summaries
+- Notification when a conversation completes (with goal status)
+
+Configure in `send_to_chat.json`:
+
+```json
+{
+  "telegram": {
+    "botToken": "YOUR_BOT_TOKEN",
+    "allowedUserIds": [123456789],
+    "enabled": true
+  }
+}
+```
+
+Telegram also supports `/stop`, `/halt`, `/continue`, and `/info` commands for remote conversation control.
 
 ### Configuration
 
@@ -998,10 +1061,51 @@ These VS Code settings serve as fallbacks. Prefer configuring via the `promptExp
 
 ## Keyboard Shortcuts Summary
 
+All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combination, release, then press the second.
+
+### Conversation Control (`Ctrl+Shift+C, ...`)
+
 | Shortcut | Command |
 |----------|---------|
-| `Cmd+Shift+R` / `Ctrl+Shift+R` | Reload Window |
-| `Ctrl+Cmd+E` | Expand Prompt (Ollama) |
+| `Ctrl+Shift+C, Ctrl+Shift+B` | Start Local-Copilot Conversation |
+| `Ctrl+Shift+C, Ctrl+Shift+S` | Stop Local-Copilot Conversation |
+| `Ctrl+Shift+C, Ctrl+Shift+H` | Halt Local-Copilot Conversation |
+| `Ctrl+Shift+C, Ctrl+Shift+J` | Continue Local-Copilot Conversation |
+| `Ctrl+Shift+C, Ctrl+Shift+A` | Add to Local-Copilot Conversation |
+
+### Local LLM (`Ctrl+Shift+L, ...`)
+
+| Shortcut | Command |
+|----------|---------|
+| `Ctrl+Shift+L, Ctrl+Shift+E` | Expand Prompt (Ollama) |
+| `Ctrl+Shift+L, Ctrl+Shift+W` | Switch local Ollama model |
+| `Ctrl+Shift+L, Ctrl+Shift+S` | Send to local LLM (Standard) |
+| `Ctrl+Shift+L, Ctrl+Shift+T` | Send to local LLM (Template) |
+
+### Send to Copilot Chat (`Ctrl+Shift+S, ...`)
+
+| Shortcut | Command |
+|----------|---------|
+| `Ctrl+Shift+S, Ctrl+Shift+C` | Send to Copilot Chat |
+| `Ctrl+Shift+S, Ctrl+Shift+S` | Send to Copilot Chat (Standard) |
+| `Ctrl+Shift+S, Ctrl+Shift+T` | Send to Copilot Chat (Template) |
+| `Ctrl+Shift+S, Ctrl+Shift+R` | Reload Chat Config |
+
+### Tom AI Chat (`Ctrl+Shift+T, ...`)
+
+| Shortcut | Command |
+|----------|---------|
+| `Ctrl+Shift+T, Ctrl+Shift+N` | Start Tom AI Chat (in .md files) |
+| `Ctrl+Shift+T, Ctrl+Shift+S` | Send Tom AI Chat Prompt (in .md files) |
+| `Ctrl+Shift+T, Ctrl+Shift+I` | Interrupt Tom AI Chat |
+
+### Standalone
+
+| Shortcut | Command |
+|----------|---------|
+| `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Win/Linux) | Reload Window |
+
+**Note:** On macOS, `Ctrl+Shift+` chords use the Control key (not Command), so they don't conflict with standard VS Code shortcuts which use `Cmd+Shift+`. On Windows/Linux, some `Ctrl+Shift+` first-chord prefixes may shadow default bindings (e.g., `Ctrl+Shift+S` shadows "Save As"); use the Command Palette as an alternative.
 
 ## Context Menu Summary
 

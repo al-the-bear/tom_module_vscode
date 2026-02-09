@@ -9,6 +9,8 @@ DartScript provides productivity features for VS Code including smart Copilot Ch
 ## Key Features
 
 - 🤖 **Copilot Chat Integration**: Send text to Copilot with customizable prompt templates
+- 🧠 **Local LLM (Ollama)**: Expand, rewrite, and process prompts using a local Ollama model — with configurable profiles and model switching. See the [User Guide](doc/USER_GUIDE.md#prompt-expander-ollama) for details.
+- 💬 **Bot Conversation**: Orchestrate multi-turn conversations between a local Ollama model and GitHub Copilot, with halt/continue control, self-talk mode, and Telegram notifications. See the [User Guide](doc/USER_GUIDE.md#bot-conversation-ollama--copilot) for details.
 - ⚡ **Dart Script Execution**: Execute Dart files directly or via D4rt interpreter
 - 🔧 **Tom CLI Integration**: Control Tom CLI from VS Code with server communication
 - 📊 **Process Monitor**: Background process monitoring with auto-restart
@@ -76,6 +78,40 @@ Right-click in the editor to access the "DartScript: Send to Chat..." submenu:
 | **DS: Start Tom Process Monitor** | Start background process monitor |
 | **DS: Toggle Bridge Debug Logging** | Enable/disable detailed bridge logging |
 
+### Local LLM Commands (Ollama)
+
+| Command | Description |
+|---------|-------------|
+| **DS: Expand Prompt (Ollama)** | Expand/process selected text using local Ollama model |
+| **DS: Switch local Ollama model...** | Pick a different Ollama model |
+| **DS: Send to local LLM** | Send selected text to local LLM |
+| **DS: Send to local LLM (Standard)** | Send with default profile |
+| **DS: Send to local LLM (Template)...** | Choose a profile template |
+
+Right-click in the editor to access the "DartScript: Send to local LLM..." submenu with Expand, Rewrite, Detailed, and Annotated templates.
+
+See the [User Guide](doc/USER_GUIDE.md#prompt-expander-ollama) for configuration and profile setup.
+
+### Bot Conversation Commands
+
+| Command | Description |
+|---------|-------------|
+| **DS: Start Local-Copilot Conversation** | Start a multi-turn bot conversation |
+| **DS: Stop Local-Copilot Conversation** | Stop the active conversation |
+| **DS: Halt Local-Copilot Conversation** | Pause the conversation between turns |
+| **DS: Continue Local-Copilot Conversation** | Resume a halted conversation |
+| **DS: Add to Local-Copilot Conversation** | Inject additional context into the next turn |
+
+See the [User Guide](doc/USER_GUIDE.md#bot-conversation-ollama--copilot) for profiles, self-talk mode, and Telegram integration.
+
+### Tom AI Chat Commands
+
+| Command | Description |
+|---------|-------------|
+| **Tom AI: Start Chat** | Initialize a .chat.md file for Tom AI chat |
+| **Tom AI: Send Chat Prompt** | Send the current prompt in a .chat.md file |
+| **Tom AI: Interrupt Chat** | Interrupt the active Tom AI chat session |
+
 ### Utility Commands
 
 | Command | Description |
@@ -85,8 +121,6 @@ Right-click in the editor to access the "DartScript: Send to Chat..." submenu:
 | **DS: Show Extension Help** | Open extension documentation |
 | **DartScript: Print Configuration** | Print D4rt interpreter configuration to output |
 | **DartScript: Show VS Code API Info** | Show available language models, tools, and AI extensions |
-| **Tom AI: Start Chat** | Initialize a .chat.md file for Tom AI chat |
-| **Tom AI: Send Chat Prompt** | Send the current prompt in a .chat.md file |
 
 ## Context Menu Actions
 
@@ -104,6 +138,46 @@ Right-click in the editor to access the "DartScript: Send to Chat..." submenu:
 - **DS: Execute as Script** - Run current Dart file
 
 ## Keyboard Shortcuts
+
+All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combination, release, then press the second.
+
+### Conversation Control (`Ctrl+Shift+C, ...`)
+
+| Shortcut | Command |
+|----------|---------|
+| `Ctrl+Shift+C, Ctrl+Shift+B` | Start Local-Copilot Conversation |
+| `Ctrl+Shift+C, Ctrl+Shift+S` | Stop Local-Copilot Conversation |
+| `Ctrl+Shift+C, Ctrl+Shift+H` | Halt Local-Copilot Conversation |
+| `Ctrl+Shift+C, Ctrl+Shift+J` | Continue Local-Copilot Conversation |
+| `Ctrl+Shift+C, Ctrl+Shift+A` | Add to Local-Copilot Conversation |
+
+### Local LLM (`Ctrl+Shift+L, ...`)
+
+| Shortcut | Command |
+|----------|---------|
+| `Ctrl+Shift+L, Ctrl+Shift+E` | Expand Prompt (Ollama) |
+| `Ctrl+Shift+L, Ctrl+Shift+W` | Switch local Ollama model |
+| `Ctrl+Shift+L, Ctrl+Shift+S` | Send to local LLM (Standard) |
+| `Ctrl+Shift+L, Ctrl+Shift+T` | Send to local LLM (Template) |
+
+### Send to Copilot Chat (`Ctrl+Shift+S, ...`)
+
+| Shortcut | Command |
+|----------|---------|
+| `Ctrl+Shift+S, Ctrl+Shift+C` | Send to Copilot Chat |
+| `Ctrl+Shift+S, Ctrl+Shift+S` | Send to Copilot Chat (Standard) |
+| `Ctrl+Shift+S, Ctrl+Shift+T` | Send to Copilot Chat (Template) |
+| `Ctrl+Shift+S, Ctrl+Shift+R` | Reload Chat Config |
+
+### Tom AI Chat (`Ctrl+Shift+T, ...`)
+
+| Shortcut | Command |
+|----------|---------|
+| `Ctrl+Shift+T, Ctrl+Shift+N` | Start Tom AI Chat |
+| `Ctrl+Shift+T, Ctrl+Shift+S` | Send Tom AI Chat Prompt |
+| `Ctrl+Shift+T, Ctrl+Shift+I` | Interrupt Tom AI Chat |
+
+### Standalone
 
 | Shortcut | Command |
 |----------|---------|
