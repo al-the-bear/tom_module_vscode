@@ -1164,6 +1164,7 @@ Keyboard shortcuts use a **which-key menu system**: press the trigger key and a 
 | `Ctrl+Shift+L` | Local LLM | (X) Expand Prompt, (C) Change Model, (S) Standard, (T) Template, (?) Help |
 | `Ctrl+Shift+A` | Send to Copilot Chat | (C) Send, (S) Standard, (T) Template, (R) Reload Config, (?) Help |
 | `Ctrl+Shift+T` | Tom AI Chat | (N) Start Chat, (S) Send Prompt, (I) Interrupt, (?) Help |
+| `Ctrl+Shift+E` | Execute | (E) Execute, (A) Add, (D) Delete, (O) Open Config, (?) Help |
 
 **How it works:**
 1. Press the trigger key (e.g., `Ctrl+Shift+A`)
@@ -1181,7 +1182,7 @@ Keyboard shortcuts use a **which-key menu system**: press the trigger key and a 
 
 ## Command & Keybinding Reference
 
-Complete reference for all 48 extension commands. Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and type "DS:" to see most commands. Shortcuts use **which-key menus** — press the trigger key (e.g., `Ctrl+Shift+C`) to open a popup, then press the indicated letter to execute (with or without `Ctrl+Shift` held). Press `?` in any menu for the Quick Reference.
+Complete reference for all 53 extension commands. Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and type "DS:" to see most commands. Shortcuts use **which-key menus** — press the trigger key (e.g., `Ctrl+Shift+C`) to open a popup, then press the indicated letter to execute (with or without `Ctrl+Shift` held). Press `?` in any menu for the Quick Reference.
 
 ### Bot Conversation Control
 
@@ -1257,8 +1258,18 @@ Complete reference for all 48 extension commands. Open the Command Palette (`Cmd
 | DS: Reload Window | `dartscript.reloadWindow` | — | Notifies the Dart bridge to save state, explicitly stops the bridge process to prevent orphaned processes, then executes VS Code's built-in window reload. Ensures clean shutdown before reloading. |
 | DS: Run Tests | `dartscript.runTests` | — | Creates a `BridgeTestRunner` and runs all bridge integration tests from the `tom_vscode_bridge/test/` directory. Reports test results. |
 | DS: Show Extension Help | `dartscript.showHelp` | — | Opens the extension's documentation in VS Code's markdown preview. Looks for `doc/USER_GUIDE.md` in the extension directory; falls back to `README.md` if not found. |
+| DS: Show Quick Reference | `dartscript.showQuickReference` | `?` in any menu | Opens a compact cheat sheet with all shortcuts, settings, and a link to the config file. |
+| DS: Open Config File | `dartscript.openConfig` | `Ctrl+Shift+E → O` | Opens `send_to_chat.json` in the editor for direct editing. |
 | DartScript: Print Configuration | `dartscript.printConfiguration` | — | Prints the complete DartScript interpreter configuration to the output channel — all registered imports, classes, methods, constructors, global variables, and getters available in the DartScript runtime. Useful for debugging what's available to scripts. |
 | DartScript: Show VS Code API Info | `dartscript.showApiInfo` | — | Opens a dedicated output channel with a comprehensive report: all available Language Models (name, vendor, family, max tokens), all registered LM Tools grouped by prefix, AI/Chat-related extensions and their capabilities, and configured MCP servers. Useful for debugging the AI API surface. |
+
+### Commandline Management
+
+| Command | ID | Shortcut | Description |
+|---------|----|----------|-------------|
+| DS: Execute Commandline | `dartscript.executeCommandline` | `Ctrl+Shift+E → E` | Shows a picker of saved commandlines and runs the selected one in a new VS Code terminal at its configured working directory. |
+| DS: Add Commandline | `dartscript.defineCommandline` | `Ctrl+Shift+E → A` | Multi-step wizard: enter a shell command, optional description, choose working directory (workspace root, extension root, or custom path), confirm the resolved path, then saves to `send_to_chat.json`. |
+| DS: Delete Commandline | `dartscript.deleteCommandline` | `Ctrl+Shift+E → D` | Shows a picker of saved commandlines and removes the selected one from the config file. |
 
 ## Context Menu Summary
 

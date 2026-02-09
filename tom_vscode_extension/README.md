@@ -147,6 +147,7 @@ Shortcuts use a **which-key menu** system — press a trigger key to open a popu
 | `Ctrl+Shift+L` | Local LLM | E**x**pand, **C**hange model, **S**tandard, **T**emplate, **?** Help |
 | `Ctrl+Shift+A` | Send to Chat | Send to **C**hat, **S**tandard, **T**emplate, **R**eload config, **?** Help |
 | `Ctrl+Shift+T` | Tom AI Chat | **N**ew chat, **S**end prompt, **I**nterrupt, **?** Help |
+| `Ctrl+Shift+E` | Execute | **E**xecute, **A**dd, **D**elete, **O**pen config, **?** Help |
 
 ## Custom Prompt Templates
 

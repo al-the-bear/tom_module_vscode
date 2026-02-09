@@ -52,6 +52,7 @@ import {
     BotConversationManager,
     setBotConversationManager,
     registerChordMenuCommands,
+    registerCommandlineCommands,
 } from './handlers';
 
 // Tom AI Chat tools
@@ -84,6 +85,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register chord menu (which-key) commands
     registerChordMenuCommands(context);
+
+    // Register commandline commands
+    registerCommandlineCommands(context);
 
     // Check for test reinstall marker and send reload prompt to Copilot Chat
     checkTestReinstallMarker();

@@ -257,6 +257,11 @@
         "category": "DartScript"
       },
       {
+        "command": "dartscript.chordMenu.execute",
+        "title": "DS: Execute Shortcuts...",
+        "category": "DartScript"
+      },
+      {
         "command": "dartscript.chordMenu.executeKey",
         "title": "DS: Execute Chord Menu Key",
         "category": "DartScript"
@@ -264,6 +269,26 @@
       {
         "command": "dartscript.showQuickReference",
         "title": "DS: Show Quick Reference",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.defineCommandline",
+        "title": "DS: Add Commandline",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.deleteCommandline",
+        "title": "DS: Delete Commandline",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.executeCommandline",
+        "title": "DS: Execute Commandline",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.openConfig",
+        "title": "DS: Open Config File",
         "category": "DartScript"
       }
     ],
@@ -284,12 +309,19 @@
         "command": "dartscript.chordMenu.tomAiChat",
         "key": "ctrl+shift+t"
       },
+      {
+        "command": "dartscript.chordMenu.execute",
+        "key": "ctrl+shift+e"
+      },
       { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+a", "when": "dartscript.chordMenuOpen", "args": "a" },
       { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+b", "when": "dartscript.chordMenuOpen", "args": "b" },
       { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+c", "when": "dartscript.chordMenuOpen", "args": "c" },
+      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+d", "when": "dartscript.chordMenuOpen", "args": "d" },
+      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+e", "when": "dartscript.chordMenuOpen", "args": "e" },
       { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+h", "when": "dartscript.chordMenuOpen", "args": "h" },
       { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+i", "when": "dartscript.chordMenuOpen", "args": "i" },
       { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+n", "when": "dartscript.chordMenuOpen", "args": "n" },
+      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+o", "when": "dartscript.chordMenuOpen", "args": "o" },
       { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+r", "when": "dartscript.chordMenuOpen", "args": "r" },
       { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+s", "when": "dartscript.chordMenuOpen", "args": "s" },
       { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+t", "when": "dartscript.chordMenuOpen", "args": "t" },

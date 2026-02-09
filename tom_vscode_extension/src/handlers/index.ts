@@ -59,3 +59,4 @@ export {
     getBotConversationManager,
 } from './botConversation-handler';
 export { registerChordMenuCommands } from './chordMenu-handler';
+export { registerCommandlineCommands } from './commandline-handler';

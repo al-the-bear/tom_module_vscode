@@ -130,6 +130,17 @@ const CHORD_GROUPS: Record<string, ChordGroup> = {
             { key: 'i', label: 'Interrupt Chat', commandId: 'dartscript.interruptTomAIChat' },
             HELP_ITEM,
         ]
+    },
+    execute: {
+        title: 'Execute Commandline',
+        prefix: 'Ctrl+Shift+E',
+        items: [
+            { key: 'e', label: 'Execute Commandline', commandId: 'dartscript.executeCommandline' },
+            { key: 'a', label: 'Add Commandline', commandId: 'dartscript.defineCommandline' },
+            { key: 'd', label: 'Delete Commandline', commandId: 'dartscript.deleteCommandline' },
+            { key: 'o', label: 'Open Config File', commandId: 'dartscript.openConfig' },
+            HELP_ITEM,
+        ]
     }
 };
 
@@ -272,6 +283,10 @@ export function chordMenuTomAiChatHandler(): void {
     showChordMenu('tomAiChat');
 }
 
+export function chordMenuExecuteHandler(): void {
+    showChordMenu('execute');
+}
+
 /**
  * Registers all chord menu commands, the key dispatcher, and the quick reference command.
  */
@@ -281,6 +296,7 @@ export function registerChordMenuCommands(context: vscode.ExtensionContext): voi
         vscode.commands.registerCommand('dartscript.chordMenu.llm', chordMenuLlmHandler),
         vscode.commands.registerCommand('dartscript.chordMenu.chat', chordMenuChatHandler),
         vscode.commands.registerCommand('dartscript.chordMenu.tomAiChat', chordMenuTomAiChatHandler),
+        vscode.commands.registerCommand('dartscript.chordMenu.execute', chordMenuExecuteHandler),
         vscode.commands.registerCommand('dartscript.chordMenu.executeKey', (key: string) => executeChordKey(key)),
         vscode.commands.registerCommand(QUICK_REFERENCE_COMMAND, openQuickReference),
     ];
