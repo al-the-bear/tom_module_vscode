@@ -25,6 +25,7 @@ import * as path from 'path';
 import { bridgeLog, getCopilotModel, sendCopilotRequest, getWorkspaceRoot } from './handler_shared';
 import { getPromptExpanderManager } from './expandPrompt-handler';
 import type { OllamaStats } from './expandPrompt-handler';
+import { TelegramNotifier, TelegramConfig, TelegramCommand, parseTelegramConfig, TELEGRAM_DEFAULTS } from './telegram-notifier';
 
 // ============================================================================
 // Interfaces
@@ -60,6 +61,19 @@ export interface ConversationExchange {
 
 /** History mode for the local model. */
 export type HistoryMode = 'full' | 'last' | 'summary' | 'trim_and_summary';
+
+/** Conversation mode — who talks to whom. */
+export type ConversationMode = 'ollama-copilot' | 'ollama-ollama';
+
+/** Self-talk persona config for ollama-ollama mode. */
+export interface SelfTalkPersona {
+    /** System prompt that gives this persona its identity. */
+    systemPrompt: string;
+    /** Model config key from promptExpander.models (null → default). */
+    modelConfig?: string | null;
+    /** Temperature override for this persona. */
+    temperature?: number | null;
+}
 
 /** A named bot conversation profile. */
 export interface BotConversationProfile {
@@ -123,6 +137,15 @@ export interface BotConversationConfig {
     copilotModel: string | null;
     /** Named conversation profiles. */
     profiles: { [key: string]: BotConversationProfile };
+    /** Conversation mode: 'ollama-copilot' (default) or 'ollama-ollama' (self-talk). */
+    conversationMode: ConversationMode;
+    /** Self-talk configuration for ollama-ollama mode. */
+    selfTalk: {
+        personA: SelfTalkPersona;
+        personB: SelfTalkPersona;
+    };
+    /** Telegram integration config. */
+    telegram: TelegramConfig;
 }
 
 /** Conversation state for a running bot conversation. */
@@ -141,6 +164,12 @@ interface ConversationState {
     profileKey: string;
     /** Whether the conversation is still active. */
     active: boolean;
+    /** Whether the conversation is currently halted (paused). */
+    halted: boolean;
+    /** Resolves the halt promise when continue is called. */
+    haltResolver?: () => void;
+    /** Queued additional user input (injected into the next prompt). */
+    additionalUserInput: string[];
     /** Cancellation token source. */
     cancellationSource: vscode.CancellationTokenSource;
     /** Log file path. */
@@ -237,6 +266,16 @@ const DEFAULTS: BotConversationConfig = {
     stripThinkingTags: true,
     copilotModel: null,
     profiles: {},
+    conversationMode: 'ollama-copilot',
+    selfTalk: {
+        personA: {
+            systemPrompt: 'You are Person A in a collaborative discussion. Present your perspective clearly and build on the other person\'s ideas.',
+        },
+        personB: {
+            systemPrompt: 'You are Person B in a collaborative discussion. Offer alternative viewpoints, ask probing questions, and synthesize ideas.',
+        },
+    },
+    telegram: { ...TELEGRAM_DEFAULTS },
 };
 
 // ============================================================================
@@ -246,6 +285,7 @@ const DEFAULTS: BotConversationConfig = {
 export class BotConversationManager {
     private context: vscode.ExtensionContext;
     private activeConversation: ConversationState | null = null;
+    private telegram: TelegramNotifier | null = null;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -253,6 +293,137 @@ export class BotConversationManager {
 
     dispose(): void {
         this.stopConversation('Manager disposed');
+        this.telegram?.dispose();
+    }
+
+    // -----------------------------------------------------------------------
+    // Halt / Continue / Add Info — public API
+    // -----------------------------------------------------------------------
+
+    /** Halt the active conversation (pauses between turns). */
+    haltConversation(reason?: string): boolean {
+        if (!this.activeConversation?.active) { return false; }
+        if (this.activeConversation.halted) { return false; } // Already halted
+        this.activeConversation.halted = true;
+        bridgeLog(`[Bot Conversation] Halted: ${reason ?? 'user requested'}`);
+        this.telegram?.notifyHalted(this.activeConversation.exchanges.length);
+        return true;
+    }
+
+    /** Continue a halted conversation. */
+    continueConversation(): boolean {
+        if (!this.activeConversation?.active || !this.activeConversation.halted) { return false; }
+        this.activeConversation.halted = false;
+        if (this.activeConversation.haltResolver) {
+            this.activeConversation.haltResolver();
+            this.activeConversation.haltResolver = undefined;
+        }
+        const hasInput = this.activeConversation.additionalUserInput.length > 0;
+        bridgeLog(`[Bot Conversation] Continued${hasInput ? ' (with additional input)' : ''}`);
+        this.telegram?.notifyContinued(hasInput ? 'yes' : undefined);
+        return true;
+    }
+
+    /** Add additional user input to the next prompt. */
+    addUserInput(text: string): boolean {
+        if (!this.activeConversation?.active) { return false; }
+        this.activeConversation.additionalUserInput.push(text);
+        bridgeLog(`[Bot Conversation] User input added (${text.length} chars): ${text.substring(0, 60)}...`);
+        return true;
+    }
+
+    /** Whether the conversation is currently halted. */
+    get isHalted(): boolean {
+        return this.activeConversation?.halted === true;
+    }
+
+    /** Drain additional user input and return combined string (empty string if none). */
+    private drainUserInput(state: ConversationState): string {
+        if (state.additionalUserInput.length === 0) { return ''; }
+        const combined = state.additionalUserInput.join('\n\n');
+        state.additionalUserInput = [];
+        return combined;
+    }
+
+    /** Wait for the conversation to be unhalted. Returns immediately if not halted. */
+    private async waitForContinue(state: ConversationState): Promise<void> {
+        if (!state.halted) { return; }
+        bridgeLog('[Bot Conversation] Waiting for continue signal...');
+        return new Promise<void>((resolve) => {
+            if (!state.halted) { resolve(); return; }
+            state.haltResolver = resolve;
+            // Also resolve if cancelled
+            state.cancellationSource.token.onCancellationRequested(() => resolve());
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // Telegram integration
+    // -----------------------------------------------------------------------
+
+    /** Set up Telegram notifier from config. */
+    private setupTelegram(config: BotConversationConfig): void {
+        if (this.telegram) {
+            this.telegram.dispose();
+            this.telegram = null;
+        }
+        if (!config.telegram.enabled) { return; }
+
+        this.telegram = new TelegramNotifier(config.telegram);
+        this.telegram.onCommand((cmd: TelegramCommand) => this.handleTelegramCommand(cmd));
+        this.telegram.startPolling();
+    }
+
+    /** Handle an incoming Telegram command. */
+    private handleTelegramCommand(cmd: TelegramCommand): void {
+        switch (cmd.type) {
+            case 'stop':
+                if (this.activeConversation?.active) {
+                    this.stopConversation(`Stopped via Telegram by @${cmd.username}`);
+                    this.telegram?.sendMessage('✅ Conversation stopped.');
+                } else {
+                    this.telegram?.sendMessage('ℹ️ No active conversation.');
+                }
+                break;
+            case 'halt':
+                if (this.haltConversation(`Halted via Telegram by @${cmd.username}`)) {
+                    // notifyHalted already called in haltConversation
+                } else {
+                    this.telegram?.sendMessage('ℹ️ No active conversation to halt (or already halted).');
+                }
+                break;
+            case 'continue':
+                if (this.continueConversation()) {
+                    // notifyContinued already called in continueConversation
+                } else {
+                    this.telegram?.sendMessage('ℹ️ Conversation is not halted.');
+                }
+                break;
+            case 'info':
+                if (this.addUserInput(cmd.text)) {
+                    this.telegram?.sendMessage(`📝 Added to next prompt (${cmd.text.length} chars).`);
+                } else {
+                    this.telegram?.sendMessage('ℹ️ No active conversation to add input to.');
+                }
+                break;
+            case 'status': {
+                if (!this.activeConversation) {
+                    this.telegram?.sendMessage('ℹ️ No active conversation.');
+                } else {
+                    const s = this.activeConversation;
+                    const status = s.halted ? '⏸ Halted' : s.active ? '▶️ Running' : '⏹ Finished';
+                    this.telegram?.sendMessage(
+                        `*Status:* ${status}\n` +
+                        `*Turns:* ${s.exchanges.length}/${s.config.maxTurns}\n` +
+                        `*Goal:* ${s.goal.substring(0, 100)}`,
+                    );
+                }
+                break;
+            }
+            case 'unknown':
+                this.telegram?.sendMessage('❓ Unknown command. Use /stop /halt /continue /status or /info <text>');
+                break;
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -332,6 +503,43 @@ export class BotConversationManager {
                         };
                     }
                 }
+            }
+
+            // Conversation mode
+            if (typeof sec.conversationMode === 'string' &&
+                ['ollama-copilot', 'ollama-ollama'].includes(sec.conversationMode)) {
+                config.conversationMode = sec.conversationMode as ConversationMode;
+            }
+
+            // Self-talk config
+            if (sec.selfTalk && typeof sec.selfTalk === 'object') {
+                if (sec.selfTalk.personA && typeof sec.selfTalk.personA === 'object') {
+                    if (typeof sec.selfTalk.personA.systemPrompt === 'string') {
+                        config.selfTalk.personA.systemPrompt = sec.selfTalk.personA.systemPrompt;
+                    }
+                    if (typeof sec.selfTalk.personA.modelConfig === 'string') {
+                        config.selfTalk.personA.modelConfig = sec.selfTalk.personA.modelConfig;
+                    }
+                    if (typeof sec.selfTalk.personA.temperature === 'number') {
+                        config.selfTalk.personA.temperature = sec.selfTalk.personA.temperature;
+                    }
+                }
+                if (sec.selfTalk.personB && typeof sec.selfTalk.personB === 'object') {
+                    if (typeof sec.selfTalk.personB.systemPrompt === 'string') {
+                        config.selfTalk.personB.systemPrompt = sec.selfTalk.personB.systemPrompt;
+                    }
+                    if (typeof sec.selfTalk.personB.modelConfig === 'string') {
+                        config.selfTalk.personB.modelConfig = sec.selfTalk.personB.modelConfig;
+                    }
+                    if (typeof sec.selfTalk.personB.temperature === 'number') {
+                        config.selfTalk.personB.temperature = sec.selfTalk.personB.temperature;
+                    }
+                }
+            }
+
+            // Telegram config
+            if (sec.telegram && typeof sec.telegram === 'object') {
+                config.telegram = parseTelegramConfig(sec.telegram);
             }
         } catch (err) {
             bridgeLog(`[Bot Conversation] Failed to parse config: ${err}`);
@@ -738,6 +946,8 @@ export class BotConversationManager {
             config,
             profileKey,
             active: true,
+            halted: false,
+            additionalUserInput: [],
             cancellationSource,
             logFilePath: '',
         };
@@ -1163,6 +1373,8 @@ export class BotConversationManager {
             config,
             profileKey,
             active: true,
+            halted: false,
+            additionalUserInput: [],
             cancellationSource,
             logFilePath: '',
         };
