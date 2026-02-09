@@ -39,6 +39,8 @@ export interface ModelConfig {
     description?: string;
     /** If true this is the default model when no model is specified. */
     isDefault?: boolean;
+    /** Ollama keep_alive duration (e.g. "5m", "1h", "0", "-1"). Default: "5m". */
+    keepAlive?: string;
 }
 
 /** A named expansion profile. */
@@ -90,6 +92,21 @@ export interface ExpanderProcessResult {
     /** Model config key used. */
     modelConfig: string;
     error?: string;
+    /** Token usage statistics from Ollama. */
+    tokenInfo?: {
+        promptTokens: number;
+        completionTokens: number;
+        totalDurationMs: number;
+        loadDurationMs: number;
+    };
+}
+
+/** Stats returned by Ollama in the final streaming chunk. */
+interface OllamaStats {
+    promptTokens: number;
+    completionTokens: number;
+    totalDurationMs: number;
+    loadDurationMs: number;
 }
 
 // ============================================================================
@@ -201,6 +218,7 @@ export class PromptExpanderManager {
                             stripThinkingTags: typeof m.stripThinkingTags === 'boolean' ? m.stripThinkingTags : config.stripThinkingTags,
                             description: typeof m.description === 'string' ? m.description : undefined,
                             isDefault: m.isDefault === true,
+                            keepAlive: typeof m.keepAlive === 'string' ? m.keepAlive : undefined,
                         };
                     }
                 }
@@ -276,6 +294,7 @@ export class PromptExpanderManager {
                 temperature: config.temperature,
                 stripThinkingTags: config.stripThinkingTags,
                 isDefault: true,
+                keepAlive: '5m',
             },
         };
     }
@@ -388,6 +407,35 @@ export class PromptExpanderManager {
         });
     }
 
+    /** Check if a specific model is currently loaded in Ollama via GET /api/ps. */
+    private async isModelLoaded(baseUrl: string, modelName: string): Promise<boolean> {
+        return new Promise((resolve) => {
+            const u = new URL('/api/ps', baseUrl);
+            const req = http.request(
+                { hostname: u.hostname, port: u.port, path: u.pathname, method: 'GET', timeout: 3000 },
+                (res) => {
+                    let body = '';
+                    res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+                    res.on('end', () => {
+                        try {
+                            const parsed = JSON.parse(body);
+                            const loaded = (parsed.models ?? []).some(
+                                (m: any) => (m.name ?? m.model ?? '') === modelName,
+                            );
+                            resolve(loaded);
+                        } catch {
+                            resolve(false);
+                        }
+                    });
+                    res.on('error', () => resolve(false));
+                },
+            );
+            req.on('error', () => resolve(false));
+            req.on('timeout', () => { req.destroy(); resolve(false); });
+            req.end();
+        });
+    }
+
     private async ollamaGenerate(
         baseUrl: string,
         model: string,
@@ -396,7 +444,8 @@ export class PromptExpanderManager {
         temperature: number,
         onToken?: (token: string) => void,
         cancellationToken?: vscode.CancellationToken,
-    ): Promise<string> {
+        keepAlive?: string,
+    ): Promise<{ text: string; stats?: OllamaStats }> {
         return new Promise((resolve, reject) => {
             const url = new URL('/api/chat', baseUrl);
             const body = JSON.stringify({
@@ -407,6 +456,8 @@ export class PromptExpanderManager {
                 ],
                 stream: true,
                 options: { temperature },
+                // eslint-disable-next-line @typescript-eslint/naming-convention
+                ...(keepAlive !== undefined ? { keep_alive: keepAlive } : {}),
             });
 
             const req = http.request(
@@ -421,6 +472,7 @@ export class PromptExpanderManager {
                 (res) => {
                     let fullResponse = '';
                     let buffer = '';
+                    let stats: OllamaStats | undefined;
 
                     res.on('data', (chunk: Buffer) => {
                         buffer += chunk.toString();
@@ -434,6 +486,14 @@ export class PromptExpanderManager {
                                     fullResponse += parsed.message.content;
                                     onToken?.(parsed.message.content);
                                 }
+                                if (parsed.done === true) {
+                                    stats = {
+                                        promptTokens: parsed.prompt_eval_count ?? 0,
+                                        completionTokens: parsed.eval_count ?? 0,
+                                        totalDurationMs: Math.round((parsed.total_duration ?? 0) / 1e6),
+                                        loadDurationMs: Math.round((parsed.load_duration ?? 0) / 1e6),
+                                    };
+                                }
                             } catch { /* partial JSON */ }
                         }
                     });
@@ -445,9 +505,17 @@ export class PromptExpanderManager {
                                 if (parsed.message?.content) {
                                     fullResponse += parsed.message.content;
                                 }
+                                if (parsed.done === true && !stats) {
+                                    stats = {
+                                        promptTokens: parsed.prompt_eval_count ?? 0,
+                                        completionTokens: parsed.eval_count ?? 0,
+                                        totalDurationMs: Math.round((parsed.total_duration ?? 0) / 1e6),
+                                        loadDurationMs: Math.round((parsed.load_duration ?? 0) / 1e6),
+                                    };
+                                }
                             } catch { /* ignore */ }
                         }
-                        resolve(fullResponse);
+                        resolve({ text: fullResponse, stats });
                     });
                     res.on('error', reject);
                 },
@@ -525,7 +593,7 @@ export class PromptExpanderManager {
             }
 
             // Call LLM
-            const rawResponse = await this.ollamaGenerate(
+            const { text: rawResponse, stats } = await this.ollamaGenerate(
                 mc.ollamaUrl,
                 mc.model,
                 resolvedSystemPrompt,
@@ -533,6 +601,7 @@ export class PromptExpanderManager {
                 effectiveTemperature,
                 undefined,
                 cancellationToken,
+                mc.keepAlive,
             );
 
             if (!rawResponse.trim()) {
@@ -566,6 +635,7 @@ export class PromptExpanderManager {
                 thinkTagContent: thinkContent,
                 profile: effectiveProfileKey,
                 modelConfig: resolvedModelKey,
+                tokenInfo: stats,
             };
         } catch (err: any) {
             return {
@@ -828,6 +898,7 @@ export class PromptExpanderManager {
                             0,
                             undefined,
                             token,
+                            '5m',
                         );
                         bridgeLog(`[Prompt Expander] Model ${picked.modelName} loaded successfully`);
                     } catch (err: any) {
@@ -978,11 +1049,38 @@ export class PromptExpanderManager {
                 return;
             }
 
-            // Expand with progress
+            // Check if model is loaded — if not, pre-load with distinct progress
+            const modelLoaded = await this.isModelLoaded(mc.ollamaUrl, mc.model);
+            if (!modelLoaded) {
+                let preloadCancelled = false;
+                await vscode.window.withProgress(
+                    {
+                        location: vscode.ProgressLocation.Notification,
+                        title: `Loading model ${mc.model}...`,
+                        cancellable: true,
+                    },
+                    async (_progress, token) => {
+                        try {
+                            await this.ollamaGenerate(
+                                mc.ollamaUrl, mc.model, 'Respond with OK.', 'OK', 0,
+                                undefined, token, mc.keepAlive,
+                            );
+                        } catch (err: any) {
+                            if (err.message === 'Cancelled') { preloadCancelled = true; }
+                        }
+                    },
+                );
+                if (preloadCancelled) {
+                    vscode.window.showInformationMessage('Prompt expansion cancelled.');
+                    return;
+                }
+            }
+
+            // Process with progress
             const result = await vscode.window.withProgress(
                 {
                     location: vscode.ProgressLocation.Notification,
-                    title: `Expanding with ${mc.model} [${profileKey}]...`,
+                    title: `Processing prompt with ${mc.model}...`,
                     cancellable: true,
                 },
                 async (_progress, cancellationToken) => {
@@ -1013,9 +1111,12 @@ export class PromptExpanderManager {
             });
 
             if (success) {
-                bridgeLog(`[Prompt Expander] ${originalText.length} → ${result.result.length} chars [${profileKey}/${result.modelConfig}]`);
+                const tokenStr = result.tokenInfo
+                    ? ` | ${result.tokenInfo.promptTokens}+${result.tokenInfo.completionTokens} tokens, ${(result.tokenInfo.totalDurationMs / 1000).toFixed(1)}s`
+                    : '';
+                bridgeLog(`[Prompt Expander] ${originalText.length} → ${result.result.length} chars [${profileKey}/${result.modelConfig}]${tokenStr}`);
                 vscode.window.showInformationMessage(
-                    `Expanded (${originalText.length} → ${result.result.length} chars) [${profileKey}]`,
+                    `Expanded (${originalText.length} → ${result.result.length} chars) [${profileKey}]${tokenStr}`,
                 );
             }
         } catch (error) {

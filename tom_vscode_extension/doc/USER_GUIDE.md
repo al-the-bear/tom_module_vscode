@@ -294,14 +294,16 @@ The `models` section lets you define named model configs. One must be marked `is
     "temperature": 0.4,
     "stripThinkingTags": true,
     "description": "Qwen 3 8B — fast reasoning model with thinking tags",
-    "isDefault": true
+    "isDefault": true,
+    "keepAlive": "5m"
   },
   "llama3-70b": {
     "ollamaUrl": "http://gpu-server:11434",
     "model": "llama3:70b",
     "temperature": 0.6,
     "stripThinkingTags": false,
-    "description": "Llama 3 70B — high quality, slower"
+    "description": "Llama 3 70B — high quality, slower",
+    "keepAlive": "10m"
   },
   "codestral": {
     "ollamaUrl": "http://localhost:11434",
@@ -321,6 +323,7 @@ The `models` section lets you define named model configs. One must be marked `is
 | `stripThinkingTags` | boolean | Whether to strip `<think>…</think>` tags (useful for Qwen 3 reasoning models) |
 | `description` | string | Human-readable description shown in the model selection quick-pick |
 | `isDefault` | boolean | If `true`, this model is used when no model is specified. Exactly one model should have this set. |
+| `keepAlive` | string | How long Ollama keeps the model loaded after the last request. Default: `"5m"`. Values: `"5m"`, `"1h"`, `"0"` (unload immediately), `"-1"` (keep forever). |
 
 **When no `models` section exists**, the top-level `ollamaUrl`, `model`, `temperature`, and `stripThinkingTags` are used as a default model config. This maintains backward compatibility with earlier configurations.
 
