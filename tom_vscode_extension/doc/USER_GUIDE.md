@@ -80,6 +80,14 @@ Complete guide to using the DartScript VS Code extension for enhanced Dart/Flutt
     - [Send to Chat Not Working](#send-to-chat-not-working)
     - [CLI Server Connection Issues](#cli-server-connection-issues)
   - [Additional Resources](#additional-resources)
+  - [Command \& Keybinding Reference](#command--keybinding-reference)
+    - [Bot Conversation Control](#bot-conversation-control)
+    - [Local LLM / Prompt Expander](#local-llm--prompt-expander)
+    - [Send to Copilot Chat](#send-to-copilot-chat)
+    - [Tom AI Chat](#tom-ai-chat)
+    - [Dart Script Execution](#dart-script-execution-1)
+    - [Bridge \& Server](#bridge--server)
+    - [Utility](#utility)
   - [Keyboard Shortcuts Summary](#keyboard-shortcuts-summary)
   - [Context Menu Summary](#context-menu-summary)
     - [File Explorer (on .dart files)](#file-explorer-on-dart-files)
@@ -1106,6 +1114,89 @@ All chord shortcuts use `Ctrl+Shift` as the modifier. Press the first combinatio
 | `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Win/Linux) | Reload Window |
 
 **Note:** On macOS, `Ctrl+Shift+` chords use the Control key (not Command), so they don't conflict with standard VS Code shortcuts which use `Cmd+Shift+`. On Windows/Linux, some `Ctrl+Shift+` first-chord prefixes may shadow default bindings (e.g., `Ctrl+Shift+S` shadows "Save As"); use the Command Palette as an alternative.
+
+---
+
+## Command & Keybinding Reference
+
+Complete reference for all 42 extension commands. Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and type "DS:" to see most commands. Chord shortcuts use `Ctrl+Shift` — press the first combination, release, then press the second.
+
+### Bot Conversation Control
+
+| Command | ID | Shortcut | Description |
+|---------|----|----------|-------------|
+| DS: Start Local-Copilot Conversation | `dartscript.startBotConversation` | `Ctrl+Shift+C, Ctrl+Shift+B` | Starts a multi-turn automated conversation between a local Ollama model and GitHub Copilot (or between two local model personas in self-talk mode). Shows a profile picker if profiles are configured, then prompts for a goal description (pre-filled with selected text if any) and optional constraints. The local model generates prompts for Copilot, evaluates responses, and iterates until the goal is reached or max turns exhausted. Supports configurable history modes, pause-between-turns, file context inclusion, conversation logging, and optional Telegram notifications. |
+| DS: Stop Local-Copilot Conversation | `dartscript.stopBotConversation` | `Ctrl+Shift+C, Ctrl+Shift+S` | Permanently stops the active bot conversation by cancelling its loop. The conversation log is finalized and written to disk. Shows a message if no conversation is active. |
+| DS: Halt Local-Copilot Conversation | `dartscript.haltBotConversation` | `Ctrl+Shift+C, Ctrl+Shift+H` | Pauses the active bot conversation between turns. Unlike stop, the conversation remains active and can be resumed. The loop blocks at the next halt checkpoint, waiting for a continue signal. Useful for reviewing intermediate results before proceeding. |
+| DS: Continue Local-Copilot Conversation | `dartscript.continueBotConversation` | `Ctrl+Shift+C, Ctrl+Shift+J` | Resumes a halted bot conversation, allowing the loop to proceed to the next turn. Any additional user input queued via "Add to" is incorporated into the next prompt. Shows a message if not currently halted. |
+| DS: Add to Local-Copilot Conversation | `dartscript.addToBotConversation` | `Ctrl+Shift+C, Ctrl+Shift+A` | Shows an input box (pre-filled with selected text) where you can type additional context, corrections, or instructions. The text is queued and injected into the local model's next prompt via the `${additionalUserInfo}` placeholder. Multiple calls are concatenated. Can be used while the conversation is running or halted. |
+
+### Local LLM / Prompt Expander
+
+| Command | ID | Shortcut | Description |
+|---------|----|----------|-------------|
+| DS: Expand Prompt (Ollama) | `dartscript.expandPrompt` | `Ctrl+Shift+L, Ctrl+Shift+E` | Takes the selected text (or full file) from the active editor, sends it to a local Ollama model with a configurable system prompt (default: expand terse prompt into detailed one), and **replaces the text in-place** with the LLM's response. Supports `<think>` tag stripping, result templates with placeholder substitution, and cancellable progress notifications. |
+| DS: Switch local Ollama model... | `dartscript.switchLocalModel` | `Ctrl+Shift+L, Ctrl+Shift+W` | Queries the local Ollama server (`/api/tags`) for all available models and shows a QuickPick listing them with sizes. When you pick a model, it updates the default model in `send_to_chat.json` and sends a warm-up request to pre-load the model into Ollama's memory for faster first use. |
+| DS: Send to local LLM | `dartscript.sendToLocalLlm` | — | Shows a QuickPick listing all profiles defined in `promptExpander.profiles` in `send_to_chat.json`. When you pick a profile, it sends the selected text (or full file) to Ollama using that profile's system prompt, temperature, and result template, then replaces the text in the editor with the result. |
+| DS: Send to local LLM (Standard) | `dartscript.sendToLocalLlmStandard` | `Ctrl+Shift+L, Ctrl+Shift+S` | Sends the selected text (or full file) to the local Ollama model using the **default profile** (marked `isDefault: true`, or the first profile). Skips the profile picker. Processes the result and replaces text in the editor. |
+| DS: Send to local LLM (Template)... | `dartscript.sendToLocalLlmAdvanced` | `Ctrl+Shift+L, Ctrl+Shift+T` | Same as "Send to local LLM" — shows the profile picker QuickPick, lets you choose a profile, then processes and replaces text. |
+| Expand Prompt | `dartscript.sendToLocalLlm.expand` | — | Context-menu shortcut that sends selected text to Ollama using the `"expand"` profile directly, without showing the picker. |
+| Rewrite | `dartscript.sendToLocalLlm.rewrite` | — | Context-menu shortcut that sends selected text to Ollama using the `"rewrite"` profile directly, without showing the picker. |
+| Detailed Expansion | `dartscript.sendToLocalLlm.detailed` | — | Context-menu shortcut that sends selected text to Ollama using the `"detailed"` profile directly, without showing the picker. |
+| Annotated Expansion | `dartscript.sendToLocalLlm.annotated` | — | Context-menu shortcut that sends selected text to Ollama using the `"annotated"` profile directly, without showing the picker. |
+
+### Send to Copilot Chat
+
+| Command | ID | Shortcut | Description |
+|---------|----|----------|-------------|
+| DS: Send to Copilot Chat | `dartscript.sendToChat` | `Ctrl+Shift+S, Ctrl+Shift+C` | Takes the currently selected text in the active editor and opens VS Code's Copilot Chat panel with that text as the query. Requires a non-empty selection; shows an error if nothing is selected. |
+| DS: Send to Copilot Chat (Standard) | `dartscript.sendToChatStandard` | `Ctrl+Shift+S, Ctrl+Shift+S` | Sends selected text (or full file) to Copilot Chat using the **default template** from `send_to_chat.json`. Skips the template picker. The text is wrapped with the template's prefix/suffix and placeholder substitution is applied. Shows a warning if no default template is configured. |
+| DS: Send to Copilot Chat (Template)... | `dartscript.sendToChatAdvanced` | `Ctrl+Shift+S, Ctrl+Shift+T` | Shows a QuickPick menu listing all templates from `send_to_chat.json`. The user picks a template, and the selected text (or full file) is wrapped with that template's prefix/suffix. Supports `${placeholder}` substitution from parsed content (JSON, YAML, or colon-delimited values). The combined text is sent to Copilot Chat. |
+| DS: Reload Chat Config | `dartscript.reloadSendToChatConfig` | `Ctrl+Shift+S, Ctrl+Shift+R` | Reloads the `send_to_chat.json` configuration file from disk, re-parsing all templates and the default template name. Updates the template list without restarting the extension. Shows a confirmation message. |
+| Send with Trail Reminder | `dartscript.sendToChatTrailReminder` | — | Sends the selected text (or full file) to Copilot Chat using the `"Trail Reminder"` template from `send_to_chat.json`. Available from the editor context menu submenu. |
+| TODO Execution | `dartscript.sendToChatTodoExecution` | — | Sends the selected text (or full file) to Copilot Chat using the `"TODO Execution"` template from `send_to_chat.json`. Available from the editor context menu submenu. |
+| Code Review | `dartscript.sendToChatCodeReview` | — | Sends the selected text (or full file) to Copilot Chat using the `"Code Review"` template from `send_to_chat.json`. Available from the editor context menu submenu. |
+| Explain Code | `dartscript.sendToChatExplain` | — | Sends the selected text (or full file) to Copilot Chat using the `"Explain Code"` template from `send_to_chat.json`. Available from the editor context menu submenu. |
+| Add to Todo | `dartscript.sendToChatAddToTodo` | — | Sends the selected text (or full file) to Copilot Chat using the `"Add to Todo"` template from `send_to_chat.json`. Available from the editor context menu submenu. |
+| Fix Markdown here | `dartscript.sendToChatFixMarkdown` | — | Sends the selected text (or full file) to Copilot Chat using the `"Fix Markdown here"` template from `send_to_chat.json`. Available from the editor context menu submenu. |
+| DS: Show chat answer values | `dartscript.showChatAnswerValues` | — | Opens the DartScript output channel and prints the current accumulated chat answer values — a key-value map loaded from a session-unique answer YAML file. These values are used as `${dartscript.chat.*}` placeholders in templates. |
+| DS: Clear chat answer values | `dartscript.clearChatAnswerValues` | — | Clears the in-memory chat answer values map (the `${dartscript.chat.*}` placeholder data). Shows how many entries were cleared. Does not delete the answer file on disk. |
+
+### Tom AI Chat
+
+| Command | ID | Shortcut | Description |
+|---------|----|----------|-------------|
+| Tom AI: Start Chat | `dartscript.startTomAIChat` | `Ctrl+Shift+T, Ctrl+Shift+N` | Initializes a Tom AI Chat session from a `.chat.md` file open in the active editor. Adds/verifies a metadata header block (with model IDs, token limits, iteration limits, and pre-processing config) and creates companion files for responses and summaries in the same directory. Sets up the chat structure without sending a prompt. |
+| Tom AI: Send Chat Prompt | `dartscript.sendToTomAIChat` | `Ctrl+Shift+T, Ctrl+Shift+S` | Parses the active `.chat.md` file's metadata and prompt, then sends it to a VS Code Language Model (Copilot) with agentic tool-use capabilities. Runs a multi-iteration loop (up to `maxIterations`, default 100) where the model can invoke whitelisted tools (file read/write, terminal, search). Manages conversation history with token-limited summarization. Supports optional pre-processing with a cheaper model. Logs all prompts, tool calls, and responses. |
+| Tom AI: Interrupt Chat | `dartscript.interruptTomAIChat` | `Ctrl+Shift+T, Ctrl+Shift+I` | Cancels the currently active Tom AI Chat request by triggering the cancellation token. Stops any in-progress model request or tool invocation. Shows a confirmation if interrupted, or an info message if nothing is running. |
+
+### Dart Script Execution
+
+| Command | ID | Shortcut | Description |
+|---------|----|----------|-------------|
+| DS: Execute File | `dartscript.executeFile` | — | Sends the active/selected Dart file to the Dart bridge via `executeFileVcb`. The bridge loads and runs the file, which must contain an `execute()` function entry point. If the bridge returns a `showDocument` action, the result is opened in a new editor tab. Available from the file explorer context menu on `.dart` files. |
+| DS: Execute as Script | `dartscript.executeScript` | — | Sends the **selected text** (or full file content) to the Dart bridge as inline script code — no `execute()` function needed. Supports a `// @timeout: <seconds>` comment on the first line to override the default 2-hour timeout. Available from the editor context menu on `.dart` files. |
+
+### Bridge & Server
+
+| Command | ID | Shortcut | Description |
+|---------|----|----------|-------------|
+| DS: Restart Bridge | `dartscript.restartBridge` | — | Stops any existing Dart bridge process and starts a new one. The bridge is the `tom_vscode_bridge` Dart process that communicates with the extension via JSON-RPC over stdin/stdout, providing DartScript execution, CLI server integration, and other backend services. Uses auto-restart for crash recovery. |
+| DS: Start Tom CLI Integration Server | `dartscript.startCliServer` | — | Sends a request to the Dart bridge to start a TCP socket server that allows external CLI tools (like Tom CLI) to communicate with VS Code. Auto-selects an available port from the range 19900–19909. Shows the selected port on success. |
+| DS: Start Tom CLI Integration Server (Custom Port) | `dartscript.startCliServerCustomPort` | — | Shows an input box for a custom port number (validated as 1–65535, default 19900), then starts the CLI integration server on that port. Reports success or an error if the port is in use. |
+| DS: Stop Tom CLI Integration Server | `dartscript.stopCliServer` | — | Shuts down the TCP CLI integration server. Reports whether the server was running and was successfully stopped. |
+| DS: Start Tom Process Monitor | `dartscript.startProcessMonitor` | — | Launches the Tom Process Monitor via the Dart bridge, which manages a watcher twin process and a ledger server process. Reports the alive/dead status of all three processes (ProcessMonitor, Watcher, Ledger Server) with status indicators. |
+| DS: Toggle Bridge Debug Logging | `dartscript.toggleBridgeDebugLogging` | — | Toggles verbose debug logging on/off for the Dart bridge. When enabled, the bridge outputs detailed debug information to the DartScript output channel. Shows the new logging state. |
+
+### Utility
+
+| Command | ID | Shortcut | Description |
+|---------|----|----------|-------------|
+| DS: Reload Window | `dartscript.reloadWindow` | `Cmd+Shift+R` / `Ctrl+Shift+R` | Notifies the Dart bridge to save state, explicitly stops the bridge process to prevent orphaned processes, then executes VS Code's built-in window reload. Ensures clean shutdown before reloading. |
+| DS: Run Tests | `dartscript.runTests` | — | Creates a `BridgeTestRunner` and runs all bridge integration tests from the `tom_vscode_bridge/test/` directory. Reports test results. |
+| DS: Show Extension Help | `dartscript.showHelp` | — | Opens the extension's documentation in VS Code's markdown preview. Looks for `doc/USER_GUIDE.md` in the extension directory; falls back to `README.md` if not found. |
+| DartScript: Print Configuration | `dartscript.printConfiguration` | — | Prints the complete DartScript interpreter configuration to the output channel — all registered imports, classes, methods, constructors, global variables, and getters available in the DartScript runtime. Useful for debugging what's available to scripts. |
+| DartScript: Show VS Code API Info | `dartscript.showApiInfo` | — | Opens a dedicated output channel with a comprehensive report: all available Language Models (name, vendor, family, max tokens), all registered LM Tools grouped by prefix, AI/Chat-related extensions and their capabilities, and configured MCP servers. Useful for debugging the AI API surface. |
 
 ## Context Menu Summary
 
