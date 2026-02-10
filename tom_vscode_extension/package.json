@@ -300,23 +300,28 @@
     "keybindings": [
       {
         "command": "dartscript.chordMenu.conversation",
-        "key": "ctrl+shift+c"
+        "key": "ctrl+shift+c",
+        "when": "!dartscript.chordMenuOpen"
       },
       {
         "command": "dartscript.chordMenu.llm",
-        "key": "ctrl+shift+l"
+        "key": "ctrl+shift+l",
+        "when": "!dartscript.chordMenuOpen"
       },
       {
         "command": "dartscript.chordMenu.chat",
-        "key": "ctrl+shift+a"
+        "key": "ctrl+shift+a",
+        "when": "!dartscript.chordMenuOpen"
       },
       {
         "command": "dartscript.chordMenu.tomAiChat",
-        "key": "ctrl+shift+t"
+        "key": "ctrl+shift+t",
+        "when": "!dartscript.chordMenuOpen"
       },
       {
         "command": "dartscript.chordMenu.execute",
-        "key": "ctrl+shift+e"
+        "key": "ctrl+shift+e",
+        "when": "!dartscript.chordMenuOpen"
       },
       {
         "command": "dartscript.chordMenu.executeKey",
