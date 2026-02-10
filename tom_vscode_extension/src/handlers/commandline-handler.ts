@@ -227,44 +227,59 @@ function findRepositoryRoot(): string | undefined {
  * The config is re-read each time the picker is shown (live updates).
  */
 async function pickPostActions(existingActions?: string[]): Promise<string[] | undefined> {
-    const actions: string[] = existingActions ? [...existingActions] : [];
+    try {
+        const actions: string[] = existingActions ? [...existingActions] : [];
 
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-        // Re-read definitions each iteration
-        const definitions = getPostActionDefinitions();
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            // Re-read definitions each iteration
+            const definitions = getPostActionDefinitions();
+            console.log(`[commandline-handler] pickPostActions: ${definitions.length} action definitions loaded`);
 
-        const items: (vscode.QuickPickItem & { _commandId?: string })[] = [
-            {
-                label: '$(play) Continue — execute command',
-                description: actions.length > 0
-                    ? `(${actions.length} post-action${actions.length > 1 ? 's' : ''} queued)`
-                    : '(no post-actions)',
-                _commandId: '__continue__',
-            },
-            { label: '', kind: vscode.QuickPickItemKind.Separator },
-            ...definitions.map(def => ({
-                label: `$(add) ${def.label}`,
-                description: def.description,
-                detail: actions.includes(def.commandId) ? '✓ already added' : undefined,
-                _commandId: def.commandId,
-            })),
-        ];
+            const items: (vscode.QuickPickItem & { _commandId?: string })[] = [
+                {
+                    label: '$(play) Continue - execute command',
+                    description: actions.length > 0
+                        ? `(${actions.length} post-action${actions.length > 1 ? 's' : ''} queued)`
+                        : '(no post-actions)',
+                    _commandId: '__continue__',
+                },
+                { label: '', kind: vscode.QuickPickItemKind.Separator },
+                ...definitions.map(def => ({
+                    label: `$(add) ${def.label}`,
+                    description: def.description,
+                    detail: actions.includes(def.commandId) ? '✓ already added' : undefined,
+                    _commandId: def.commandId,
+                })),
+            ];
 
-        const picked = await vscode.window.showQuickPick(items, {
-            title: 'Post-Execution Actions',
-            placeHolder: actions.length > 0
-                ? `${actions.length} action(s) queued. Pick another or Continue.`
-                : 'Add actions to run after the command finishes, or Continue',
-        });
+            console.log(`[commandline-handler] pickPostActions: showing quickpick with ${items.length} items`);
 
-        if (!picked) { return undefined; } // cancelled
-        if (picked._commandId === '__continue__') { return actions; }
+            const picked = await vscode.window.showQuickPick(items, {
+                title: 'Post-Execution Actions',
+                placeHolder: actions.length > 0
+                    ? `${actions.length} action(s) queued. Pick another or Continue.`
+                    : 'Add actions to run after the command finishes, or Continue',
+            });
 
-        if (picked._commandId && !actions.includes(picked._commandId)) {
-            actions.push(picked._commandId);
-            vscode.window.showInformationMessage(`Added: ${picked.label.replace('$(add) ', '')}`);
+            if (!picked) {
+                console.log('[commandline-handler] pickPostActions: cancelled by user');
+                return undefined;
+            }
+            if (picked._commandId === '__continue__') {
+                console.log(`[commandline-handler] pickPostActions: continuing with ${actions.length} actions`);
+                return actions;
+            }
+
+            if (picked._commandId && !actions.includes(picked._commandId)) {
+                actions.push(picked._commandId);
+                vscode.window.showInformationMessage(`Added: ${picked.label.replace('$(add) ', '')}`);
+            }
         }
+    } catch (err: any) {
+        console.error(`[commandline-handler] pickPostActions error:`, err);
+        vscode.window.showErrorMessage(`Post-action picker failed: ${err.message}`);
+        return undefined;
     }
 }
 
@@ -273,9 +288,10 @@ async function pickPostActions(existingActions?: string[]): Promise<string[] | u
 // ============================================================================
 
 async function defineCommandline(): Promise<void> {
+  try {
     // 1) Command
     const command = await vscode.window.showInputBox({
-        title: 'Define Commandline (1/4) — Command',
+        title: 'Define Commandline (1/4) - Command',
         prompt: 'Shell command to execute',
         placeHolder: 'e.g. dart analyze, npm test, make build',
     });
@@ -287,7 +303,7 @@ async function defineCommandline(): Promise<void> {
 
     // 2) Description (optional)
     const description = await vscode.window.showInputBox({
-        title: 'Define Commandline (2/4) — Description',
+        title: 'Define Commandline (2/4) - Description',
         prompt: 'Optional description (leave empty to use the command)',
         placeHolder: command,
     });
@@ -302,7 +318,7 @@ async function defineCommandline(): Promise<void> {
             { label: '$(git-branch) Repository Root', id: 'repository', description: 'Detected from active file (.git)' },
             { label: '$(folder-opened) Custom Path...', id: 'custom' },
         ],
-        { title: 'Define Commandline (3/4) — Working Directory', placeHolder: 'Where should this command run?' }
+        { title: 'Define Commandline (3/4) - Working Directory', placeHolder: 'Where should this command run?' }
     );
     if (!cwdChoice) { return; }
 
@@ -376,6 +392,10 @@ async function defineCommandline(): Promise<void> {
     if (writeConfig(config)) {
         vscode.window.showInformationMessage(`Commandline saved: ${description.trim() || command.trim()}`);
     }
+  } catch (err: any) {
+    console.error(`[commandline-handler] defineCommandline error:`, err);
+    vscode.window.showErrorMessage(`Define commandline failed: ${err.message}`);
+  }
 }
 
 // ============================================================================
@@ -450,6 +470,7 @@ function resolveExecutionCwd(entry: CommandlineEntry): string | undefined {
 }
 
 async function executeCommandline(): Promise<void> {
+  try {
     const commandlines = getCommandlines();
     if (commandlines.length === 0) {
         vscode.window.showInformationMessage('No commandlines defined. Use "Add Commandline" first.');
@@ -503,10 +524,14 @@ async function executeCommandline(): Promise<void> {
             try {
                 await vscode.commands.executeCommand(commandId);
             } catch (err: any) {
-                vscode.window.showWarningMessage(`Post-action failed: ${commandId} — ${err.message}`);
+                vscode.window.showWarningMessage(`Post-action failed: ${commandId} - ${err.message}`);
             }
         }
     }
+  } catch (err: any) {
+    console.error(`[commandline-handler] executeCommandline error:`, err);
+    vscode.window.showErrorMessage(`Execute commandline failed: ${err.message}`);
+  }
 }
 
 // ============================================================================
