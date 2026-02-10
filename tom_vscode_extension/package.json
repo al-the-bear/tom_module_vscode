@@ -307,6 +307,10 @@
         "key": "ctrl+shift+v"
       },
       {
+        "command": "-workbench.view.extensions",
+        "key": "ctrl+shift+x"
+      },
+      {
         "command": "dartscript.chordMenu.conversation",
         "key": "ctrl+shift+c",
         "when": "!dartscript.chordMenuOpen"
@@ -333,7 +337,7 @@
       },
       {
         "command": "dartscript.chordMenu.favorites",
-        "key": "ctrl+shift+v",
+        "key": "ctrl+shift+x",
         "when": "!dartscript.chordMenuOpen"
       }
     ],
