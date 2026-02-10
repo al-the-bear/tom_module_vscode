@@ -12,12 +12,14 @@
  *   Ctrl+Shift+A → Send to Copilot Chat
  *   Ctrl+Shift+T → Tom AI Chat
  *   Ctrl+Shift+E → Execute Commandline
+ *   Ctrl+Shift+V → Favorites (configurable via send_to_chat.json)
  *
  * All groups include a "?" item that opens the Quick Reference document.
  */
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 
 // ============================================================================
 // Types
@@ -144,7 +146,51 @@ const CHORD_GROUPS: Record<string, ChordGroup> = {
 };
 
 // ============================================================================
-// Active Menu State (for Ctrl+Shift held-down keybinding dispatch)
+// Favorites (loaded from send_to_chat.json → "favorites" section)
+// ============================================================================
+
+/**
+ * Returns the config file path for `send_to_chat.json`.
+ */
+function getConfigPath(): string | undefined {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        return undefined;
+    }
+    const configSetting = vscode.workspace.getConfiguration('dartscript.sendToChat').get<string>('configPath');
+    if (!configSetting) {
+        return path.join(workspaceFolders[0].uri.fsPath, '_ai', 'send_to_chat', 'send_to_chat.json');
+    }
+    return configSetting.replace('${workspaceFolder}', workspaceFolders[0].uri.fsPath);
+}
+
+/**
+ * Reads the `favorites` array from send_to_chat.json.
+ * Each entry: `{ key, label, commandId }`.
+ * Returns an empty array if the file or section doesn't exist.
+ */
+function loadFavorites(): ChordMenuItem[] {
+    const configPath = getConfigPath();
+    if (!configPath || !fs.existsSync(configPath)) { return []; }
+    try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        const favs = config?.favorites;
+        if (!Array.isArray(favs)) { return []; }
+        return favs
+            .filter((f: any) => f.key && f.label && f.commandId)
+            .map((f: any) => ({
+                key: String(f.key).toLowerCase(),
+                label: String(f.label),
+                commandId: String(f.commandId),
+            }));
+    } catch (e) {
+        console.error(`[ChordMenu] Failed to load favorites from ${configPath}:`, e);
+        return [];
+    }
+}
+
+// ============================================================================
+// Active Menu State
 // ============================================================================
 
 /** The currently open chord group ID, or null if no menu is showing */
@@ -273,6 +319,28 @@ export function chordMenuExecuteHandler(): void {
 }
 
 /**
+ * Shows the Favorites menu. Items are read from send_to_chat.json → "favorites".
+ * Uses the same QuickPick UI as other chord groups but loads dynamically.
+ */
+export async function chordMenuFavoritesHandler(): Promise<void> {
+    const items = loadFavorites();
+    if (items.length === 0) {
+        vscode.window.showWarningMessage(
+            'No favorites configured. Add a "favorites" array to send_to_chat.json.'
+        );
+        return;
+    }
+
+    // Temporarily inject as a dynamic chord group so showChordMenu() works
+    CHORD_GROUPS['favorites'] = {
+        title: 'Favorites',
+        prefix: 'Ctrl+Shift+V',
+        items,
+    };
+    await showChordMenu('favorites');
+}
+
+/**
  * Registers all chord menu commands, the key dispatcher, and the quick reference command.
  */
 export function registerChordMenuCommands(context: vscode.ExtensionContext): void {
@@ -282,6 +350,7 @@ export function registerChordMenuCommands(context: vscode.ExtensionContext): voi
         vscode.commands.registerCommand('dartscript.chordMenu.chat', chordMenuChatHandler),
         vscode.commands.registerCommand('dartscript.chordMenu.tomAiChat', chordMenuTomAiChatHandler),
         vscode.commands.registerCommand('dartscript.chordMenu.execute', chordMenuExecuteHandler),
+        vscode.commands.registerCommand('dartscript.chordMenu.favorites', chordMenuFavoritesHandler),
         vscode.commands.registerCommand(QUICK_REFERENCE_COMMAND, openQuickReference),
     ];
     context.subscriptions.push(...cmds);

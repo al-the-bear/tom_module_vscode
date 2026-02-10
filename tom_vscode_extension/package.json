@@ -267,6 +267,11 @@
         "category": "DartScript"
       },
       {
+        "command": "dartscript.chordMenu.favorites",
+        "title": "DS: Favorites...",
+        "category": "DartScript"
+      },
+      {
         "command": "dartscript.showQuickReference",
         "title": "DS: Show Quick Reference",
         "category": "DartScript"
@@ -298,6 +303,10 @@
         "key": "ctrl+shift+c"
       },
       {
+        "command": "-markdown.showPreview",
+        "key": "ctrl+shift+v"
+      },
+      {
         "command": "dartscript.chordMenu.conversation",
         "key": "ctrl+shift+c",
         "when": "!dartscript.chordMenuOpen"
@@ -322,7 +331,11 @@
         "key": "ctrl+shift+e",
         "when": "!dartscript.chordMenuOpen"
       },
-
+      {
+        "command": "dartscript.chordMenu.favorites",
+        "key": "ctrl+shift+v",
+        "when": "!dartscript.chordMenuOpen"
+      }
     ],
     "menus": {
       "explorer/context": [
