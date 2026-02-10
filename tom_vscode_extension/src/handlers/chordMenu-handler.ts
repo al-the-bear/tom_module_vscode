@@ -335,7 +335,7 @@ export async function chordMenuFavoritesHandler(): Promise<void> {
     // Temporarily inject as a dynamic chord group so showChordMenu() works
     CHORD_GROUPS['favorites'] = {
         title: 'Favorites',
-        prefix: 'Ctrl+Shift+P',
+        prefix: 'Ctrl+Shift+X',
         items,
     };
     await showChordMenu('favorites');
