@@ -57,6 +57,7 @@ import {
 
 // Tom AI Chat tools
 import { registerTomAiChatTools } from './tools/tomAiChat-tools';
+import { initializeToolDescriptions } from './tools/tool-executors';
 
 // Global manager instance for SendToChatAdvanced
 let sendToChatAdvancedManager: SendToChatAdvancedManager | undefined;
@@ -112,6 +113,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push({ dispose: () => botConversationManager?.dispose() });
 
     // Register Tom AI Chat tools
+    initializeToolDescriptions();
     registerTomAiChatTools(context);
 
     // Show activation message

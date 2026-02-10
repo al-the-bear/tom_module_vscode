@@ -379,55 +379,106 @@ export const GET_ERRORS_TOOL: SharedToolDefinition<GetErrorsInput> = {
 
 export interface ReadGuidelineInput { fileName?: string }
 
-async function executeReadGuideline(input: ReadGuidelineInput): Promise<string> {
-    const workspaceRoot = getWorkspaceRoot();
-    const guidelinesDir = path.join(workspaceRoot, '_copilot_guidelines');
-    if (!fs.existsSync(guidelinesDir)) {
-        return `Guidelines directory not found: ${guidelinesDir}`;
-    }
-    if (!input.fileName) {
-        const files = fs.readdirSync(guidelinesDir).filter(f => f.endsWith('.md')).sort();
-        let result = `Available guideline files in _copilot_guidelines/:\n\n`;
-        result += files.map(f => `- ${f}`).join('\n');
-        const indexPath = path.join(guidelinesDir, 'index.md');
-        if (fs.existsSync(indexPath)) {
-            result += '\n\n---\n\nindex.md content:\n\n';
-            result += fs.readFileSync(indexPath, 'utf8');
+/**
+ * Generic guideline reader for any base directory.
+ * Used by both tom_readGuideline (_copilot_tomai/) and tom_readLocalGuideline (_copilot_local/).
+ */
+function createGuidelineExecutor(baseDir: string): (input: ReadGuidelineInput) => Promise<string> {
+    return async (input: ReadGuidelineInput): Promise<string> => {
+        const workspaceRoot = getWorkspaceRoot();
+        const guidelinesDir = path.join(workspaceRoot, baseDir);
+        if (!fs.existsSync(guidelinesDir)) {
+            return `Guidelines directory not found: ${guidelinesDir}`;
         }
-        return result;
-    }
-    const targetFile = input.fileName.endsWith('.md') ? input.fileName : `${input.fileName}.md`;
-    const filePath = path.join(guidelinesDir, targetFile);
-    if (fs.existsSync(filePath)) {
-        return fs.readFileSync(filePath, 'utf8');
-    }
-    // try subdirectories
-    const subDirs = fs.readdirSync(guidelinesDir, { withFileTypes: true }).filter(d => d.isDirectory());
-    for (const sd of subDirs) {
-        const subPath = path.join(guidelinesDir, sd.name, targetFile);
-        if (fs.existsSync(subPath)) { return fs.readFileSync(subPath, 'utf8'); }
-    }
-    return `Guideline file not found: ${targetFile}`;
+        if (!input.fileName) {
+            const files = fs.readdirSync(guidelinesDir).filter(f => f.endsWith('.md')).sort();
+            let result = `Available guideline files in ${baseDir}/:\n\n`;
+            result += files.map(f => `- ${f}`).join('\n');
+            const indexPath = path.join(guidelinesDir, 'index.md');
+            if (fs.existsSync(indexPath)) {
+                result += '\n\n---\n\nindex.md content:\n\n';
+                result += fs.readFileSync(indexPath, 'utf8');
+            }
+            return result;
+        }
+        const targetFile = input.fileName.endsWith('.md') ? input.fileName : `${input.fileName}.md`;
+        const filePath = path.join(guidelinesDir, targetFile);
+        if (fs.existsSync(filePath)) {
+            return fs.readFileSync(filePath, 'utf8');
+        }
+        // try subdirectories
+        const subDirs = fs.readdirSync(guidelinesDir, { withFileTypes: true }).filter(d => d.isDirectory());
+        for (const sd of subDirs) {
+            const subPath = path.join(guidelinesDir, sd.name, targetFile);
+            if (fs.existsSync(subPath)) { return fs.readFileSync(subPath, 'utf8'); }
+        }
+        return `Guideline file not found: ${targetFile}`;
+    };
 }
+
+const guidelineInputSchema = {
+    type: 'object',
+    properties: {
+        fileName: {
+            type: 'string',
+            description: "Optional specific guideline file to read (e.g., 'coding_guidelines.md' or 'coding_guidelines'). If not specified, returns index.md with list of available files.",
+        },
+    },
+};
 
 export const READ_GUIDELINE_TOOL: SharedToolDefinition<ReadGuidelineInput> = {
     name: 'tom_readGuideline',
     displayName: 'Read Guideline',
     description:
-        'Read workspace Copilot guidelines from _copilot_guidelines/ folder. Without a fileName, returns the list of available files and the content of index.md (the main guideline index). Key guidelines: coding_guidelines.md (code structure, naming), documentation_guidelines.md (docs format), tests.md (test creation), project_structure.md (project patterns), bug_fixing.md (debugging workflow). Use this tool to understand workspace conventions before making changes.',
+        'Read workspace guidelines from _copilot_tomai/ folder. Without a fileName, returns the list of available files and the content of index.md (the main guideline index). Key guidelines: coding_guidelines.md (code structure, naming), documentation_guidelines.md (docs format), tests.md (test creation), project_structure.md (project patterns), bug_fixing.md (debugging workflow). Use this tool to understand workspace conventions before making changes.',
     tags: ['guidelines', 'tom-ai-chat'],
     readOnly: true,
-    inputSchema: {
-        type: 'object',
-        properties: {
-            fileName: {
-                type: 'string',
-                description: "Optional specific guideline file to read (e.g., 'coding_guidelines.md' or 'coding_guidelines'). If not specified, returns index.md with list of available files.",
-            },
-        },
-    },
-    execute: executeReadGuideline,
+    inputSchema: guidelineInputSchema,
+    execute: createGuidelineExecutor('_copilot_tomai'),
 };
+
+export const READ_LOCAL_GUIDELINE_TOOL: SharedToolDefinition<ReadGuidelineInput> = {
+    name: 'tom_readLocalGuideline',
+    displayName: 'Read Local Guideline',
+    description:
+        'Read local LLM guidelines from _copilot_local/ folder. Without a fileName, returns the list of available files and the content of index.md. Use this tool to understand workspace conventions before making changes.',
+    tags: ['guidelines', 'local-llm'],
+    readOnly: true,
+    inputSchema: guidelineInputSchema,
+    execute: createGuidelineExecutor('_copilot_local'),
+};
+
+/**
+ * Patch tool descriptions at activation time by reading index.md from the
+ * respective guideline folders. This embeds the full guideline index into
+ * the tool description so the model knows what's available without an extra call.
+ */
+export function initializeToolDescriptions(): void {
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) { return; }
+
+    const patchDescription = (tool: SharedToolDefinition<ReadGuidelineInput>, baseDir: string, intro: string) => {
+        const indexPath = path.join(workspaceRoot, baseDir, 'index.md');
+        if (fs.existsSync(indexPath)) {
+            try {
+                const indexContent = fs.readFileSync(indexPath, 'utf8');
+                tool.description = `${intro}\n\nGuideline index:\n\n${indexContent}`;
+            } catch { /* keep static description */ }
+        }
+    };
+
+    patchDescription(
+        READ_GUIDELINE_TOOL,
+        '_copilot_tomai',
+        'Read workspace guidelines from _copilot_tomai/ folder. Provide a fileName parameter to read a specific guideline. Without fileName, returns the full index and file list. Use this tool to understand workspace conventions before making changes.',
+    );
+
+    patchDescription(
+        READ_LOCAL_GUIDELINE_TOOL,
+        '_copilot_local',
+        'Read local LLM guidelines from _copilot_local/ folder. Provide a fileName parameter to read a specific guideline. Without fileName, returns the full index and file list. Use this tool to understand workspace conventions before making changes.',
+    );
+}
 
 // ============================================================================
 // WRITE executors (VS Code LM only — never sent to Ollama by default)
@@ -684,7 +735,7 @@ export const MANAGE_TODO_TOOL: SharedToolDefinition<ManageTodoInput> = {
 // Master registry — all shared tools in one array
 // ============================================================================
 
-/** All shared tool definitions. */
+/** All shared tool definitions (registered with VS Code LM API). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const ALL_SHARED_TOOLS: SharedToolDefinition<any>[] = [
     // Read-only tools (available to both Ollama and VS Code LM)
@@ -695,7 +746,8 @@ export const ALL_SHARED_TOOLS: SharedToolDefinition<any>[] = [
     FETCH_WEBPAGE_TOOL,
     WEB_SEARCH_TOOL,
     GET_ERRORS_TOOL,
-    READ_GUIDELINE_TOOL,
+    READ_GUIDELINE_TOOL,        // VS Code LM only — reads from _copilot_tomai/
+    READ_LOCAL_GUIDELINE_TOOL,   // Ollama only — reads from _copilot_local/
     // Write tools (VS Code LM only by default)
     CREATE_FILE_TOOL,
     EDIT_FILE_TOOL,
@@ -705,6 +757,11 @@ export const ALL_SHARED_TOOLS: SharedToolDefinition<any>[] = [
     MANAGE_TODO_TOOL,
 ];
 
-/** Read-only tools suitable for Ollama. */
+/**
+ * Read-only tools suitable for Ollama (local LLM).
+ * Excludes tom_readGuideline (for VS Code LM only) — Ollama uses tom_readLocalGuideline instead.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const READ_ONLY_TOOLS: SharedToolDefinition<any>[] = ALL_SHARED_TOOLS.filter(t => t.readOnly);
+export const READ_ONLY_TOOLS: SharedToolDefinition<any>[] = ALL_SHARED_TOOLS.filter(
+    t => t.readOnly && t.name !== 'tom_readGuideline',
+);
