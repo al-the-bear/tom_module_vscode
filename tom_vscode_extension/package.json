@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "publisher": "tom",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.96.0"
   },
   "categories": [
     "Other"
@@ -313,20 +313,90 @@
         "command": "dartscript.chordMenu.execute",
         "key": "ctrl+shift+e"
       },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+a", "when": "dartscript.chordMenuOpen", "args": "a" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+b", "when": "dartscript.chordMenuOpen", "args": "b" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+c", "when": "dartscript.chordMenuOpen", "args": "c" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+d", "when": "dartscript.chordMenuOpen", "args": "d" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+e", "when": "dartscript.chordMenuOpen", "args": "e" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+h", "when": "dartscript.chordMenuOpen", "args": "h" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+i", "when": "dartscript.chordMenuOpen", "args": "i" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+n", "when": "dartscript.chordMenuOpen", "args": "n" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+o", "when": "dartscript.chordMenuOpen", "args": "o" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+r", "when": "dartscript.chordMenuOpen", "args": "r" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+s", "when": "dartscript.chordMenuOpen", "args": "s" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+t", "when": "dartscript.chordMenuOpen", "args": "t" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+x", "when": "dartscript.chordMenuOpen", "args": "x" },
-      { "command": "dartscript.chordMenu.executeKey", "key": "ctrl+shift+/", "when": "dartscript.chordMenuOpen", "args": "?" }
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+a",
+        "when": "dartscript.chordMenuOpen",
+        "args": "a"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+b",
+        "when": "dartscript.chordMenuOpen",
+        "args": "b"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+c",
+        "when": "dartscript.chordMenuOpen",
+        "args": "c"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+d",
+        "when": "dartscript.chordMenuOpen",
+        "args": "d"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+e",
+        "when": "dartscript.chordMenuOpen",
+        "args": "e"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+h",
+        "when": "dartscript.chordMenuOpen",
+        "args": "h"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+i",
+        "when": "dartscript.chordMenuOpen",
+        "args": "i"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+n",
+        "when": "dartscript.chordMenuOpen",
+        "args": "n"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+o",
+        "when": "dartscript.chordMenuOpen",
+        "args": "o"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+r",
+        "when": "dartscript.chordMenuOpen",
+        "args": "r"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+s",
+        "when": "dartscript.chordMenuOpen",
+        "args": "s"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+t",
+        "when": "dartscript.chordMenuOpen",
+        "args": "t"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+x",
+        "when": "dartscript.chordMenuOpen",
+        "args": "x"
+      },
+      {
+        "command": "dartscript.chordMenu.executeKey",
+        "key": "ctrl+shift+/",
+        "when": "dartscript.chordMenuOpen",
+        "args": "?"
+      }
     ],
     "menus": {
       "explorer/context": [
@@ -440,7 +510,10 @@
     "languageModelTools": [
       {
         "name": "tom_createFile",
-        "tags": ["files", "tom-ai-chat"],
+        "tags": [
+          "files",
+          "tom-ai-chat"
+        ],
         "displayName": "Create File",
         "modelDescription": "Create a new file with the specified content. Creates parent directories if needed.",
         "canBeReferencedInPrompt": false,
@@ -456,12 +529,18 @@
               "description": "The content to write to the file."
             }
           },
-          "required": ["filePath", "content"]
+          "required": [
+            "filePath",
+            "content"
+          ]
         }
       },
       {
         "name": "tom_readFile",
-        "tags": ["files", "tom-ai-chat"],
+        "tags": [
+          "files",
+          "tom-ai-chat"
+        ],
         "displayName": "Read File",
         "modelDescription": "Read the contents of a file. Optionally specify line range.",
         "canBeReferencedInPrompt": false,
@@ -481,12 +560,17 @@
               "description": "Optional 1-based end line number."
             }
           },
-          "required": ["filePath"]
+          "required": [
+            "filePath"
+          ]
         }
       },
       {
         "name": "tom_editFile",
-        "tags": ["files", "tom-ai-chat"],
+        "tags": [
+          "files",
+          "tom-ai-chat"
+        ],
         "displayName": "Edit File",
         "modelDescription": "Edit a file by replacing oldText with newText. The oldText must match exactly.",
         "canBeReferencedInPrompt": false,
@@ -506,12 +590,19 @@
               "description": "The text to replace oldText with."
             }
           },
-          "required": ["filePath", "oldText", "newText"]
+          "required": [
+            "filePath",
+            "oldText",
+            "newText"
+          ]
         }
       },
       {
         "name": "tom_multiEditFile",
-        "tags": ["files", "tom-ai-chat"],
+        "tags": [
+          "files",
+          "tom-ai-chat"
+        ],
         "displayName": "Multi Edit File",
         "modelDescription": "Apply multiple find/replace edits across one or more files.",
         "canBeReferencedInPrompt": false,
@@ -524,20 +615,35 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "filePath": { "type": "string" },
-                  "oldText": { "type": "string" },
-                  "newText": { "type": "string" }
+                  "filePath": {
+                    "type": "string"
+                  },
+                  "oldText": {
+                    "type": "string"
+                  },
+                  "newText": {
+                    "type": "string"
+                  }
                 },
-                "required": ["filePath", "oldText", "newText"]
+                "required": [
+                  "filePath",
+                  "oldText",
+                  "newText"
+                ]
               }
             }
           },
-          "required": ["edits"]
+          "required": [
+            "edits"
+          ]
         }
       },
       {
         "name": "tom_listDirectory",
-        "tags": ["files", "tom-ai-chat"],
+        "tags": [
+          "files",
+          "tom-ai-chat"
+        ],
         "displayName": "List Directory",
         "modelDescription": "List the contents of a directory. Directories have a trailing slash.",
         "canBeReferencedInPrompt": false,
@@ -549,12 +655,18 @@
               "description": "The path to the directory to list."
             }
           },
-          "required": ["dirPath"]
+          "required": [
+            "dirPath"
+          ]
         }
       },
       {
         "name": "tom_findFiles",
-        "tags": ["files", "search", "tom-ai-chat"],
+        "tags": [
+          "files",
+          "search",
+          "tom-ai-chat"
+        ],
         "displayName": "Find Files",
         "modelDescription": "Find files matching a glob pattern in the workspace.",
         "canBeReferencedInPrompt": false,
@@ -570,12 +682,18 @@
               "description": "Maximum number of results to return. Default 100."
             }
           },
-          "required": ["pattern"]
+          "required": [
+            "pattern"
+          ]
         }
       },
       {
         "name": "tom_findTextInFiles",
-        "tags": ["files", "search", "tom-ai-chat"],
+        "tags": [
+          "files",
+          "search",
+          "tom-ai-chat"
+        ],
         "displayName": "Find Text in Files",
         "modelDescription": "Search for text in files using grep. Returns matching lines with file paths and line numbers.",
         "canBeReferencedInPrompt": false,
@@ -599,12 +717,17 @@
               "description": "Maximum number of matching lines to return. Default 50."
             }
           },
-          "required": ["searchText"]
+          "required": [
+            "searchText"
+          ]
         }
       },
       {
         "name": "tom_runCommand",
-        "tags": ["terminal", "tom-ai-chat"],
+        "tags": [
+          "terminal",
+          "tom-ai-chat"
+        ],
         "displayName": "Run Command",
         "modelDescription": "Run a shell command and return the output.",
         "canBeReferencedInPrompt": false,
@@ -620,12 +743,17 @@
               "description": "Optional working directory for the command."
             }
           },
-          "required": ["command"]
+          "required": [
+            "command"
+          ]
         }
       },
       {
         "name": "tom_runVscodeCommand",
-        "tags": ["vscode", "tom-ai-chat"],
+        "tags": [
+          "vscode",
+          "tom-ai-chat"
+        ],
         "displayName": "Run VS Code Command",
         "modelDescription": "Execute a VS Code command by ID.",
         "canBeReferencedInPrompt": false,
@@ -644,12 +772,17 @@
               }
             }
           },
-          "required": ["command"]
+          "required": [
+            "command"
+          ]
         }
       },
       {
         "name": "tom_getErrors",
-        "tags": ["diagnostics", "tom-ai-chat"],
+        "tags": [
+          "diagnostics",
+          "tom-ai-chat"
+        ],
         "displayName": "Get Errors",
         "modelDescription": "Get errors and warnings from VS Code diagnostics.",
         "canBeReferencedInPrompt": false,
@@ -665,7 +798,10 @@
       },
       {
         "name": "tom_fetchWebpage",
-        "tags": ["web", "tom-ai-chat"],
+        "tags": [
+          "web",
+          "tom-ai-chat"
+        ],
         "displayName": "Fetch Webpage",
         "modelDescription": "Fetch the content of a URL.",
         "canBeReferencedInPrompt": false,
@@ -677,12 +813,17 @@
               "description": "The URL to fetch."
             }
           },
-          "required": ["url"]
+          "required": [
+            "url"
+          ]
         }
       },
       {
         "name": "tom_readGuideline",
-        "tags": ["guidelines", "tom-ai-chat"],
+        "tags": [
+          "guidelines",
+          "tom-ai-chat"
+        ],
         "displayName": "Read Guideline",
         "modelDescription": "Read workspace Copilot guidelines from _copilot_guidelines/ folder. Without a fileName, returns the list of available files and the content of index.md (the main guideline index). Key guidelines: coding_guidelines.md (code structure, naming), documentation_guidelines.md (docs format), tests.md (test creation), project_structure.md (project patterns), bug_fixing.md (debugging workflow). Use this tool to understand workspace conventions before making changes.",
         "canBeReferencedInPrompt": false,
@@ -698,7 +839,11 @@
       },
       {
         "name": "tom_webSearch",
-        "tags": ["web", "search", "tom-ai-chat"],
+        "tags": [
+          "web",
+          "search",
+          "tom-ai-chat"
+        ],
         "displayName": "Web Search",
         "modelDescription": "Search the web using DuckDuckGo. Returns titles, URLs, and snippets of the top results. Use this to research topics, find documentation, or discover solutions.",
         "canBeReferencedInPrompt": false,
@@ -714,22 +859,36 @@
               "description": "Maximum number of results to return. Default 8."
             }
           },
-          "required": ["query"]
+          "required": [
+            "query"
+          ]
         }
       },
       {
         "name": "tom_manageTodo",
-        "tags": ["todo", "task-management", "tom-ai-chat"],
+        "tags": [
+          "todo",
+          "task-management",
+          "tom-ai-chat"
+        ],
         "displayName": "Manage Todo List",
         "modelDescription": "Optional: Manage a persistent todo list for complex multi-step tasks. Skip for simple tasks. Operations: 'list' (view todos), 'add' (create with title/description), 'update' (change status/title/description by id), 'remove' (delete by id), 'clear' (remove all). Status values: not-started, in-progress, completed. Use when you have 3+ distinct steps to track.",
         "canBeReferencedInPrompt": false,
         "inputSchema": {
           "type": "object",
-          "required": ["operation"],
+          "required": [
+            "operation"
+          ],
           "properties": {
             "operation": {
               "type": "string",
-              "enum": ["list", "add", "update", "remove", "clear"],
+              "enum": [
+                "list",
+                "add",
+                "update",
+                "remove",
+                "clear"
+              ],
               "description": "The operation to perform: list (view todos), add (create new), update (modify existing), remove (delete), clear (remove all)."
             },
             "id": {
@@ -746,12 +905,20 @@
             },
             "status": {
               "type": "string",
-              "enum": ["not-started", "in-progress", "completed"],
+              "enum": [
+                "not-started",
+                "in-progress",
+                "completed"
+              ],
               "description": "Todo status. Used with 'update' operation."
             },
             "filterStatus": {
               "type": "string",
-              "enum": ["not-started", "in-progress", "completed"],
+              "enum": [
+                "not-started",
+                "in-progress",
+                "completed"
+              ],
               "description": "Filter by status when using 'list' operation."
             }
           }
@@ -856,12 +1023,11 @@
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
     "@types/node": "^18.x",
+    "@types/vscode": "1.96.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
     "typescript": "^5.3.0"
-  },
-  "dependencies": {}
+  }
 }
