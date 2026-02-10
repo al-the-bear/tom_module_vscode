@@ -570,7 +570,7 @@ async function resolveExecutionCwd(entry: CommandlineEntry): Promise<string | un
 /**
  * Execute a command in a terminal and run post-actions after it completes.
  * Uses VS Code Shell Integration API to detect command completion.
- * Falls back to sendText() if shell integration is not available within 5s.
+ * If shell integration is not available, the command still runs but post-actions are skipped.
  */
 async function executeWithPostActions(
     terminal: vscode.Terminal,
@@ -609,7 +609,7 @@ async function executeWithPostActions(
 
     // Wait for shell integration to become available (shell needs time to start)
     return new Promise<void>(resolve => {
-        const TIMEOUT_MS = 5000;
+        const TIMEOUT_MS = 10000;
 
         const disposable = vscode.window.onDidChangeTerminalShellIntegration(e => {
             if (e.terminal === terminal) {
@@ -622,10 +622,11 @@ async function executeWithPostActions(
 
         const timer = setTimeout(() => {
             disposable.dispose();
-            console.warn('[commandline-handler] Shell integration not available after 5s, falling back to sendText()');
+            console.warn('[commandline-handler] Shell integration not available after 10s, running command without post-actions');
             terminal.sendText(command);
-            // Run post-actions after a short delay as best-effort fallback
-            setTimeout(() => runPostActions(), 2000);
+            vscode.window.showWarningMessage(
+                `Shell integration unavailable — command was executed but ${postActions.length} post-action(s) were skipped.`,
+            );
             resolve();
         }, TIMEOUT_MS);
     });
