@@ -192,6 +192,12 @@ async function showChordMenu(groupId: string): Promise<void> {
     quickPick.matchOnDescription = true;
     quickPick.matchOnDetail = false;
 
+    // Prevent focus loss from closing the menu. On macOS, some Ctrl+Shift+<letter>
+    // combinations are consumed by Chromium's text input handling (Emacs-style
+    // bindings) or by VS Code builtins, which can steal focus. Without this flag,
+    // the QuickPick silently closes. Users can still dismiss with Escape.
+    quickPick.ignoreFocusOut = true;
+
     quickPick.items = activeItems.map(item => ({
         label: `$(key) ${item.key.toUpperCase()}`,
         description: item.label,
@@ -209,16 +215,49 @@ async function showChordMenu(groupId: string): Promise<void> {
         vscode.commands.executeCommand(item.commandId);
     };
 
-    // Auto-execute on single unique character match (plain typing)
+    // Auto-execute on single character match.
+    // Handles both plain typing AND Ctrl+<letter> combinations that produce
+    // control characters on macOS (Emacs bindings: Ctrl+A → \x01, etc.).
+    // These control chars bypass VS Code's keybinding system but arrive here.
     quickPick.onDidChangeValue((value) => {
-        console.log(`[ChordMenu] onDidChangeValue: '${value}' (charCodes: ${[...value].map(c => c.charCodeAt(0)).join(',')}) group=${groupId} executed=${executed}`);
         if (executed) { return; }
-        const typed = value.toLowerCase().trim();
-        if (typed.length !== 1) { return; }
 
-        const match = activeItems.filter(item => item.key === typed);
+        let key: string | null = null;
+
+        if (value.length === 1) {
+            const charCode = value.charCodeAt(0);
+            if (charCode >= 1 && charCode <= 26) {
+                // Control character from Ctrl+<letter> on macOS
+                // \x01 = Ctrl+A → 'a', \x02 = Ctrl+B → 'b', ..., \x1A = Ctrl+Z → 'z'
+                key = String.fromCharCode(charCode + 0x60); // 0x01+'a'-1 = 'a'
+                console.log(`[ChordMenu] onDidChangeValue: control char 0x${charCode.toString(16).padStart(2, '0')} → mapped to '${key}' (group=${groupId})`);
+                // Clear the control character from the input so it doesn't pollute the filter
+                quickPick.value = '';
+            } else {
+                // Regular printable character (plain typing without modifiers)
+                key = value.toLowerCase().trim();
+                console.log(`[ChordMenu] onDidChangeValue: '${value}' (charCode: ${charCode}) → key '${key}' (group=${groupId})`);
+            }
+        } else if (value.length > 1) {
+            // Multiple characters — check if any are control chars (modifier held while typing)
+            const controlChars = [...value].filter(c => c.charCodeAt(0) >= 1 && c.charCodeAt(0) <= 26);
+            if (controlChars.length > 0) {
+                const lastCtrl = controlChars[controlChars.length - 1];
+                key = String.fromCharCode(lastCtrl.charCodeAt(0) + 0x60);
+                console.log(`[ChordMenu] onDidChangeValue: multi-char '${[...value].map(c => `0x${c.charCodeAt(0).toString(16)}`).join(',')}' → control char mapped to '${key}' (group=${groupId})`);
+                quickPick.value = '';
+            } else {
+                console.log(`[ChordMenu] onDidChangeValue: multi-char '${value}' (charCodes: ${[...value].map(c => c.charCodeAt(0)).join(',')}) — ignored (group=${groupId})`);
+            }
+        }
+
+        if (!key || key.length !== 1) { return; }
+
+        const match = activeItems.filter(item => item.key === key);
         if (match.length === 1) {
             executeItem(match[0]);
+        } else {
+            console.log(`[ChordMenu] onDidChangeValue: no unique match for key '${key}' in group '${groupId}' (${match.length} candidates)`);
         }
     });
 
@@ -234,7 +273,7 @@ async function showChordMenu(groupId: string): Promise<void> {
 
     // Clean up on hide
     quickPick.onDidHide(() => {
-        console.log(`[ChordMenu] === HIDE group '${groupId}' (was open ${Date.now() - menuOpenTimestamp}ms) ===`);
+        console.log(`[ChordMenu] === HIDE group '${groupId}' (was open ${Date.now() - menuOpenTimestamp}ms, executed=${executed}) ===`);
         activeGroupId = null;
         activeQuickPick = null;
         menuOpenTimestamp = 0;
