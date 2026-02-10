@@ -1275,6 +1275,7 @@ export class PromptExpanderManager {
 
         // Resolve profile
         let profileKey: string;
+        bridgeLog(`[expandPromptCommand] forceProfileKey=${forceProfileKey ?? 'undefined'}, availableProfiles=${Object.keys(config.profiles).join(',')}`);
         if (forceProfileKey && config.profiles[forceProfileKey]) {
             profileKey = forceProfileKey;
         } else {
