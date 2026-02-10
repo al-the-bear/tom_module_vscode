@@ -155,6 +155,24 @@ let activeGroupId: string | null = null;
 let activeQuickPick: vscode.QuickPick<vscode.QuickPickItem & { _chordItem?: ChordMenuItem }> | null = null;
 
 // ============================================================================
+// Trigger Key Guard (prevents key repeat of trigger from closing menu)
+// ============================================================================
+
+/**
+ * When the user holds Ctrl+Shift+C to open the conversation menu, macOS key
+ * repeat can fire Ctrl+Shift+C again while the menu is open. Since
+ * dartscript.chordMenuOpen is already true (setContext awaited), the dispatch
+ * binding fires executeChordKey("c"), which matches "Continue Conversation"
+ * and prematurely closes the menu.
+ *
+ * Fix: ignore executeChordKey calls for the trigger key letter within a short
+ * guard window after menu open.
+ */
+const TRIGGER_KEY_GUARD_MS = 400;
+let triggerKeyLetter: string | null = null;
+let menuOpenTimestamp: number = 0;
+
+// ============================================================================
 // Show Chord Menu
 // ============================================================================
 
@@ -175,6 +193,13 @@ async function showChordMenu(groupId: string): Promise<void> {
 
     // Set context for keybinding dispatch
     activeGroupId = groupId;
+
+    // Set trigger key guard to prevent key repeat from closing menu
+    const prefixParts = group.prefix.split('+');
+    triggerKeyLetter = prefixParts[prefixParts.length - 1].toLowerCase();
+    menuOpenTimestamp = Date.now();
+    console.log(`[ChordMenu] Opening group '${groupId}', trigger key guard: '${triggerKeyLetter}'`);
+
     await vscode.commands.executeCommand('setContext', 'dartscript.chordMenuOpen', true);
 
     // Build QuickPick items
@@ -226,6 +251,8 @@ async function showChordMenu(groupId: string): Promise<void> {
     quickPick.onDidHide(() => {
         activeGroupId = null;
         activeQuickPick = null;
+        triggerKeyLetter = null;
+        menuOpenTimestamp = 0;
         vscode.commands.executeCommand('setContext', 'dartscript.chordMenuOpen', false);
         quickPick.dispose();
     });
@@ -242,24 +269,44 @@ async function showChordMenu(groupId: string): Promise<void> {
  * chord menu is open. Looks up the letter in the active group and executes.
  */
 export function executeChordKey(key: string): void {
-    if (!activeGroupId || !activeQuickPick) { return; }
+    console.log(`[ChordMenu] executeChordKey('${key}') — activeGroup: ${activeGroupId}, triggerGuard: '${triggerKeyLetter}'`);
+
+    if (!activeGroupId || !activeQuickPick) {
+        console.log(`[ChordMenu] Ignored: no active menu`);
+        return;
+    }
 
     const group = CHORD_GROUPS[activeGroupId];
     if (!group) { return; }
 
     const normalizedKey = key.toLowerCase();
+
+    // Guard: ignore key repeat of the trigger key within guard window.
+    // When the user holds Ctrl+Shift+C to open the menu, macOS key repeat
+    // can fire the dispatch binding for "c" before the user releases the key.
+    if (triggerKeyLetter && normalizedKey === triggerKeyLetter &&
+        Date.now() - menuOpenTimestamp < TRIGGER_KEY_GUARD_MS) {
+        console.log(`[ChordMenu] Blocked key repeat of trigger '${normalizedKey}' (${Date.now() - menuOpenTimestamp}ms since open, guard: ${TRIGGER_KEY_GUARD_MS}ms)`);
+        return;
+    }
+
     const match = group.items.filter(item =>
         item.key === normalizedKey && (!item.when || item.when())
     );
 
     if (match.length === 1) {
+        console.log(`[ChordMenu] Executing: '${match[0].label}' (${match[0].commandId})`);
         // Dismiss the QuickPick and execute the command
         const quickPick = activeQuickPick;
         activeGroupId = null;
         activeQuickPick = null;
+        triggerKeyLetter = null;
+        menuOpenTimestamp = 0;
         vscode.commands.executeCommand('setContext', 'dartscript.chordMenuOpen', false);
         quickPick.hide();
         vscode.commands.executeCommand(match[0].commandId);
+    } else {
+        console.log(`[ChordMenu] No unique match for key '${normalizedKey}' in group '${activeGroupId}' (${match.length} matches)`);
     }
 }
 
