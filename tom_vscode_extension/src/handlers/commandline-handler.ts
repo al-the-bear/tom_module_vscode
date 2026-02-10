@@ -366,23 +366,20 @@ async function defineCommandline(): Promise<void> {
     }
     console.log(`[commandline-handler] defineCommandline: cwd="${cwd}" mode="${cwdMode}"`);
 
-    // 4) Ask whether to add post-execution actions
-    console.log('[commandline-handler] defineCommandline: about to show post-action opt-in');
-    const addPostActions = await vscode.window.showQuickPick(
-        [
-            { label: '$(play) No - save command now', _id: 'no' },
-            { label: '$(add) Yes - add post-execution actions', _id: 'yes', description: 'e.g. Reload Window after script finishes' },
-        ],
-        {
-            title: 'Post-Execution Actions',
-            placeHolder: 'Add VS Code actions to run after the command finishes?',
-        },
+    // 4) Save confirmation — with option to add post-execution actions
+    const modeStr = cwdMode !== 'static' ? ` [${cwdMode} - re-detected at runtime]` : '';
+    console.log('[commandline-handler] defineCommandline: showing save confirmation');
+    const saveChoice = await vscode.window.showInformationMessage(
+        `Save commandline?`,
+        { modal: true, detail: `Command: ${command}\nDirectory: ${cwd}${modeStr}` },
+        'Save',
+        'Add Post-Actions First',
     );
-    if (!addPostActions) { console.log('[commandline-handler] defineCommandline: cancelled at post-action opt-in'); return; }
-    console.log(`[commandline-handler] defineCommandline: addPostActions._id = "${addPostActions._id}"`);
+    console.log(`[commandline-handler] defineCommandline: saveChoice = "${saveChoice}"`);
+    if (!saveChoice) { console.log('[commandline-handler] defineCommandline: cancelled at confirmation'); return; }
 
     let postActions: string[] = [];
-    if (addPostActions._id === 'yes') {
+    if (saveChoice === 'Add Post-Actions First') {
         console.log('[commandline-handler] defineCommandline: showing post-action picker');
         const result = await pickPostActions();
         if (result === undefined) { console.log('[commandline-handler] defineCommandline: cancelled at post-action picker'); return; }
@@ -390,19 +387,7 @@ async function defineCommandline(): Promise<void> {
         console.log(`[commandline-handler] defineCommandline: ${postActions.length} post-actions selected`);
     }
 
-    // 5) Confirmation popup
-    const postActionStr = postActions.length > 0
-        ? `\nPost-actions: ${postActions.length}`
-        : '';
-    const modeStr = cwdMode !== 'static' ? ` [${cwdMode} - re-detected at runtime]` : '';
-    const confirm = await vscode.window.showInformationMessage(
-        `Save commandline?`,
-        { modal: true, detail: `Command: ${command}\nDirectory: ${cwd}${modeStr}${postActionStr}` },
-        'OK'
-    );
-    if (confirm !== 'OK') { console.log('[commandline-handler] defineCommandline: cancelled at confirmation'); return; }
-
-    // 6) Write to config
+    // 5) Write to config
     const config = readConfig() || {};
     if (!Array.isArray(config.commandlines)) { config.commandlines = []; }
 
