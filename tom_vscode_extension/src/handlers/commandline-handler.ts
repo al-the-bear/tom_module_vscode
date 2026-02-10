@@ -303,8 +303,8 @@ async function defineCommandline(): Promise<void> {
     // 1) Command (supports placeholders: ${currentfile.name}, ${currentfile.ext}, ${currentfile.path})
     const command = await vscode.window.showInputBox({
         title: 'Define Commandline (1/3) - Command',
-        prompt: 'Shell command to execute. Placeholders: ${currentfile.name}, ${currentfile.ext}, ${currentfile.path}',
-        placeHolder: 'e.g. dart analyze, npm test ${currentfile.name}',
+        prompt: 'Placeholders: ${currentfile}, ${currentfile.name}, ${currentfile.ext}, ${currentfile.path}',
+        placeHolder: 'e.g. dart analyze, npm test ${currentfile}',
     });
     if (command === undefined) { console.log('[commandline-handler] defineCommandline: cancelled at command input'); return; }
     if (!command.trim()) {
@@ -433,7 +433,7 @@ function cwdModeLabel(mode: CwdMode | undefined): string {
  * present but no editor is open.
  */
 function expandPlaceholders(command: string): string | undefined {
-    const hasPlaceholders = /\$\{currentfile\.(name|ext|path)\}/.test(command);
+    const hasPlaceholders = /\$\{currentfile(\.(name|ext|path))?\}/.test(command);
     if (!hasPlaceholders) { return command; }
 
     const editor = vscode.window.activeTextEditor;
@@ -445,13 +445,15 @@ function expandPlaceholders(command: string): string | undefined {
     }
 
     const filePath = editor.document.uri.fsPath;
-    const ext = path.extname(filePath);          // ".dart"
-    const name = path.basename(filePath, ext);    // "main"
+    const ext = path.extname(filePath);            // ".dart"
+    const name = path.basename(filePath, ext);      // "main"
+    const fullName = path.basename(filePath);        // "main.dart"
 
     return command
         .replace(/\$\{currentfile\.name\}/g, name)
         .replace(/\$\{currentfile\.ext\}/g, ext)
-        .replace(/\$\{currentfile\.path\}/g, filePath);
+        .replace(/\$\{currentfile\.path\}/g, filePath)
+        .replace(/\$\{currentfile\}/g, fullName);
 }
 
 // ============================================================================
@@ -593,16 +595,14 @@ async function executeCommandline(): Promise<void> {
     const expandedCommand = expandPlaceholders(entry.command);
     if (expandedCommand === undefined) { return; } // error already shown
 
-    // Confirmation for dynamic modes
+    // Always confirm before executing, showing the resolved directory
     const mode: CwdMode = entry.cwdMode || 'custom';
-    if (mode === 'project' || mode === 'repository' || mode === 'document') {
-        const confirm = await vscode.window.showInformationMessage(
-            `Run in ${cwdModeLabel(mode)}: ${effectiveCwd}`,
-            { modal: false, detail: expandedCommand },
-            'OK', 'Cancel',
-        );
-        if (confirm !== 'OK') { return; }
-    }
+    const confirm = await vscode.window.showInformationMessage(
+        `Run in ${cwdModeLabel(mode)}: ${effectiveCwd}`,
+        { modal: false, detail: expandedCommand },
+        'OK', 'Cancel',
+    );
+    if (confirm !== 'OK') { return; }
 
     // Only show post-action picker if the entry was defined with post-actions
     let postActions: string[] = [];
