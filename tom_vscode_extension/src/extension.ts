@@ -394,21 +394,12 @@ function registerCommands(context: vscode.ExtensionContext) {
 function registerLocalLlmContextMenuCommands(context: vscode.ExtensionContext): void {
     if (!promptExpanderManager) { return; }
 
-    // Base command — shows quick-pick of profiles
+    // Base command — uses default profile (direct send, no picker)
     const sendToLocalLlm = vscode.commands.registerCommand(
         'dartscript.sendToLocalLlm',
         async () => {
-            await promptExpanderManager?.expandPromptCommand();
-        }
-    );
-
-    // Standard — uses default profile without asking
-    const sendToLocalLlmStandard = vscode.commands.registerCommand(
-        'dartscript.sendToLocalLlmStandard',
-        async () => {
             if (!promptExpanderManager) { return; }
             const config = promptExpanderManager.loadConfig();
-            // Find the default profile key
             const defaultKey = Object.entries(config.profiles)
                 .find(([_, p]) => p.isDefault)?.[0]
                 ?? Object.keys(config.profiles)[0]
@@ -417,7 +408,21 @@ function registerLocalLlmContextMenuCommands(context: vscode.ExtensionContext): 
         }
     );
 
-    // Advanced — same as base (shows picker)
+    // Standard — same as base (uses default profile without asking)
+    const sendToLocalLlmStandard = vscode.commands.registerCommand(
+        'dartscript.sendToLocalLlmStandard',
+        async () => {
+            if (!promptExpanderManager) { return; }
+            const config = promptExpanderManager.loadConfig();
+            const defaultKey = Object.entries(config.profiles)
+                .find(([_, p]) => p.isDefault)?.[0]
+                ?? Object.keys(config.profiles)[0]
+                ?? undefined;
+            await promptExpanderManager.expandPromptCommand(defaultKey);
+        }
+    );
+
+    // Advanced — shows profile picker (for expand/rewrite/detailed etc.)
     const sendToLocalLlmAdvanced = vscode.commands.registerCommand(
         'dartscript.sendToLocalLlmAdvanced',
         async () => {
