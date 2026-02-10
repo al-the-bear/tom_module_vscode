@@ -359,6 +359,7 @@ export class PromptExpanderManager {
      *   ${turnsUsed}     - Number of tool-call rounds completed so far
      *   ${turnsRemaining} - Remaining tool-call rounds before the hard limit
      *   ${maxTurns}      - Maximum tool-call rounds allowed
+     *   ${instructions}   - Content from .tom/local-instructions/local-instructions[.modelid].md
      */
     private resolvePlaceholders(template: string, values: { [key: string]: string }): string {
         let result = template;
@@ -378,6 +379,7 @@ export class PromptExpanderManager {
         modelConfigKey: string,
         profileName: string,
         turnInfo?: { turnsUsed: number; maxTurns: number },
+        extraValues?: { [key: string]: string },
     ): { [key: string]: string } {
         const now = new Date();
         const wf = vscode.workspace.workspaceFolders;
@@ -404,7 +406,36 @@ export class PromptExpanderManager {
             turnsUsed: String(used),
             turnsRemaining: String(Math.max(0, max - used)),
             maxTurns: String(max),
+            ...extraValues,
         };
+    }
+
+    /**
+     * Resolve the ${instructions} placeholder content.
+     * Looks for `.tom/local-instructions/local-instructions.<modelid>.md` first,
+     * then `.tom/local-instructions/local-instructions.md`.
+     * Returns empty string if neither exists.
+     */
+    private resolveInstructionsContent(modelName: string): string {
+        const wf = vscode.workspace.workspaceFolders;
+        if (!wf || wf.length === 0) { return ''; }
+        const wsRoot = wf[0].uri.fsPath;
+        const dir = path.join(wsRoot, '.tom', 'local-instructions');
+
+        // Model-specific file first (strip tag after colon, e.g. "qwen3:8b" → "qwen3-8b")
+        const safeModelId = modelName.replace(/[:/\\]/g, '-');
+        const modelSpecific = path.join(dir, `local-instructions.${safeModelId}.md`);
+        if (fs.existsSync(modelSpecific)) {
+            try { return fs.readFileSync(modelSpecific, 'utf-8'); } catch { /* fall through */ }
+        }
+
+        // Generic fallback
+        const generic = path.join(dir, 'local-instructions.md');
+        if (fs.existsSync(generic)) {
+            try { return fs.readFileSync(generic, 'utf-8'); } catch { /* fall through */ }
+        }
+
+        return '';
     }
 
     private formatDateTime(now: Date): string {
@@ -797,9 +828,14 @@ export class PromptExpanderManager {
         const effectiveResultTemplate = profile?.resultTemplate ?? config.resultTemplate;
         const effectiveTemperature = profile?.temperature ?? mc.temperature;
 
+        // Resolve ${instructions} content from .tom/local-instructions/
+        const instructionsContent = this.resolveInstructionsContent(mc.model);
+        const instructionsExtra = { instructions: instructionsContent };
+
         // Pre-values for system prompt placeholder resolution
         const preValues = this.buildPlaceholderValues(
             editor, prompt, '', '', '', mc.model, resolvedModelKey, effectiveProfileKey,
+            undefined, instructionsExtra,
         );
         const resolvedSystemPrompt = this.resolvePlaceholders(effectiveSystemPrompt, preValues);
 
@@ -862,6 +898,7 @@ export class PromptExpanderManager {
                 editor, prompt, rawResponse, cleaned, thinkContent,
                 mc.model, resolvedModelKey, effectiveProfileKey,
                 { turnsUsed, maxTurns: effectiveMaxRounds },
+                instructionsExtra,
             );
             const finalText = this.resolvePlaceholders(effectiveResultTemplate, postValues);
 
