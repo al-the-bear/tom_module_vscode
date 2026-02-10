@@ -299,6 +299,10 @@
     ],
     "keybindings": [
       {
+        "command": "-workbench.action.terminal.openNativeConsole",
+        "key": "ctrl+shift+c"
+      },
+      {
         "command": "dartscript.chordMenu.conversation",
         "key": "ctrl+shift+c",
         "when": "!dartscript.chordMenuOpen"
