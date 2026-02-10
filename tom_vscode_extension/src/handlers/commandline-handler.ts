@@ -598,9 +598,9 @@ async function executeCommandline(): Promise<void> {
     // Always confirm before executing, showing the resolved directory
     const mode: CwdMode = entry.cwdMode || 'custom';
     const confirm = await vscode.window.showInformationMessage(
-        `Run in ${cwdModeLabel(mode)}: ${effectiveCwd}`,
-        { modal: false, detail: expandedCommand },
-        'OK', 'Cancel',
+        `Run in ${cwdModeLabel(mode)}?`,
+        { modal: true, detail: `Directory: ${effectiveCwd}\nCommand: ${expandedCommand}` },
+        'OK',
     );
     if (confirm !== 'OK') { return; }
 
