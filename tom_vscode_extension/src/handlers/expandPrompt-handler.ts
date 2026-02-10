@@ -163,7 +163,7 @@ export class PromptExpanderManager {
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
-        this.outputChannel = vscode.window.createOutputChannel('DartScript Local LLM');
+        this.outputChannel = vscode.window.createOutputChannel('Tom AI Local LLM');
         context.subscriptions.push(this.outputChannel);
     }
 

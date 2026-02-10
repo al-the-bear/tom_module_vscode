@@ -38,7 +38,7 @@ export class BridgeTestRunner {
         this.context = context;
         // Reuse existing output channel if available, otherwise create new one
         if (!BridgeTestRunner.sharedOutputChannel) {
-            BridgeTestRunner.sharedOutputChannel = vscode.window.createOutputChannel('DartScript Tests');
+            BridgeTestRunner.sharedOutputChannel = vscode.window.createOutputChannel('Tom Tests');
         }
         this.outputChannel = BridgeTestRunner.sharedOutputChannel;
     }

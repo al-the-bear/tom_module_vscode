@@ -114,7 +114,7 @@ export class DartBridgeClient {
         this.context = context;
         // Reuse existing output channel if available, otherwise create new one
         if (!DartBridgeClient.outputChannel) {
-            DartBridgeClient.outputChannel = vscode.window.createOutputChannel('Dart Bridge');
+            DartBridgeClient.outputChannel = vscode.window.createOutputChannel('Tom Dartbridge Log');
         }
     }
 

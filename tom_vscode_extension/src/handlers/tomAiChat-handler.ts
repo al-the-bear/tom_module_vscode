@@ -15,7 +15,7 @@ import { TodoManager, TodoOperationResult } from '../managers/todoManager';
 import { setActiveTodoManager } from '../tools/tomAiChat-tools';
 
 const logChannel = vscode.window.createOutputChannel('Tom AI Chat Log');
-const toolLogChannel = vscode.window.createOutputChannel('Tom AI Tool Log');
+const toolLogChannel = vscode.window.createOutputChannel('Tom Tool Log');
 const responseChannel = vscode.window.createOutputChannel('Tom AI Chat Responses');
 const EXTENSION_MESSAGE_PREFIX = '[Tom AI] ';
 
