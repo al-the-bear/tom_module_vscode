@@ -26,12 +26,19 @@ let activeCancellationTokenSource: vscode.CancellationTokenSource | null = null;
  * Interrupt the currently running Tom AI Chat request
  */
 export function interruptTomAiChatHandler(): void {
-    if (activeCancellationTokenSource) {
-        activeCancellationTokenSource.cancel();
-        logChannel.appendLine('[Tom AI] ⚠️ Chat interrupted by user');
-        vscode.window.showWarningMessage('Tom AI Chat interrupted');
-    } else {
-        vscode.window.showInformationMessage('No Tom AI Chat request is currently running');
+    logChannel.appendLine('[Tom AI] interruptTomAIChat command invoked');
+    try {
+        if (activeCancellationTokenSource) {
+            activeCancellationTokenSource.cancel();
+            logChannel.appendLine('[Tom AI] ⚠️ Chat interrupted by user');
+            vscode.window.showWarningMessage('Tom AI Chat interrupted');
+        } else {
+            logChannel.appendLine('[Tom AI] No active request to interrupt');
+            vscode.window.showInformationMessage('No Tom AI Chat request is currently running');
+        }
+    } catch (error) {
+        logChannel.appendLine(`[Tom AI] interruptTomAIChat FAILED: ${error}`);
+        vscode.window.showErrorMessage(`Interrupt Tom AI Chat failed: ${error}`);
     }
 }
 
@@ -583,6 +590,8 @@ async function trimToTokenLimit(text: string, limit: number, model: vscode.Langu
 }
 
 export async function startTomAiChatHandler(): Promise<void> {
+    logChannel.appendLine('[Tom AI] startTomAIChat command invoked');
+    try {
     const editor = ensureChatFileActive();
     const document = editor.document;
     const { 
@@ -626,10 +635,17 @@ export async function startTomAiChatHandler(): Promise<void> {
     fs.writeFileSync(responsesPath, '');
     fs.writeFileSync(summaryPath, '');
 
+    logChannel.appendLine(`[Tom AI] startTomAIChat completed for ${chatId}`);
     vscode.window.showInformationMessage(`Tom AI chat initialized for ${chatId}`);
+    } catch (error) {
+        logChannel.appendLine(`[Tom AI] startTomAIChat FAILED: ${error}`);
+        vscode.window.showErrorMessage(`Start Tom AI Chat failed: ${error}`);
+    }
 }
 
 export async function sendToTomAiChatHandler(): Promise<void> {
+    logChannel.appendLine('[Tom AI] sendToTomAIChat command invoked');
+    try {
 
     const editor = ensureChatFileActive();
     const document = editor.document;
@@ -1124,4 +1140,13 @@ Use the available tools to gather context, then respond with a summary of what y
 
     // Clean up todo manager
     setActiveTodoManager(null);
+
+    logChannel.appendLine('[Tom AI] sendToTomAIChat completed');
+    } catch (error) {
+        logChannel.appendLine(`[Tom AI] sendToTomAIChat FAILED: ${error}`);
+        vscode.window.showErrorMessage(`Send to Tom AI Chat failed: ${error}`);
+        // Ensure cleanup happens even on error
+        activeCancellationTokenSource = null;
+        setActiveTodoManager(null);
+    }
 }

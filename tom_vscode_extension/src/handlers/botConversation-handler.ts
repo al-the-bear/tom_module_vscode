@@ -28,6 +28,17 @@ import type { OllamaStats } from './expandPrompt-handler';
 import { TelegramNotifier, TelegramConfig, TelegramCommand, parseTelegramConfig, TELEGRAM_DEFAULTS } from './telegram-notifier';
 
 // ============================================================================
+// Output Channel
+// ============================================================================
+
+const conversationLog = vscode.window.createOutputChannel('Tom Conversation Log');
+
+function logConversation(message: string, level: 'INFO' | 'WARN' | 'ERROR' = 'INFO'): void {
+    const timestamp = new Date().toISOString().slice(11, 23);
+    conversationLog.appendLine(`[${timestamp}] [${level}] ${message}`);
+}
+
+// ============================================================================
 // Interfaces
 // ============================================================================
 
@@ -1848,79 +1859,124 @@ export function getBotConversationManager(): BotConversationManager | undefined 
 }
 
 export async function startBotConversationHandler(): Promise<void> {
-    if (!_botManager) {
-        vscode.window.showErrorMessage('Bot Conversation not initialized');
-        return;
+    logConversation('startBotConversation command invoked');
+    try {
+        if (!_botManager) {
+            logConversation('Bot Conversation not initialized', 'ERROR');
+            vscode.window.showErrorMessage('Bot Conversation not initialized');
+            return;
+        }
+        await _botManager.startConversationCommand();
+        logConversation('startBotConversation completed');
+    } catch (error) {
+        logConversation(`startBotConversation FAILED: ${error}`, 'ERROR');
+        vscode.window.showErrorMessage(`Start Bot Conversation failed: ${error}`);
     }
-    await _botManager.startConversationCommand();
 }
 
 export async function stopBotConversationHandler(): Promise<void> {
-    if (!_botManager) {
-        vscode.window.showErrorMessage('Bot Conversation not initialized');
-        return;
+    logConversation('stopBotConversation command invoked');
+    try {
+        if (!_botManager) {
+            logConversation('Bot Conversation not initialized', 'ERROR');
+            vscode.window.showErrorMessage('Bot Conversation not initialized');
+            return;
+        }
+        if (!_botManager.isActive) {
+            logConversation('No active conversation to stop', 'WARN');
+            vscode.window.showInformationMessage('No active bot conversation to stop.');
+            return;
+        }
+        _botManager.stopConversation('Stopped by user command');
+        logConversation('Bot conversation stopped');
+        vscode.window.showInformationMessage('Bot conversation stopped.');
+    } catch (error) {
+        logConversation(`stopBotConversation FAILED: ${error}`, 'ERROR');
+        vscode.window.showErrorMessage(`Stop Bot Conversation failed: ${error}`);
     }
-    if (!_botManager.isActive) {
-        vscode.window.showInformationMessage('No active bot conversation to stop.');
-        return;
-    }
-    _botManager.stopConversation('Stopped by user command');
-    vscode.window.showInformationMessage('Bot conversation stopped.');
 }
 
 export async function haltBotConversationHandler(): Promise<void> {
-    if (!_botManager) {
-        vscode.window.showErrorMessage('Bot Conversation not initialized');
-        return;
+    logConversation('haltBotConversation command invoked');
+    try {
+        if (!_botManager) {
+            logConversation('Bot Conversation not initialized', 'ERROR');
+            vscode.window.showErrorMessage('Bot Conversation not initialized');
+            return;
+        }
+        if (!_botManager.isActive) {
+            logConversation('No active conversation to halt', 'WARN');
+            vscode.window.showInformationMessage('No active bot conversation to halt.');
+            return;
+        }
+        if (_botManager.isHalted) {
+            logConversation('Conversation already halted', 'WARN');
+            vscode.window.showInformationMessage('Bot conversation is already halted.');
+            return;
+        }
+        _botManager.haltConversation('Halted by user command');
+        logConversation('Bot conversation halted');
+        vscode.window.showInformationMessage('Bot conversation halted. Use "Continue" to resume.');
+    } catch (error) {
+        logConversation(`haltBotConversation FAILED: ${error}`, 'ERROR');
+        vscode.window.showErrorMessage(`Halt Bot Conversation failed: ${error}`);
     }
-    if (!_botManager.isActive) {
-        vscode.window.showInformationMessage('No active bot conversation to halt.');
-        return;
-    }
-    if (_botManager.isHalted) {
-        vscode.window.showInformationMessage('Bot conversation is already halted.');
-        return;
-    }
-    _botManager.haltConversation('Halted by user command');
-    vscode.window.showInformationMessage('Bot conversation halted. Use "Continue" to resume.');
 }
 
 export async function continueBotConversationHandler(): Promise<void> {
-    if (!_botManager) {
-        vscode.window.showErrorMessage('Bot Conversation not initialized');
-        return;
+    logConversation('continueBotConversation command invoked');
+    try {
+        if (!_botManager) {
+            logConversation('Bot Conversation not initialized', 'ERROR');
+            vscode.window.showErrorMessage('Bot Conversation not initialized');
+            return;
+        }
+        if (!_botManager.isHalted) {
+            logConversation('Conversation is not halted', 'WARN');
+            vscode.window.showInformationMessage('Bot conversation is not halted.');
+            return;
+        }
+        _botManager.continueConversation();
+        logConversation('Bot conversation continued');
+        vscode.window.showInformationMessage('Bot conversation continued.');
+    } catch (error) {
+        logConversation(`continueBotConversation FAILED: ${error}`, 'ERROR');
+        vscode.window.showErrorMessage(`Continue Bot Conversation failed: ${error}`);
     }
-    if (!_botManager.isHalted) {
-        vscode.window.showInformationMessage('Bot conversation is not halted.');
-        return;
-    }
-    _botManager.continueConversation();
-    vscode.window.showInformationMessage('Bot conversation continued.');
 }
 
 export async function addToBotConversationHandler(): Promise<void> {
-    if (!_botManager) {
-        vscode.window.showErrorMessage('Bot Conversation not initialized');
-        return;
+    logConversation('addToBotConversation command invoked');
+    try {
+        if (!_botManager) {
+            logConversation('Bot Conversation not initialized', 'ERROR');
+            vscode.window.showErrorMessage('Bot Conversation not initialized');
+            return;
+        }
+        if (!_botManager.isActive) {
+            logConversation('No active conversation', 'WARN');
+            vscode.window.showInformationMessage('No active bot conversation.');
+            return;
+        }
+
+        // Check if there's selected text in the editor
+        const editor = vscode.window.activeTextEditor;
+        const selectedText = editor && !editor.selection.isEmpty
+            ? editor.document.getText(editor.selection)
+            : undefined;
+
+        const text = await vscode.window.showInputBox({
+            prompt: 'Enter additional context for the bot conversation',
+            placeHolder: 'Extra instructions, corrections, file references...',
+            value: selectedText ?? '',
+        });
+        if (!text?.trim()) { return; }
+
+        _botManager.addUserInput(text.trim());
+        logConversation(`Added ${text.trim().length} chars to bot conversation`);
+        vscode.window.showInformationMessage(`Added ${text.trim().length} chars to bot conversation.`);
+    } catch (error) {
+        logConversation(`addToBotConversation FAILED: ${error}`, 'ERROR');
+        vscode.window.showErrorMessage(`Add to Bot Conversation failed: ${error}`);
     }
-    if (!_botManager.isActive) {
-        vscode.window.showInformationMessage('No active bot conversation.');
-        return;
-    }
-
-    // Check if there's selected text in the editor
-    const editor = vscode.window.activeTextEditor;
-    const selectedText = editor && !editor.selection.isEmpty
-        ? editor.document.getText(editor.selection)
-        : undefined;
-
-    const text = await vscode.window.showInputBox({
-        prompt: 'Enter additional context for the bot conversation',
-        placeHolder: 'Extra instructions, corrections, file references...',
-        value: selectedText ?? '',
-    });
-    if (!text?.trim()) { return; }
-
-    _botManager.addUserInput(text.trim());
-    vscode.window.showInformationMessage(`Added ${text.trim().length} chars to bot conversation.`);
 }

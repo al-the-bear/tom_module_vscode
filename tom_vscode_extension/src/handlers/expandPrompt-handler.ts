@@ -153,6 +153,24 @@ const DEFAULTS: PromptExpanderConfig = {
 };
 
 // ============================================================================
+// Module-level logging helper for exported handler functions
+// ============================================================================
+
+/**
+ * Logs messages to the Tom AI Local Log output channel via the manager.
+ * Falls back to console.log if the manager is not yet initialised.
+ */
+function logLocalAi(message: string, level: 'INFO' | 'WARN' | 'ERROR' = 'INFO'): void {
+    const timestamp = new Date().toISOString().slice(11, 23);
+    const line = `[${timestamp}] [${level}] ${message}`;
+    if (_manager) {
+        _manager.appendToLog(line);
+    } else {
+        console.log(`[LocalAI] ${line}`);
+    }
+}
+
+// ============================================================================
 // PromptExpanderManager — singleton, created in extension.ts
 // ============================================================================
 
@@ -174,6 +192,11 @@ export class PromptExpanderManager {
             cmd.dispose();
         }
         this.registeredCommands = [];
+    }
+
+    /** Append a line to the Tom AI Local Log output channel (used by module-level helpers). */
+    appendToLog(line: string): void {
+        this.logChannel.appendLine(line);
     }
 
     // -----------------------------------------------------------------------
@@ -1515,11 +1538,19 @@ export function getPromptExpanderManager(): PromptExpanderManager | undefined {
  * Delegates to the global PromptExpanderManager.
  */
 export async function expandPromptHandler(): Promise<void> {
-    if (!_manager) {
-        vscode.window.showErrorMessage('Prompt Expander not initialized');
-        return;
+    logLocalAi('expandPrompt command invoked');
+    try {
+        if (!_manager) {
+            logLocalAi('Prompt Expander not initialized', 'ERROR');
+            vscode.window.showErrorMessage('Prompt Expander not initialized');
+            return;
+        }
+        await _manager.expandPromptCommand();
+        logLocalAi('expandPrompt completed');
+    } catch (error) {
+        logLocalAi(`expandPrompt FAILED: ${error}`, 'ERROR');
+        vscode.window.showErrorMessage(`Expand Prompt failed: ${error}`);
     }
-    await _manager.expandPromptCommand();
 }
 
 /**
@@ -1528,11 +1559,19 @@ export async function expandPromptHandler(): Promise<void> {
  */
 export function createProfileHandler(profileKey: string): () => Promise<void> {
     return async () => {
-        if (!_manager) {
-            vscode.window.showErrorMessage('Prompt Expander not initialized');
-            return;
+        logLocalAi(`sendToLocalLlm.${profileKey} command invoked`);
+        try {
+            if (!_manager) {
+                logLocalAi('Prompt Expander not initialized', 'ERROR');
+                vscode.window.showErrorMessage('Prompt Expander not initialized');
+                return;
+            }
+            await _manager.expandPromptCommand(profileKey);
+            logLocalAi(`sendToLocalLlm.${profileKey} completed`);
+        } catch (error) {
+            logLocalAi(`sendToLocalLlm.${profileKey} FAILED: ${error}`, 'ERROR');
+            vscode.window.showErrorMessage(`Send to Local LLM (${profileKey}) failed: ${error}`);
         }
-        await _manager.expandPromptCommand(profileKey);
     };
 }
 
@@ -1541,9 +1580,17 @@ export function createProfileHandler(profileKey: string): () => Promise<void> {
  * Shows available Ollama models and switches the default.
  */
 export async function switchModelHandler(): Promise<void> {
-    if (!_manager) {
-        vscode.window.showErrorMessage('Prompt Expander not initialized');
-        return;
+    logLocalAi('switchLocalModel command invoked');
+    try {
+        if (!_manager) {
+            logLocalAi('Prompt Expander not initialized', 'ERROR');
+            vscode.window.showErrorMessage('Prompt Expander not initialized');
+            return;
+        }
+        await _manager.switchModelCommand();
+        logLocalAi('switchLocalModel completed');
+    } catch (error) {
+        logLocalAi(`switchLocalModel FAILED: ${error}`, 'ERROR');
+        vscode.window.showErrorMessage(`Switch Local Model failed: ${error}`);
     }
-    await _manager.switchModelCommand();
 }

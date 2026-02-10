@@ -408,13 +408,19 @@ function registerLocalLlmContextMenuCommands(context: vscode.ExtensionContext): 
     const sendToLocalLlm = vscode.commands.registerCommand(
         'dartscript.sendToLocalLlm',
         async () => {
-            if (!promptExpanderManager) { return; }
-            const config = promptExpanderManager.loadConfig();
-            const defaultKey = Object.entries(config.profiles)
-                .find(([_, p]) => p.isDefault)?.[0]
-                ?? Object.keys(config.profiles)[0]
-                ?? undefined;
-            await promptExpanderManager.expandPromptCommand(defaultKey);
+            bridgeLog('sendToLocalLlm command invoked');
+            try {
+                if (!promptExpanderManager) { return; }
+                const config = promptExpanderManager.loadConfig();
+                const defaultKey = Object.entries(config.profiles)
+                    .find(([_, p]) => p.isDefault)?.[0]
+                    ?? Object.keys(config.profiles)[0]
+                    ?? undefined;
+                await promptExpanderManager.expandPromptCommand(defaultKey);
+            } catch (error) {
+                bridgeLog(`sendToLocalLlm FAILED: ${error}`, 'ERROR');
+                vscode.window.showErrorMessage(`Send to Local LLM failed: ${error}`);
+            }
         }
     );
 
@@ -422,13 +428,19 @@ function registerLocalLlmContextMenuCommands(context: vscode.ExtensionContext): 
     const sendToLocalLlmStandard = vscode.commands.registerCommand(
         'dartscript.sendToLocalLlmStandard',
         async () => {
-            if (!promptExpanderManager) { return; }
-            const config = promptExpanderManager.loadConfig();
-            const defaultKey = Object.entries(config.profiles)
-                .find(([_, p]) => p.isDefault)?.[0]
-                ?? Object.keys(config.profiles)[0]
-                ?? undefined;
-            await promptExpanderManager.expandPromptCommand(defaultKey);
+            bridgeLog('sendToLocalLlmStandard command invoked');
+            try {
+                if (!promptExpanderManager) { return; }
+                const config = promptExpanderManager.loadConfig();
+                const defaultKey = Object.entries(config.profiles)
+                    .find(([_, p]) => p.isDefault)?.[0]
+                    ?? Object.keys(config.profiles)[0]
+                    ?? undefined;
+                await promptExpanderManager.expandPromptCommand(defaultKey);
+            } catch (error) {
+                bridgeLog(`sendToLocalLlmStandard FAILED: ${error}`, 'ERROR');
+                vscode.window.showErrorMessage(`Send to Local LLM (Standard) failed: ${error}`);
+            }
         }
     );
 
@@ -436,7 +448,13 @@ function registerLocalLlmContextMenuCommands(context: vscode.ExtensionContext): 
     const sendToLocalLlmAdvanced = vscode.commands.registerCommand(
         'dartscript.sendToLocalLlmAdvanced',
         async () => {
-            await promptExpanderManager?.expandPromptCommand();
+            bridgeLog('sendToLocalLlmAdvanced command invoked');
+            try {
+                await promptExpanderManager?.expandPromptCommand();
+            } catch (error) {
+                bridgeLog(`sendToLocalLlmAdvanced FAILED: ${error}`, 'ERROR');
+                vscode.window.showErrorMessage(`Send to Local LLM (Advanced) failed: ${error}`);
+            }
         }
     );
 
