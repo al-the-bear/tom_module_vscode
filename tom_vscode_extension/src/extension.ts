@@ -54,6 +54,9 @@ import {
     setBotConversationManager,
     registerChordMenuCommands,
     registerCommandlineCommands,
+    telegramTestHandler,
+    telegramToggleHandler,
+    disposeTelegramStandalone,
 } from './handlers';
 
 // Tom AI Chat tools
@@ -112,6 +115,9 @@ export async function activate(context: vscode.ExtensionContext) {
     botConversationManager = new BotConversationManager(context);
     setBotConversationManager(botConversationManager);
     context.subscriptions.push({ dispose: () => botConversationManager?.dispose() });
+
+    // Dispose standalone Telegram on deactivation
+    context.subscriptions.push({ dispose: () => disposeTelegramStandalone() });
 
     // Register Tom AI Chat tools
     initializeToolDescriptions();
@@ -359,6 +365,22 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
+    // Telegram Test Connection
+    const telegramTestCmd = vscode.commands.registerCommand(
+        'dartscript.telegramTest',
+        async () => {
+            await telegramTestHandler();
+        }
+    );
+
+    // Telegram Toggle Polling
+    const telegramToggleCmd = vscode.commands.registerCommand(
+        'dartscript.telegramToggle',
+        async () => {
+            await telegramToggleHandler();
+        }
+    );
+
     // Add all commands to subscriptions
     context.subscriptions.push(
         sendToChatCmd,
@@ -386,7 +408,9 @@ function registerCommands(context: vscode.ExtensionContext) {
         stopBotConversationCmd,
         haltBotConversationCmd,
         continueBotConversationCmd,
-        addToBotConversationCmd
+        addToBotConversationCmd,
+        telegramTestCmd,
+        telegramToggleCmd
     );
 }
 

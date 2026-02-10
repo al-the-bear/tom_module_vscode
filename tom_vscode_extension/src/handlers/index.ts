@@ -60,3 +60,4 @@ export {
 } from './botConversation-handler';
 export { registerChordMenuCommands } from './chordMenu-handler';
 export { registerCommandlineCommands } from './commandline-handler';
+export { telegramTestHandler, telegramToggleHandler, disposeTelegramStandalone } from './telegram-commands';

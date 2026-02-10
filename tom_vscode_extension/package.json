@@ -295,6 +295,16 @@
         "command": "dartscript.openConfig",
         "title": "DS: Open Config File",
         "category": "DartScript"
+      },
+      {
+        "command": "dartscript.telegramTest",
+        "title": "DS: Telegram Test Connection",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.telegramToggle",
+        "title": "DS: Telegram Start/Stop Polling",
+        "category": "DartScript"
       }
     ],
     "keybindings": [
