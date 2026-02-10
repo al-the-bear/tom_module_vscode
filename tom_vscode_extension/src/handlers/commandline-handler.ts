@@ -598,14 +598,16 @@ async function executeCommandline(): Promise<void> {
     const expandedCommand = expandPlaceholders(entry.command);
     if (expandedCommand === undefined) { return; } // error already shown
 
-    // Always confirm before executing, showing the resolved directory
+    // Confirmation only for dynamic modes (project, repository, document)
     const mode: CwdMode = entry.cwdMode || 'custom';
-    const confirm = await vscode.window.showInformationMessage(
-        `Run in ${cwdModeLabel(mode)}?`,
-        { modal: true, detail: `Directory: ${effectiveCwd}\nCommand: ${expandedCommand}` },
-        'OK',
-    );
-    if (confirm !== 'OK') { return; }
+    if (mode === 'project' || mode === 'repository' || mode === 'document') {
+        const confirm = await vscode.window.showInformationMessage(
+            `Run in ${cwdModeLabel(mode)}?`,
+            { modal: true, detail: `Directory: ${effectiveCwd}\nCommand: ${expandedCommand}` },
+            'OK',
+        );
+        if (confirm !== 'OK') { return; }
+    }
 
     // Only show post-action picker if the entry was defined with post-actions
     let postActions: string[] = [];
