@@ -5,9 +5,10 @@
  * Command definitions are stored in the `commandlines` section of send_to_chat.json.
  *
  * Features:
- *   - Dynamic working directory: workspace root, extension root, project root
- *     (detected via buildkit.yaml / pubspec.yaml), repository root (via .git),
- *     or a custom path
+ *   - Dynamic working directory resolved at execution time:
+ *     workspace root, extension root, project root (buildkit.yaml / pubspec.yaml),
+ *     repository root (.git), document root (active file directory), or a custom path
+ *   - Command placeholders: ${currentfile.name}, ${currentfile.ext}, ${currentfile.path}
  *   - Post-execution VS Code actions: configurable commands to run after the
  *     shell command finishes (e.g., reload window, open terminal, etc.)
  *
@@ -26,20 +27,28 @@ import * as path from 'path';
 // Types
 // ============================================================================
 
+/** How the working directory is determined at execution time. */
+export type CwdMode = 'workspace' | 'extension' | 'project' | 'repository' | 'document' | 'custom';
+
 export interface CommandlineEntry {
-    /** The shell command to execute */
+    /** The shell command to execute. May contain placeholders. */
     command: string;
     /** Human-readable description (if empty, the command is used) */
     description: string;
-    /** Absolute path where the command should be executed */
-    cwd: string;
     /**
-     * How the cwd was determined. Used for re-resolution at execution time.
-     * 'static' (or absent) = use cwd as-is.
-     * 'project' = re-detect project root from current editor file.
-     * 'repository' = re-detect repository root from current editor file.
+     * How the cwd is resolved at execution time.
+     *   'workspace'   — first workspace folder root
+     *   'extension'   — extension installation directory
+     *   'project'     — walk up from active file for buildkit.yaml / pubspec.yaml
+     *   'repository'  — walk up from active file for .git
+     *   'document'    — directory of the active editor file
+     *   'custom'      — use the path stored in `cwd`
+     *
+     * Legacy: if absent, falls back to 'custom' using the stored `cwd`.
      */
-    cwdMode?: 'static' | 'project' | 'repository';
+    cwdMode?: CwdMode;
+    /** Only used when cwdMode is 'custom' (or absent for legacy entries). */
+    cwd?: string;
     /** VS Code command IDs to execute after the shell command finishes. */
     postActions?: string[];
 }
@@ -291,11 +300,11 @@ async function defineCommandline(): Promise<void> {
   try {
     console.log('[commandline-handler] defineCommandline: started');
 
-    // 1) Command
+    // 1) Command (supports placeholders: ${currentfile.name}, ${currentfile.ext}, ${currentfile.path})
     const command = await vscode.window.showInputBox({
         title: 'Define Commandline (1/3) - Command',
-        prompt: 'Shell command to execute',
-        placeHolder: 'e.g. dart analyze, npm test, make build',
+        prompt: 'Shell command to execute. Placeholders: ${currentfile.name}, ${currentfile.ext}, ${currentfile.path}',
+        placeHolder: 'e.g. dart analyze, npm test ${currentfile.name}',
     });
     if (command === undefined) { console.log('[commandline-handler] defineCommandline: cancelled at command input'); return; }
     if (!command.trim()) {
@@ -313,71 +322,44 @@ async function defineCommandline(): Promise<void> {
     if (description === undefined) { console.log('[commandline-handler] defineCommandline: cancelled at description'); return; }
     console.log(`[commandline-handler] defineCommandline: description = "${description}"`);
 
-    // 3) Working directory
+    // 3) Working directory mode — no resolution here, just store the mode
     const cwdItems = [
-        { label: '$(root-folder) Workspace Root', _id: 'workspace' },
-        { label: '$(extensions) Extension Root', _id: 'extension' },
-        { label: '$(package) Project Root', _id: 'project', description: 'Detected from active file (buildkit.yaml / pubspec.yaml)' },
-        { label: '$(git-branch) Repository Root', _id: 'repository', description: 'Detected from active file (.git)' },
-        { label: '$(folder-opened) Custom Path...', _id: 'custom' },
+        { label: '$(root-folder) Workspace Root', _id: 'workspace' as CwdMode },
+        { label: '$(extensions) Extension Root', _id: 'extension' as CwdMode },
+        { label: '$(package) Project Root', _id: 'project' as CwdMode, description: 'Resolved at runtime from active file (buildkit.yaml / pubspec.yaml)' },
+        { label: '$(git-branch) Repository Root', _id: 'repository' as CwdMode, description: 'Resolved at runtime from active file (.git)' },
+        { label: '$(file-directory) Document Root', _id: 'document' as CwdMode, description: 'Directory of the active editor file at runtime' },
+        { label: '$(folder-opened) Custom Path...', _id: 'custom' as CwdMode },
     ];
     const cwdChoice = await vscode.window.showQuickPick(cwdItems, {
         title: 'Define Commandline (3/3) - Working Directory',
         placeHolder: 'Where should this command run?',
     });
     if (!cwdChoice) { console.log('[commandline-handler] defineCommandline: cancelled at cwd picker'); return; }
-    console.log(`[commandline-handler] defineCommandline: cwdChoice label="${cwdChoice.label}" _id="${cwdChoice._id}"`);
+    console.log(`[commandline-handler] defineCommandline: cwdChoice = "${cwdChoice._id}"`);
 
-    let cwd: string;
-    let cwdMode: CommandlineEntry['cwdMode'] = 'static';
+    // Build entry
+    const entry: CommandlineEntry = {
+        command: command.trim(),
+        description: description.trim() || '',
+        cwdMode: cwdChoice._id,
+    };
 
-    if (cwdChoice._id === 'workspace') {
-        const root = getWorkspaceRoot();
-        if (!root) { vscode.window.showErrorMessage('No workspace folder open.'); return; }
-        cwd = root;
-    } else if (cwdChoice._id === 'extension') {
-        const root = getExtensionRoot();
-        if (!root) { vscode.window.showErrorMessage('Extension root not found.'); return; }
-        cwd = root;
-    } else if (cwdChoice._id === 'project') {
-        const root = findProjectRoot();
-        if (!root) {
-            vscode.window.showWarningMessage('Project folder could not be determined. Open a file inside a project first.');
-            return;
-        }
-        cwd = root;
-        cwdMode = 'project';
-    } else if (cwdChoice._id === 'repository') {
-        const root = findRepositoryRoot();
-        if (!root) {
-            vscode.window.showWarningMessage('Repository root could not be determined. Open a file inside a git repository first.');
-            return;
-        }
-        cwd = root;
-        cwdMode = 'repository';
-    } else {
+    // Only ask for a path if custom
+    if (cwdChoice._id === 'custom') {
         const customPath = await vscode.window.showInputBox({
             title: 'Custom Working Directory',
             prompt: 'Enter an absolute or relative path (relative to workspace root)',
             placeHolder: '/absolute/path or relative/path',
         });
         if (customPath === undefined || !customPath.trim()) { return; }
-        cwd = resolveAbsolute(customPath.trim());
+        entry.cwd = customPath.trim();
     }
-    console.log(`[commandline-handler] defineCommandline: cwd="${cwd}" mode="${cwdMode}"`);
 
-    // 4) Write to config immediately
+    // 4) Write to config
     console.log('[commandline-handler] defineCommandline: writing to config');
     const config = readConfig() || {};
     if (!Array.isArray(config.commandlines)) { config.commandlines = []; }
-
-    const entry: CommandlineEntry = {
-        command: command.trim(),
-        description: description.trim() || '',
-        cwd,
-    };
-    if (cwdMode !== 'static') { entry.cwdMode = cwdMode; }
-
     config.commandlines.push(entry);
 
     if (!writeConfig(config)) {
@@ -388,7 +370,6 @@ async function defineCommandline(): Promise<void> {
     vscode.window.showInformationMessage(`Commandline saved: ${description.trim() || command.trim()}`);
 
     // 5) Offer to add post-execution actions (after command is already saved)
-    //    Use setTimeout to avoid quickpick dismiss-race with previous picker
     await new Promise(resolve => setTimeout(resolve, 300));
 
     console.log('[commandline-handler] defineCommandline: showing post-action offer');
@@ -407,7 +388,6 @@ async function defineCommandline(): Promise<void> {
     if (addPostActionsChoice && addPostActionsChoice._action === 'add') {
         const postActions = await pickPostActions();
         if (postActions && postActions.length > 0) {
-            // Re-read config (it was just written), update the last entry
             const freshConfig = readConfig();
             if (freshConfig && Array.isArray(freshConfig.commandlines) && freshConfig.commandlines.length > 0) {
                 freshConfig.commandlines[freshConfig.commandlines.length - 1].postActions = postActions;
@@ -424,6 +404,57 @@ async function defineCommandline(): Promise<void> {
 }
 
 // ============================================================================
+// Placeholder expansion
+// ============================================================================
+
+/**
+ * Human-readable label for a CwdMode value.
+ */
+function cwdModeLabel(mode: CwdMode | undefined): string {
+    switch (mode) {
+        case 'workspace': return 'Workspace Root';
+        case 'extension': return 'Extension Root';
+        case 'project': return 'Project Root (dynamic)';
+        case 'repository': return 'Repository Root (dynamic)';
+        case 'document': return 'Document Root (dynamic)';
+        case 'custom': return 'Custom Path';
+        default: return 'Custom Path';
+    }
+}
+
+/**
+ * Expand command placeholders using the currently active editor file.
+ * Supported placeholders:
+ *   ${currentfile.name} — filename without extension (e.g. "main")
+ *   ${currentfile.ext}  — file extension including dot (e.g. ".dart")
+ *   ${currentfile.path} — full absolute file path
+ *
+ * Returns the expanded command string, or undefined if placeholders are
+ * present but no editor is open.
+ */
+function expandPlaceholders(command: string): string | undefined {
+    const hasPlaceholders = /\$\{currentfile\.(name|ext|path)\}/.test(command);
+    if (!hasPlaceholders) { return command; }
+
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showErrorMessage(
+            'Command uses ${currentfile.*} placeholders but no editor is open.',
+        );
+        return undefined;
+    }
+
+    const filePath = editor.document.uri.fsPath;
+    const ext = path.extname(filePath);          // ".dart"
+    const name = path.basename(filePath, ext);    // "main"
+
+    return command
+        .replace(/\$\{currentfile\.name\}/g, name)
+        .replace(/\$\{currentfile\.ext\}/g, ext)
+        .replace(/\$\{currentfile\.path\}/g, filePath);
+}
+
+// ============================================================================
 // Delete Commandline
 // ============================================================================
 
@@ -437,7 +468,7 @@ async function deleteCommandline(): Promise<void> {
     const items = commandlines.map((entry, index) => ({
         label: entry.description || entry.command,
         description: entry.description ? entry.command : undefined,
-        detail: `cwd: ${entry.cwd}${entry.cwdMode ? ` [${entry.cwdMode}]` : ''}${entry.postActions?.length ? ` | ${entry.postActions.length} post-action(s)` : ''}`,
+        detail: `cwd: ${cwdModeLabel(entry.cwdMode)}${entry.cwdMode === 'custom' || !entry.cwdMode ? ` (${entry.cwd || '?'})` : ''}${entry.postActions?.length ? ` | ${entry.postActions.length} post-action(s)` : ''}`,
         _index: index,
     }));
 
@@ -461,37 +492,74 @@ async function deleteCommandline(): Promise<void> {
 // ============================================================================
 
 /**
- * Resolve the effective cwd for a commandline entry.
- * For 'project' and 'repository' modes, re-detects from the current editor.
- * Returns the resolved path or undefined (with user notification) on failure.
+ * Resolve the effective cwd for a commandline entry at execution time.
+ * All dynamic modes (project, repository, document) are resolved here.
+ * Returns the resolved absolute path, or undefined (with error shown) on failure.
  */
 function resolveExecutionCwd(entry: CommandlineEntry): string | undefined {
-    const mode = entry.cwdMode || 'static';
+    const mode: CwdMode = entry.cwdMode || 'custom';
 
-    if (mode === 'project') {
-        const root = findProjectRoot();
-        if (!root) {
-            vscode.window.showWarningMessage(
-                'Project folder could not be determined. Open a file inside a project (with buildkit.yaml or pubspec.yaml) first.',
-            );
-            return undefined;
+    switch (mode) {
+        case 'workspace': {
+            const root = getWorkspaceRoot();
+            if (!root) {
+                vscode.window.showErrorMessage('No workspace folder open.');
+                return undefined;
+            }
+            return root;
         }
-        return root;
-    }
-
-    if (mode === 'repository') {
-        const root = findRepositoryRoot();
-        if (!root) {
-            vscode.window.showWarningMessage(
-                'Repository root could not be determined. Open a file inside a git repository first.',
-            );
-            return undefined;
+        case 'extension': {
+            const root = getExtensionRoot();
+            if (!root) {
+                vscode.window.showErrorMessage('Extension root not found.');
+                return undefined;
+            }
+            return root;
         }
-        return root;
+        case 'project': {
+            const root = findProjectRoot();
+            if (!root) {
+                vscode.window.showErrorMessage(
+                    'Project root could not be determined. Open a file inside a project (with buildkit.yaml or pubspec.yaml) first.',
+                );
+                return undefined;
+            }
+            return root;
+        }
+        case 'repository': {
+            const root = findRepositoryRoot();
+            if (!root) {
+                vscode.window.showErrorMessage(
+                    'Repository root could not be determined. Open a file inside a git repository first.',
+                );
+                return undefined;
+            }
+            return root;
+        }
+        case 'document': {
+            const dir = getActiveFileDir();
+            if (!dir) {
+                vscode.window.showErrorMessage(
+                    'Document root could not be determined. Open a file in the editor first.',
+                );
+                return undefined;
+            }
+            return dir;
+        }
+        case 'custom':
+        default: {
+            if (!entry.cwd) {
+                vscode.window.showErrorMessage('Custom working directory path is missing.');
+                return undefined;
+            }
+            const resolved = resolveAbsolute(entry.cwd);
+            if (!fs.existsSync(resolved)) {
+                vscode.window.showErrorMessage(`Custom working directory does not exist: ${resolved}`);
+                return undefined;
+            }
+            return resolved;
+        }
     }
-
-    // Static mode — use stored cwd
-    return entry.cwd;
 }
 
 async function executeCommandline(): Promise<void> {
@@ -505,7 +573,7 @@ async function executeCommandline(): Promise<void> {
     const items = commandlines.map((entry, index) => ({
         label: entry.description || entry.command,
         description: entry.description ? entry.command : undefined,
-        detail: `cwd: ${entry.cwd}${entry.cwdMode ? ` [${entry.cwdMode}]` : ''}${entry.postActions?.length ? ` -> ${entry.postActions.length} post-action(s)` : ''}`,
+        detail: `cwd: ${cwdModeLabel(entry.cwdMode)}${entry.postActions?.length ? ` -> ${entry.postActions.length} post-action(s)` : ''}`,
         _index: index,
     }));
 
@@ -517,15 +585,20 @@ async function executeCommandline(): Promise<void> {
 
     const entry = commandlines[picked._index];
 
-    // Resolve effective working directory
+    // Resolve effective working directory at runtime
     const effectiveCwd = resolveExecutionCwd(entry);
     if (!effectiveCwd) { return; }
 
+    // Expand placeholders in command string
+    const expandedCommand = expandPlaceholders(entry.command);
+    if (expandedCommand === undefined) { return; } // error already shown
+
     // Confirmation for dynamic modes
-    if (entry.cwdMode === 'project' || entry.cwdMode === 'repository') {
+    const mode: CwdMode = entry.cwdMode || 'custom';
+    if (mode === 'project' || mode === 'repository' || mode === 'document') {
         const confirm = await vscode.window.showInformationMessage(
-            `Running "${entry.command}" in ${entry.cwdMode} folder. Continue?`,
-            { modal: false, detail: effectiveCwd },
+            `Run in ${cwdModeLabel(mode)}: ${effectiveCwd}`,
+            { modal: false, detail: expandedCommand },
             'OK', 'Cancel',
         );
         if (confirm !== 'OK') { return; }
@@ -545,7 +618,7 @@ async function executeCommandline(): Promise<void> {
         cwd: effectiveCwd,
     });
     terminal.show();
-    terminal.sendText(entry.command);
+    terminal.sendText(expandedCommand);
 
     // Run post-actions
     if (postActions.length > 0) {
