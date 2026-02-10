@@ -289,51 +289,57 @@ async function pickPostActions(existingActions?: string[]): Promise<string[] | u
 
 async function defineCommandline(): Promise<void> {
   try {
+    console.log('[commandline-handler] defineCommandline: started');
+
     // 1) Command
     const command = await vscode.window.showInputBox({
-        title: 'Define Commandline (1/4) - Command',
+        title: 'Define Commandline (1/3) - Command',
         prompt: 'Shell command to execute',
         placeHolder: 'e.g. dart analyze, npm test, make build',
     });
-    if (command === undefined) { return; } // cancelled
+    if (command === undefined) { console.log('[commandline-handler] defineCommandline: cancelled at command input'); return; }
     if (!command.trim()) {
         vscode.window.showWarningMessage('Command cannot be empty.');
         return;
     }
+    console.log(`[commandline-handler] defineCommandline: command = "${command}"`);
 
     // 2) Description (optional)
     const description = await vscode.window.showInputBox({
-        title: 'Define Commandline (2/4) - Description',
+        title: 'Define Commandline (2/3) - Description',
         prompt: 'Optional description (leave empty to use the command)',
         placeHolder: command,
     });
-    if (description === undefined) { return; }
+    if (description === undefined) { console.log('[commandline-handler] defineCommandline: cancelled at description'); return; }
+    console.log(`[commandline-handler] defineCommandline: description = "${description}"`);
 
     // 3) Working directory
-    const cwdChoice = await vscode.window.showQuickPick(
-        [
-            { label: '$(root-folder) Workspace Root', id: 'workspace' },
-            { label: '$(extensions) Extension Root', id: 'extension' },
-            { label: '$(package) Project Root', id: 'project', description: 'Detected from active file (buildkit.yaml / pubspec.yaml)' },
-            { label: '$(git-branch) Repository Root', id: 'repository', description: 'Detected from active file (.git)' },
-            { label: '$(folder-opened) Custom Path...', id: 'custom' },
-        ],
-        { title: 'Define Commandline (3/4) - Working Directory', placeHolder: 'Where should this command run?' }
-    );
-    if (!cwdChoice) { return; }
+    const cwdItems = [
+        { label: '$(root-folder) Workspace Root', _id: 'workspace' },
+        { label: '$(extensions) Extension Root', _id: 'extension' },
+        { label: '$(package) Project Root', _id: 'project', description: 'Detected from active file (buildkit.yaml / pubspec.yaml)' },
+        { label: '$(git-branch) Repository Root', _id: 'repository', description: 'Detected from active file (.git)' },
+        { label: '$(folder-opened) Custom Path...', _id: 'custom' },
+    ];
+    const cwdChoice = await vscode.window.showQuickPick(cwdItems, {
+        title: 'Define Commandline (3/3) - Working Directory',
+        placeHolder: 'Where should this command run?',
+    });
+    if (!cwdChoice) { console.log('[commandline-handler] defineCommandline: cancelled at cwd picker'); return; }
+    console.log(`[commandline-handler] defineCommandline: cwdChoice label="${cwdChoice.label}" _id="${cwdChoice._id}"`);
 
     let cwd: string;
     let cwdMode: CommandlineEntry['cwdMode'] = 'static';
 
-    if (cwdChoice.id === 'workspace') {
+    if (cwdChoice._id === 'workspace') {
         const root = getWorkspaceRoot();
         if (!root) { vscode.window.showErrorMessage('No workspace folder open.'); return; }
         cwd = root;
-    } else if (cwdChoice.id === 'extension') {
+    } else if (cwdChoice._id === 'extension') {
         const root = getExtensionRoot();
         if (!root) { vscode.window.showErrorMessage('Extension root not found.'); return; }
         cwd = root;
-    } else if (cwdChoice.id === 'project') {
+    } else if (cwdChoice._id === 'project') {
         const root = findProjectRoot();
         if (!root) {
             vscode.window.showWarningMessage('Project folder could not be determined. Open a file inside a project first.');
@@ -341,7 +347,7 @@ async function defineCommandline(): Promise<void> {
         }
         cwd = root;
         cwdMode = 'project';
-    } else if (cwdChoice.id === 'repository') {
+    } else if (cwdChoice._id === 'repository') {
         const root = findRepositoryRoot();
         if (!root) {
             vscode.window.showWarningMessage('Repository root could not be determined. Open a file inside a git repository first.');
@@ -358,22 +364,43 @@ async function defineCommandline(): Promise<void> {
         if (customPath === undefined || !customPath.trim()) { return; }
         cwd = resolveAbsolute(customPath.trim());
     }
+    console.log(`[commandline-handler] defineCommandline: cwd="${cwd}" mode="${cwdMode}"`);
 
-    // 4) Post-execution actions
-    const postActions = await pickPostActions();
-    if (postActions === undefined) { return; } // cancelled
+    // 4) Ask whether to add post-execution actions
+    console.log('[commandline-handler] defineCommandline: about to show post-action opt-in');
+    const addPostActions = await vscode.window.showQuickPick(
+        [
+            { label: '$(play) No - save command now', _id: 'no' },
+            { label: '$(add) Yes - add post-execution actions', _id: 'yes', description: 'e.g. Reload Window after script finishes' },
+        ],
+        {
+            title: 'Post-Execution Actions',
+            placeHolder: 'Add VS Code actions to run after the command finishes?',
+        },
+    );
+    if (!addPostActions) { console.log('[commandline-handler] defineCommandline: cancelled at post-action opt-in'); return; }
+    console.log(`[commandline-handler] defineCommandline: addPostActions._id = "${addPostActions._id}"`);
+
+    let postActions: string[] = [];
+    if (addPostActions._id === 'yes') {
+        console.log('[commandline-handler] defineCommandline: showing post-action picker');
+        const result = await pickPostActions();
+        if (result === undefined) { console.log('[commandline-handler] defineCommandline: cancelled at post-action picker'); return; }
+        postActions = result;
+        console.log(`[commandline-handler] defineCommandline: ${postActions.length} post-actions selected`);
+    }
 
     // 5) Confirmation popup
     const postActionStr = postActions.length > 0
         ? `\nPost-actions: ${postActions.length}`
         : '';
-    const modeStr = cwdMode !== 'static' ? ` [${cwdMode} — re-detected at runtime]` : '';
+    const modeStr = cwdMode !== 'static' ? ` [${cwdMode} - re-detected at runtime]` : '';
     const confirm = await vscode.window.showInformationMessage(
         `Save commandline?`,
         { modal: true, detail: `Command: ${command}\nDirectory: ${cwd}${modeStr}${postActionStr}` },
         'OK'
     );
-    if (confirm !== 'OK') { return; }
+    if (confirm !== 'OK') { console.log('[commandline-handler] defineCommandline: cancelled at confirmation'); return; }
 
     // 6) Write to config
     const config = readConfig() || {};
@@ -391,6 +418,7 @@ async function defineCommandline(): Promise<void> {
 
     if (writeConfig(config)) {
         vscode.window.showInformationMessage(`Commandline saved: ${description.trim() || command.trim()}`);
+        console.log('[commandline-handler] defineCommandline: saved successfully');
     }
   } catch (err: any) {
     console.error(`[commandline-handler] defineCommandline error:`, err);
@@ -480,7 +508,7 @@ async function executeCommandline(): Promise<void> {
     const items = commandlines.map((entry, index) => ({
         label: entry.description || entry.command,
         description: entry.description ? entry.command : undefined,
-        detail: `cwd: ${entry.cwd}${entry.cwdMode ? ` [${entry.cwdMode}]` : ''}${entry.postActions?.length ? ` → ${entry.postActions.length} post-action(s)` : ''}`,
+        detail: `cwd: ${entry.cwd}${entry.cwdMode ? ` [${entry.cwdMode}]` : ''}${entry.postActions?.length ? ` -> ${entry.postActions.length} post-action(s)` : ''}`,
         _index: index,
     }));
 
@@ -506,9 +534,13 @@ async function executeCommandline(): Promise<void> {
         if (confirm !== 'OK') { return; }
     }
 
-    // Pick post-execution VS Code actions (pre-populated with saved defaults)
-    const postActions = await pickPostActions(entry.postActions);
-    if (postActions === undefined) { return; } // cancelled
+    // Only show post-action picker if the entry was defined with post-actions
+    let postActions: string[] = [];
+    if (entry.postActions && entry.postActions.length > 0) {
+        const result = await pickPostActions(entry.postActions);
+        if (result === undefined) { return; } // cancelled
+        postActions = result;
+    }
 
     // Execute in VS Code terminal
     const terminal = vscode.window.createTerminal({
