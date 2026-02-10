@@ -159,9 +159,12 @@ const DEFAULTS: PromptExpanderConfig = {
 export class PromptExpanderManager {
     private context: vscode.ExtensionContext;
     private registeredCommands: vscode.Disposable[] = [];
+    private outputChannel: vscode.OutputChannel;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.outputChannel = vscode.window.createOutputChannel('DartScript Local LLM');
+        context.subscriptions.push(this.outputChannel);
     }
 
     dispose(): void {
@@ -776,6 +779,7 @@ export class PromptExpanderManager {
         modelConfigKey?: string | null,
         editor?: vscode.TextEditor,
         cancellationToken?: vscode.CancellationToken,
+        onToolCall?: (toolName: string, args: Record<string, unknown>, result: string) => void,
     ): Promise<ExpanderProcessResult> {
         const config = this.loadConfig();
 
@@ -830,6 +834,7 @@ export class PromptExpanderManager {
                 cancellationToken,
                 keepAlive: mc.keepAlive,
                 maxRounds: effectiveMaxRounds,
+                onToolCall,
             });
             const rawResponse = result.text;
             const stats = result.stats;
@@ -1312,15 +1317,49 @@ export class PromptExpanderManager {
                 }
             }
 
-            // Process with progress
+            // Log start to output channel
+            const startTime = Date.now();
+            this.outputChannel.appendLine('═══════════════════════════════════════════════════');
+            this.outputChannel.appendLine(`Prompt Expansion — ${new Date().toLocaleTimeString()}`);
+            this.outputChannel.appendLine(`  Model: ${mc.model} | Profile: ${profileKey}`);
+            this.outputChannel.appendLine(`  Prompt: ${originalText.length} chars`);
+            this.outputChannel.appendLine('═══════════════════════════════════════════════════');
+
+            // Process with progress (includes live tool-call feedback)
+            let toolCallIndex = 0;
             const result = await vscode.window.withProgress(
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: `Processing prompt with ${mc.model}...`,
                     cancellable: true,
                 },
-                async (_progress, cancellationToken) => {
-                    return this.process(originalText, profileKey, selectedModelKey, editor, cancellationToken);
+                async (progress, cancellationToken) => {
+                    return this.process(originalText, profileKey, selectedModelKey, editor, cancellationToken,
+                        (toolName, args, toolResult) => {
+                            toolCallIndex++;
+                            // Shorten args for display
+                            const argSummary = Object.entries(args)
+                                .map(([k, v]) => {
+                                    const s = String(v);
+                                    return `${k}=${s.length > 60 ? s.substring(0, 57) + '...' : s}`;
+                                })
+                                .join(', ');
+                            const shortResult = toolResult.length > 200
+                                ? toolResult.substring(0, 197) + '...'
+                                : toolResult;
+
+                            // Update progress notification
+                            progress.report({
+                                message: `Tool #${toolCallIndex}: ${toolName}(${argSummary.substring(0, 80)})`,
+                            });
+
+                            // Log to output channel
+                            this.outputChannel.appendLine(`--- Tool call #${toolCallIndex}: ${toolName} ---`);
+                            this.outputChannel.appendLine(`  Args: ${JSON.stringify(args, null, 2)}`);
+                            this.outputChannel.appendLine(`  Result (${toolResult.length} chars): ${shortResult}`);
+                            this.outputChannel.appendLine('');
+                        },
+                    );
                 },
             );
 
@@ -1347,12 +1386,27 @@ export class PromptExpanderManager {
             });
 
             if (success) {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
                 const tokenStr = result.tokenInfo
                     ? ` | ${result.tokenInfo.promptTokens}+${result.tokenInfo.completionTokens} tokens, ${(result.tokenInfo.totalDurationMs / 1000).toFixed(1)}s`
                     : '';
                 const toolStr = result.toolCallCount
                     ? ` | ${result.toolCallCount} tool calls in ${result.turnsUsed}/${result.maxTurns} turns`
                     : '';
+
+                // Output channel summary
+                this.outputChannel.appendLine('───────────────────────────────────────────────────');
+                this.outputChannel.appendLine(`Done in ${elapsed}s — ${originalText.length} → ${result.result.length} chars`);
+                if (result.toolCallCount) {
+                    this.outputChannel.appendLine(`  Tool calls: ${result.toolCallCount} in ${result.turnsUsed}/${result.maxTurns} turns`);
+                } else {
+                    this.outputChannel.appendLine(`  No tool calls (direct answer in 1 turn)`);
+                }
+                if (result.tokenInfo) {
+                    this.outputChannel.appendLine(`  Tokens: ${result.tokenInfo.promptTokens} prompt + ${result.tokenInfo.completionTokens} completion`);
+                }
+                this.outputChannel.appendLine('');
+
                 bridgeLog(`[Prompt Expander] ${originalText.length} → ${result.result.length} chars [${profileKey}/${result.modelConfig}]${tokenStr}${toolStr}`);
                 vscode.window.showInformationMessage(
                     `Expanded (${originalText.length} → ${result.result.length} chars) [${profileKey}]${tokenStr}${toolStr}`,
