@@ -485,6 +485,10 @@ async function executeCommandline(): Promise<void> {
         if (confirm !== 'OK') { return; }
     }
 
+    // Pick post-execution VS Code actions (pre-populated with saved defaults)
+    const postActions = await pickPostActions(entry.postActions);
+    if (postActions === undefined) { return; } // cancelled
+
     // Execute in VS Code terminal
     const terminal = vscode.window.createTerminal({
         name: entry.description || entry.command,
@@ -493,12 +497,9 @@ async function executeCommandline(): Promise<void> {
     terminal.show();
     terminal.sendText(entry.command);
 
-    // Run post-actions if configured
-    if (entry.postActions && entry.postActions.length > 0) {
-        // Wait a moment for the terminal to initialize, then schedule post-actions
-        // Note: we run actions immediately — for process-completion-dependent actions,
-        // the user should use && chaining in the command itself or a wrapper script
-        for (const commandId of entry.postActions) {
+    // Run post-actions
+    if (postActions.length > 0) {
+        for (const commandId of postActions) {
             try {
                 await vscode.commands.executeCommand(commandId);
             } catch (err: any) {
