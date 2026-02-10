@@ -366,28 +366,8 @@ async function defineCommandline(): Promise<void> {
     }
     console.log(`[commandline-handler] defineCommandline: cwd="${cwd}" mode="${cwdMode}"`);
 
-    // 4) Save confirmation — with option to add post-execution actions
-    const modeStr = cwdMode !== 'static' ? ` [${cwdMode} - re-detected at runtime]` : '';
-    console.log('[commandline-handler] defineCommandline: showing save confirmation');
-    const saveChoice = await vscode.window.showInformationMessage(
-        `Save commandline?`,
-        { modal: true, detail: `Command: ${command}\nDirectory: ${cwd}${modeStr}` },
-        'Save',
-        'Add Post-Actions First',
-    );
-    console.log(`[commandline-handler] defineCommandline: saveChoice = "${saveChoice}"`);
-    if (!saveChoice) { console.log('[commandline-handler] defineCommandline: cancelled at confirmation'); return; }
-
-    let postActions: string[] = [];
-    if (saveChoice === 'Add Post-Actions First') {
-        console.log('[commandline-handler] defineCommandline: showing post-action picker');
-        const result = await pickPostActions();
-        if (result === undefined) { console.log('[commandline-handler] defineCommandline: cancelled at post-action picker'); return; }
-        postActions = result;
-        console.log(`[commandline-handler] defineCommandline: ${postActions.length} post-actions selected`);
-    }
-
-    // 5) Write to config
+    // 4) Write to config immediately
+    console.log('[commandline-handler] defineCommandline: writing to config');
     const config = readConfig() || {};
     if (!Array.isArray(config.commandlines)) { config.commandlines = []; }
 
@@ -397,13 +377,45 @@ async function defineCommandline(): Promise<void> {
         cwd,
     };
     if (cwdMode !== 'static') { entry.cwdMode = cwdMode; }
-    if (postActions.length > 0) { entry.postActions = postActions; }
 
     config.commandlines.push(entry);
 
-    if (writeConfig(config)) {
-        vscode.window.showInformationMessage(`Commandline saved: ${description.trim() || command.trim()}`);
-        console.log('[commandline-handler] defineCommandline: saved successfully');
+    if (!writeConfig(config)) {
+        vscode.window.showErrorMessage('Failed to save commandline.');
+        return;
+    }
+    console.log('[commandline-handler] defineCommandline: saved successfully');
+    vscode.window.showInformationMessage(`Commandline saved: ${description.trim() || command.trim()}`);
+
+    // 5) Offer to add post-execution actions (after command is already saved)
+    //    Use setTimeout to avoid quickpick dismiss-race with previous picker
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    console.log('[commandline-handler] defineCommandline: showing post-action offer');
+    const addPostActionsChoice = await vscode.window.showQuickPick(
+        [
+            { label: '$(check) Done', _action: 'done' as const },
+            { label: '$(add) Add post-execution actions...', _action: 'add' as const, description: 'e.g. Reload Window after script finishes' },
+        ],
+        {
+            title: 'Add Post-Execution Actions?',
+            placeHolder: 'Optionally add VS Code actions to run after this command finishes',
+        },
+    );
+    console.log(`[commandline-handler] defineCommandline: post-action offer choice = ${addPostActionsChoice?._action ?? 'cancelled'}`);
+
+    if (addPostActionsChoice && addPostActionsChoice._action === 'add') {
+        const postActions = await pickPostActions();
+        if (postActions && postActions.length > 0) {
+            // Re-read config (it was just written), update the last entry
+            const freshConfig = readConfig();
+            if (freshConfig && Array.isArray(freshConfig.commandlines) && freshConfig.commandlines.length > 0) {
+                freshConfig.commandlines[freshConfig.commandlines.length - 1].postActions = postActions;
+                writeConfig(freshConfig);
+                vscode.window.showInformationMessage(`${postActions.length} post-action(s) added.`);
+                console.log(`[commandline-handler] defineCommandline: ${postActions.length} post-actions saved`);
+            }
+        }
     }
   } catch (err: any) {
     console.error(`[commandline-handler] defineCommandline error:`, err);
