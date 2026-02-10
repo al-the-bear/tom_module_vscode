@@ -154,22 +154,7 @@ let activeGroupId: string | null = null;
 /** Reference to the active QuickPick so we can dismiss it from keybindings */
 let activeQuickPick: vscode.QuickPick<vscode.QuickPickItem & { _chordItem?: ChordMenuItem }> | null = null;
 
-// ============================================================================
-// Trigger Key Guard (prevents key repeat of trigger from closing menu)
-// ============================================================================
-
-/**
- * When the user holds Ctrl+Shift+C to open the conversation menu, macOS key
- * repeat can fire Ctrl+Shift+C again while the menu is open. Since
- * dartscript.chordMenuOpen is already true (setContext awaited), the dispatch
- * binding fires executeChordKey("c"), which matches "Continue Conversation"
- * and prematurely closes the menu.
- *
- * Fix: ignore executeChordKey calls for the trigger key letter within a short
- * guard window after menu open.
- */
-const TRIGGER_KEY_GUARD_MS = 400;
-let triggerKeyLetter: string | null = null;
+/** Timestamp when the menu was opened (for diagnostic logging) */
 let menuOpenTimestamp: number = 0;
 
 // ============================================================================
@@ -193,14 +178,11 @@ async function showChordMenu(groupId: string): Promise<void> {
 
     // Set context for keybinding dispatch
     activeGroupId = groupId;
-
-    // Set trigger key guard to prevent key repeat from closing menu
-    const prefixParts = group.prefix.split('+');
-    triggerKeyLetter = prefixParts[prefixParts.length - 1].toLowerCase();
     menuOpenTimestamp = Date.now();
-    console.log(`[ChordMenu] Opening group '${groupId}', trigger key guard: '${triggerKeyLetter}'`);
+    console.log(`[ChordMenu] === OPEN group '${groupId}' (${group.prefix}) at ${menuOpenTimestamp} ===`);
 
     await vscode.commands.executeCommand('setContext', 'dartscript.chordMenuOpen', true);
+    console.log(`[ChordMenu] setContext complete (+${Date.now() - menuOpenTimestamp}ms)`);
 
     // Build QuickPick items
     const quickPick = vscode.window.createQuickPick<vscode.QuickPickItem & { _chordItem?: ChordMenuItem }>();
@@ -222,12 +204,14 @@ async function showChordMenu(groupId: string): Promise<void> {
     const executeItem = (item: ChordMenuItem) => {
         if (executed) { return; }
         executed = true;
+        console.log(`[ChordMenu] executeItem: '${item.key}' → '${item.label}' (${item.commandId})`);
         quickPick.hide();
         vscode.commands.executeCommand(item.commandId);
     };
 
     // Auto-execute on single unique character match (plain typing)
     quickPick.onDidChangeValue((value) => {
+        console.log(`[ChordMenu] onDidChangeValue: '${value}' (charCodes: ${[...value].map(c => c.charCodeAt(0)).join(',')}) group=${groupId} executed=${executed}`);
         if (executed) { return; }
         const typed = value.toLowerCase().trim();
         if (typed.length !== 1) { return; }
@@ -240,6 +224,7 @@ async function showChordMenu(groupId: string): Promise<void> {
 
     // Handle explicit selection (click or Enter)
     quickPick.onDidAccept(() => {
+        console.log(`[ChordMenu] onDidAccept: group=${groupId} executed=${executed}`);
         if (executed) { return; }
         const selected = quickPick.selectedItems[0];
         if (selected?._chordItem) {
@@ -249,15 +234,16 @@ async function showChordMenu(groupId: string): Promise<void> {
 
     // Clean up on hide
     quickPick.onDidHide(() => {
+        console.log(`[ChordMenu] === HIDE group '${groupId}' (was open ${Date.now() - menuOpenTimestamp}ms) ===`);
         activeGroupId = null;
         activeQuickPick = null;
-        triggerKeyLetter = null;
         menuOpenTimestamp = 0;
         vscode.commands.executeCommand('setContext', 'dartscript.chordMenuOpen', false);
         quickPick.dispose();
     });
 
     quickPick.show();
+    console.log(`[ChordMenu] QuickPick.show() called (+${Date.now() - menuOpenTimestamp}ms)`);
 }
 
 // ============================================================================
@@ -269,44 +255,37 @@ async function showChordMenu(groupId: string): Promise<void> {
  * chord menu is open. Looks up the letter in the active group and executes.
  */
 export function executeChordKey(key: string): void {
-    console.log(`[ChordMenu] executeChordKey('${key}') — activeGroup: ${activeGroupId}, triggerGuard: '${triggerKeyLetter}'`);
+    const elapsed = menuOpenTimestamp ? Date.now() - menuOpenTimestamp : -1;
+    console.log(`[ChordMenu] executeChordKey('${key}') — activeGroup: ${activeGroupId}, elapsed: ${elapsed}ms`);
 
     if (!activeGroupId || !activeQuickPick) {
-        console.log(`[ChordMenu] Ignored: no active menu`);
+        console.log(`[ChordMenu] executeChordKey IGNORED: no active menu (activeGroupId=${activeGroupId}, hasQuickPick=${!!activeQuickPick})`);
         return;
     }
 
     const group = CHORD_GROUPS[activeGroupId];
-    if (!group) { return; }
-
-    const normalizedKey = key.toLowerCase();
-
-    // Guard: ignore key repeat of the trigger key within guard window.
-    // When the user holds Ctrl+Shift+C to open the menu, macOS key repeat
-    // can fire the dispatch binding for "c" before the user releases the key.
-    if (triggerKeyLetter && normalizedKey === triggerKeyLetter &&
-        Date.now() - menuOpenTimestamp < TRIGGER_KEY_GUARD_MS) {
-        console.log(`[ChordMenu] Blocked key repeat of trigger '${normalizedKey}' (${Date.now() - menuOpenTimestamp}ms since open, guard: ${TRIGGER_KEY_GUARD_MS}ms)`);
+    if (!group) {
+        console.log(`[ChordMenu] executeChordKey IGNORED: unknown group '${activeGroupId}'`);
         return;
     }
 
+    const normalizedKey = key.toLowerCase();
     const match = group.items.filter(item =>
         item.key === normalizedKey && (!item.when || item.when())
     );
 
     if (match.length === 1) {
-        console.log(`[ChordMenu] Executing: '${match[0].label}' (${match[0].commandId})`);
+        console.log(`[ChordMenu] executeChordKey MATCH: '${match[0].key}' → '${match[0].label}' (${match[0].commandId})`);
         // Dismiss the QuickPick and execute the command
         const quickPick = activeQuickPick;
         activeGroupId = null;
         activeQuickPick = null;
-        triggerKeyLetter = null;
         menuOpenTimestamp = 0;
         vscode.commands.executeCommand('setContext', 'dartscript.chordMenuOpen', false);
         quickPick.hide();
         vscode.commands.executeCommand(match[0].commandId);
     } else {
-        console.log(`[ChordMenu] No unique match for key '${normalizedKey}' in group '${activeGroupId}' (${match.length} matches)`);
+        console.log(`[ChordMenu] executeChordKey NO MATCH for '${normalizedKey}' in group '${activeGroupId}' (${match.length} candidates)`);
     }
 }
 
