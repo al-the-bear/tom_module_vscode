@@ -97,6 +97,9 @@ echo ""
 echo "🗑️  Uninstalling old version..."
 "$CODE_CLI" --uninstall-extension tom.dartscript-vscode 2>/dev/null || true
 
+# Remove old VSIX files to prevent stale packaging
+rm -f *.vsix
+
 # Package as VSIX
 echo ""
 echo "📦 Packaging extension as VSIX..."
