@@ -496,16 +496,19 @@ async function deleteCommandline(): Promise<void> {
 /**
  * Resolve the effective cwd for a commandline entry at execution time.
  * All dynamic modes (project, repository, document) are resolved here.
- * Returns the resolved absolute path, or undefined (with error shown) on failure.
+ * Returns the resolved absolute path, or undefined (with modal error shown) on failure.
  */
-function resolveExecutionCwd(entry: CommandlineEntry): string | undefined {
+async function resolveExecutionCwd(entry: CommandlineEntry): Promise<string | undefined> {
     const mode: CwdMode = entry.cwdMode || 'custom';
+
+    const showError = (msg: string) =>
+        vscode.window.showErrorMessage(msg, { modal: true });
 
     switch (mode) {
         case 'workspace': {
             const root = getWorkspaceRoot();
             if (!root) {
-                vscode.window.showErrorMessage('No workspace folder open.');
+                await showError('No workspace folder open.');
                 return undefined;
             }
             return root;
@@ -513,7 +516,7 @@ function resolveExecutionCwd(entry: CommandlineEntry): string | undefined {
         case 'extension': {
             const root = getExtensionRoot();
             if (!root) {
-                vscode.window.showErrorMessage('Extension root not found.');
+                await showError('Extension root not found.');
                 return undefined;
             }
             return root;
@@ -521,8 +524,8 @@ function resolveExecutionCwd(entry: CommandlineEntry): string | undefined {
         case 'project': {
             const root = findProjectRoot();
             if (!root) {
-                vscode.window.showErrorMessage(
-                    'Project root could not be determined. Open a file inside a project (with buildkit.yaml or pubspec.yaml) first.',
+                await showError(
+                    'Project root could not be determined.\n\nOpen a file inside a project (with buildkit.yaml or pubspec.yaml) first.',
                 );
                 return undefined;
             }
@@ -531,8 +534,8 @@ function resolveExecutionCwd(entry: CommandlineEntry): string | undefined {
         case 'repository': {
             const root = findRepositoryRoot();
             if (!root) {
-                vscode.window.showErrorMessage(
-                    'Repository root could not be determined. Open a file inside a git repository first.',
+                await showError(
+                    'Repository root could not be determined.\n\nOpen a file inside a git repository first.',
                 );
                 return undefined;
             }
@@ -541,8 +544,8 @@ function resolveExecutionCwd(entry: CommandlineEntry): string | undefined {
         case 'document': {
             const dir = getActiveFileDir();
             if (!dir) {
-                vscode.window.showErrorMessage(
-                    'Document root could not be determined. Open a file in the editor first.',
+                await showError(
+                    'Document root could not be determined.\n\nOpen a file in the editor first.',
                 );
                 return undefined;
             }
@@ -551,12 +554,12 @@ function resolveExecutionCwd(entry: CommandlineEntry): string | undefined {
         case 'custom':
         default: {
             if (!entry.cwd) {
-                vscode.window.showErrorMessage('Custom working directory path is missing.');
+                await showError('Custom working directory path is missing.');
                 return undefined;
             }
             const resolved = resolveAbsolute(entry.cwd);
             if (!fs.existsSync(resolved)) {
-                vscode.window.showErrorMessage(`Custom working directory does not exist: ${resolved}`);
+                await showError(`Custom working directory does not exist:\n${resolved}`);
                 return undefined;
             }
             return resolved;
@@ -588,7 +591,7 @@ async function executeCommandline(): Promise<void> {
     const entry = commandlines[picked._index];
 
     // Resolve effective working directory at runtime
-    const effectiveCwd = resolveExecutionCwd(entry);
+    const effectiveCwd = await resolveExecutionCwd(entry);
     if (!effectiveCwd) { return; }
 
     // Expand placeholders in command string
