@@ -609,13 +609,8 @@ async function executeCommandline(): Promise<void> {
         if (confirm !== 'OK') { return; }
     }
 
-    // Only show post-action picker if the entry was defined with post-actions
-    let postActions: string[] = [];
-    if (entry.postActions && entry.postActions.length > 0) {
-        const result = await pickPostActions(entry.postActions);
-        if (result === undefined) { return; } // cancelled
-        postActions = result;
-    }
+    // Use saved post-actions directly — no picker at execution time
+    const postActions: string[] = entry.postActions || [];
 
     // Execute in VS Code terminal
     const terminal = vscode.window.createTerminal({
