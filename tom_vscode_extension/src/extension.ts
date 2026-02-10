@@ -25,6 +25,7 @@ import {
     executeInTomAiBuildHandler,
     executeAsScriptHandler,
     restartBridgeHandler,
+    switchBridgeProfileHandler,
     runTestsHandler,
     reloadWindowHandler,
     startCliServerHandler,
@@ -180,6 +181,14 @@ function registerCommands(context: vscode.ExtensionContext) {
         'dartscript.restartBridge',
         async () => {
             await restartBridgeHandler(context, true);
+        }
+    );
+
+    // Switch Bridge Profile command
+    const switchBridgeProfileCmd = vscode.commands.registerCommand(
+        'dartscript.switchBridgeProfile',
+        async () => {
+            await switchBridgeProfileHandler(context);
         }
     );
 
@@ -356,6 +365,7 @@ function registerCommands(context: vscode.ExtensionContext) {
         executeInTomAiBuildCmd,
         executeAsScriptInTomAiBuildCmd,
         restartBridgeCmd,
+        switchBridgeProfileCmd,
         runTestsCmd,
         reloadWithBridgeNotificationCmd,
         reloadSendToChatConfigCmd,

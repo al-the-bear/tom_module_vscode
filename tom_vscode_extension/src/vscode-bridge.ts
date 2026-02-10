@@ -105,6 +105,9 @@ export class DartBridgeClient {
     private context: vscode.ExtensionContext;
     static outputChannel: vscode.OutputChannel;
     private bridgePath: string = '';
+    private bridgeCommand: string = DART_COMMAND;
+    private bridgeArgs: string[] = [];
+    private bridgeRunPubGet: boolean = true;
     private autoRestart: boolean = false;
     private isStarting: boolean = false;
     private restartTimer: NodeJS.Timeout | null = null;
@@ -126,10 +129,23 @@ export class DartBridgeClient {
     }
 
     /**
-     * Start the Dart bridge with auto-restart on error
+     * Start the Dart bridge with auto-restart on error.
+     * 
+     * @param bridgePath Working directory for the bridge process
+     * @param command    Executable to run (default: 'dart')
+     * @param args       Arguments to pass (default: ['run', 'bin/tom_bs.dart'])
+     * @param runPubGet  Whether to run `dart pub get` before starting (default: true)
      */
-    async startWithAutoRestart(bridgePath: string): Promise<void> {
+    async startWithAutoRestart(
+        bridgePath: string,
+        command?: string,
+        args?: string[],
+        runPubGet?: boolean
+    ): Promise<void> {
         this.bridgePath = bridgePath;
+        if (command !== undefined) { this.bridgeCommand = command; }
+        if (args !== undefined) { this.bridgeArgs = args; }
+        if (runPubGet !== undefined) { this.bridgeRunPubGet = runPubGet; }
         this.autoRestart = true;
         this.clearPendingRestartTimer();
         DartBridgeClient.outputChannel.show(true); // Show output channel (preserveFocus=true)
@@ -157,16 +173,24 @@ export class DartBridgeClient {
         this.isStarting = true;
 
         try {
-            // Step 1: Run dart pub get
-            DartBridgeClient.outputChannel.appendLine(`[VS Code Extension] INFO Running dart pub get in ${this.bridgePath}...`);
-            await this.runCommand(DART_COMMAND, ['pub', 'get'], this.bridgePath);
-            DartBridgeClient.outputChannel.appendLine('[VS Code Extension] INFO dart pub get completed');
+            // Step 1: Run dart pub get (only if configured)
+            if (this.bridgeRunPubGet) {
+                DartBridgeClient.outputChannel.appendLine(`[VS Code Extension] INFO Running dart pub get in ${this.bridgePath}...`);
+                await this.runCommand(DART_COMMAND, ['pub', 'get'], this.bridgePath);
+                DartBridgeClient.outputChannel.appendLine('[VS Code Extension] INFO dart pub get completed');
+            }
 
             // Step 2: Start the bridge
-            const dartScript = path.join(this.bridgePath, 'bin', 'tom_bs.dart');
-            DartBridgeClient.outputChannel.appendLine(`[VS Code Extension] INFO Starting Dart bridge: ${dartScript}`);
+            // Resolve command and args from profile configuration
+            const effectiveCommand = this.bridgeCommand;
+            const effectiveArgs = this.bridgeArgs.length > 0
+                ? this.bridgeArgs
+                : ['run', path.join(this.bridgePath, 'bin', 'tom_bs.dart')];
 
-            // Spawn Dart process
+            const cmdLine = [effectiveCommand, ...effectiveArgs].join(' ');
+            DartBridgeClient.outputChannel.appendLine(`[VS Code Extension] INFO Starting Dart bridge: ${cmdLine}`);
+
+            // Spawn process
             const spawnOptions: any = {
                 cwd: this.bridgePath,
                 stdio: ['pipe', 'pipe', 'pipe']
@@ -175,7 +199,7 @@ export class DartBridgeClient {
                 spawnOptions.shell = true;
             }
 
-            this.process = spawn(DART_COMMAND, ['run', dartScript], spawnOptions);
+            this.process = spawn(effectiveCommand, effectiveArgs, spawnOptions);
 
             if (!this.process.stdout || !this.process.stdin || !this.process.stderr) {
                 DartBridgeClient.outputChannel.appendLine('[VS Code Extension] ERROR Failed to initialize process stdio');

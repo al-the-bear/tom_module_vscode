@@ -26,7 +26,7 @@ export { sendToChatHandler } from './sendToChat-handler';
 export { SendToChatAdvancedManager } from './sendToChatAdvanced-handler';
 export { executeInTomAiBuildHandler } from './executeInTomAiBuild-handler';
 export { executeAsScriptHandler } from './executeAsScript-handler';
-export { restartBridgeHandler, initializeBridgeClient } from './restartBridge-handler';
+export { restartBridgeHandler, initializeBridgeClient, switchBridgeProfileHandler } from './restartBridge-handler';
 export { runTestsHandler } from './runTests-handler';
 export { reloadWindowHandler } from './reloadWindow-handler';
 export {

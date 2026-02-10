@@ -102,6 +102,11 @@
         "category": "DartScript"
       },
       {
+        "command": "dartscript.switchBridgeProfile",
+        "title": "DS: Switch Dartscript Bridge Profile...",
+        "category": "DartScript"
+      },
+      {
         "command": "dartscript.reloadWindow",
         "title": "DS: Reload Window",
         "category": "DartScript"
