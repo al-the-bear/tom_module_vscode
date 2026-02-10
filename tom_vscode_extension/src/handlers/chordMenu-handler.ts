@@ -175,7 +175,7 @@ async function showChordMenu(groupId: string): Promise<void> {
 
     // Set context for keybinding dispatch
     activeGroupId = groupId;
-    vscode.commands.executeCommand('setContext', 'dartscript.chordMenuOpen', true);
+    await vscode.commands.executeCommand('setContext', 'dartscript.chordMenuOpen', true);
 
     // Build QuickPick items
     const quickPick = vscode.window.createQuickPick<vscode.QuickPickItem & { _chordItem?: ChordMenuItem }>();

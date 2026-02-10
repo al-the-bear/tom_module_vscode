@@ -160,11 +160,13 @@ export class PromptExpanderManager {
     private context: vscode.ExtensionContext;
     private registeredCommands: vscode.Disposable[] = [];
     private outputChannel: vscode.OutputChannel;
+    private logChannel: vscode.OutputChannel;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
         this.outputChannel = vscode.window.createOutputChannel('Tom AI Local LLM');
-        context.subscriptions.push(this.outputChannel);
+        this.logChannel = vscode.window.createOutputChannel('Tom AI Local Log');
+        context.subscriptions.push(this.outputChannel, this.logChannel);
     }
 
     dispose(): void {
@@ -651,6 +653,25 @@ export class PromptExpanderManager {
         const maxRounds = options.maxRounds ?? 20;
         const ollamaTools = toOllamaTools(tools, () => true); // send all provided tools
 
+        // Log tool registrations and prompts
+        this.logChannel.appendLine('═══════════════════════════════════════════════════');
+        this.logChannel.appendLine(`Ollama Request — ${new Date().toLocaleTimeString()}`);
+        this.logChannel.appendLine(`  Model: ${model} | URL: ${baseUrl}`);
+        this.logChannel.appendLine(`  Max rounds: ${maxRounds} | Temperature: ${temperature}`);
+        this.logChannel.appendLine(`  Keep alive: ${keepAlive ?? 'default'}`);
+        this.logChannel.appendLine('───────────────────────────────────────────────────');
+        this.logChannel.appendLine(`Registered tools (${ollamaTools.length}):`);
+        for (const t of ollamaTools) {
+            this.logChannel.appendLine(`  • ${t.function.name}: ${(t.function.description ?? '').substring(0, 120)}`);
+        }
+        this.logChannel.appendLine('───────────────────────────────────────────────────');
+        this.logChannel.appendLine('System Prompt:');
+        this.logChannel.appendLine(systemPrompt);
+        this.logChannel.appendLine('───────────────────────────────────────────────────');
+        this.logChannel.appendLine('User Prompt:');
+        this.logChannel.appendLine(userPrompt);
+        this.logChannel.appendLine('═══════════════════════════════════════════════════');
+
         // Build initial message history
         // eslint-disable-next-line @typescript-eslint/naming-convention
         const messages: Array<{ role: string; content?: string; tool_calls?: OllamaToolCall[] }> = [
@@ -687,6 +708,8 @@ export class PromptExpanderManager {
 
             // No tool calls → model produced a final text response
             if (!result.toolCalls || result.toolCalls.length === 0) {
+                this.logChannel.appendLine(`✅ Final response after ${round + 1} round(s), ${totalToolCalls} tool call(s)`);
+                this.logChannel.appendLine('');
                 return { text: result.text, stats: result.stats, toolCallCount: totalToolCalls, turnsUsed: round + 1 };
             }
 
@@ -704,6 +727,12 @@ export class PromptExpanderManager {
                 const toolResult = await executeToolCall(tools, tc);
                 onToolCall?.(tc.function.name, tc.function.arguments, toolResult);
 
+                // Log tool call to log channel
+                this.logChannel.appendLine(`[Round ${round + 1}] Tool #${totalToolCalls}: ${tc.function.name}`);
+                this.logChannel.appendLine(`  Args: ${JSON.stringify(tc.function.arguments)}`);
+                const shortResult = toolResult.length > 300 ? toolResult.substring(0, 297) + '...' : toolResult;
+                this.logChannel.appendLine(`  Result (${toolResult.length} chars): ${shortResult}`);
+
                 messages.push({
                     role: 'tool',
                     content: toolResult,
@@ -712,6 +741,7 @@ export class PromptExpanderManager {
         }
 
         // Max rounds exceeded — return whatever text we have
+        this.logChannel.appendLine(`⚠️  Tool call limit reached after ${maxRounds} rounds (${totalToolCalls} total tool calls)`);
         return {
             text: `[Tool call limit reached after ${maxRounds} rounds]\n\n` +
                   (messages.filter(m => m.role === 'assistant').pop()?.content ?? ''),
@@ -838,6 +868,11 @@ export class PromptExpanderManager {
             undefined, instructionsExtra,
         );
         const resolvedSystemPrompt = this.resolvePlaceholders(effectiveSystemPrompt, preValues);
+
+        // Log process() invocation
+        this.logChannel.appendLine(`[process] Profile: ${effectiveProfileKey} | Model: ${resolvedModelKey} (${mc.model})`);
+        this.logChannel.appendLine(`[process] Temperature: ${effectiveTemperature} | Instructions: ${instructionsContent.length} chars`);
+        this.logChannel.appendLine(`[process] Prompt: ${prompt.length} chars | System prompt: ${resolvedSystemPrompt.length} chars`);
 
         try {
             // Check Ollama
