@@ -408,6 +408,7 @@ Profiles define expansion behaviors. Each profile can override `systemPrompt`, `
 | `temperature` | number \| null | Temperature override. `null` = inherit from model config |
 | `modelConfig` | string \| null | Key into `models` section. `null` = use default model |
 | `isDefault` | boolean | If `true`, this profile is used for the Standard context menu entry |
+| `toolsEnabled` | boolean | If `true`, read-only tools (web search, file read, directory listing, grep) are provided to the model during expansion. The model can autonomously gather context before producing its response. Default: `false`. |
 
 When multiple profiles exist, pressing **Ctrl+Cmd+E** shows a quick pick. The default profile is pre-selected.
 
@@ -445,6 +446,45 @@ Placeholders can be used in both `systemPrompt` and `resultTemplate`:
 #### VS Code Settings Fallback
 
 The `dartscript.ollama.url` and `dartscript.ollama.model` VS Code settings serve as fallbacks when `ollamaUrl`/`model` are not specified in the JSON config. The JSON config always takes precedence.
+
+#### Tool-Calling for Ollama
+
+When a profile has `toolsEnabled: true`, the local model receives **read-only tools** that let it autonomously gather context before producing its final response. The supported tools are:
+
+| Tool | Description |
+|------|-------------|
+| `tom_readFile` | Read file contents (with optional line range) |
+| `tom_listDirectory` | List directory contents |
+| `tom_findFiles` | Find files by glob pattern |
+| `tom_findTextInFiles` | Grep for text across workspace files |
+| `tom_fetchWebpage` | Fetch a URL and return its content |
+| `tom_webSearch` | Search the web via DuckDuckGo (no API key needed) |
+| `tom_getErrors` | Get VS Code diagnostics (errors/warnings) |
+| `tom_readGuideline` | Read workspace guidelines |
+
+**How it works:**
+
+1. The model is called via Ollama's `/api/chat` with the `tools` array
+2. If the model requests a tool call, the extension executes it and feeds the result back
+3. The loop continues until the model produces a final text response (no more tool calls)
+4. A safety cap of 10 rounds prevents runaway loops
+
+**Security:** Only read-only tools are provided. No file writes, no command execution, no deletions. File access is confined to the workspace.
+
+**Example profile with tools:**
+
+```json
+"research-expand": {
+  "label": "Research & Expand",
+  "systemPrompt": "You are a prompt expansion assistant with access to tools. Before expanding the prompt, use web search and file reading to gather relevant context. Then produce a well-structured expansion.",
+  "resultTemplate": null,
+  "temperature": 0.4,
+  "modelConfig": null,
+  "toolsEnabled": true
+}
+```
+
+**Shared Tool Registry:** All tools use a unified `SharedToolDefinition` format that works with both Ollama's OpenAI-compatible tool API and VS Code's Language Model API. Adding a tool once makes it available in both systems.
 
 ### Changing Ollama Models
 
@@ -995,7 +1035,7 @@ The model can invoke a wide range of workspace tools during the agentic loop:
 - **Terminal**: `tom_runCommand`, `run_in_terminal`, `get_terminal_output`
 - **Copilot search**: `copilot_searchCodebase`, `copilot_searchWorkspaceSymbols`, `copilot_listCodeUsages`
 - **Diagnostics**: `tom_getErrors`, `copilot_getErrors`, `copilot_testFailure`
-- **Web**: `tom_fetchWebpage`, `copilot_fetchWebPage`, `copilot_openSimpleBrowser`
+- **Web**: `tom_fetchWebpage`, `tom_webSearch`, `copilot_fetchWebPage`, `copilot_openSimpleBrowser`
 - **VS Code**: `tom_runVscodeCommand`, `tom_readGuideline`, `copilot_getVSCodeAPI`
 - **Dart/Flutter**: `dart_format`, MCP Dart SDK tools (`launch_app`, `hot_reload`, `pub`, etc.)
 - **Debug**: `get_debug_session_info`, `get_debug_stack_trace`, `get_debug_threads`, `get_debug_variables`

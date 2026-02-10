@@ -697,6 +697,27 @@
         }
       },
       {
+        "name": "tom_webSearch",
+        "tags": ["web", "search", "tom-ai-chat"],
+        "displayName": "Web Search",
+        "modelDescription": "Search the web using DuckDuckGo. Returns titles, URLs, and snippets of the top results. Use this to research topics, find documentation, or discover solutions.",
+        "canBeReferencedInPrompt": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The search query."
+            },
+            "maxResults": {
+              "type": "number",
+              "description": "Maximum number of results to return. Default 8."
+            }
+          },
+          "required": ["query"]
+        }
+      },
+      {
         "name": "tom_manageTodo",
         "tags": ["todo", "task-management", "tom-ai-chat"],
         "displayName": "Manage Todo List",

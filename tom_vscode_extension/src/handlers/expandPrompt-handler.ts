@@ -20,6 +20,11 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { handleError, bridgeLog, getBridgeClient } from './handler_shared';
+import {
+    OllamaTool, OllamaToolCall, SharedToolDefinition,
+    executeToolCall, toOllamaTools,
+} from '../tools/shared-tool-registry';
+import { READ_ONLY_TOOLS } from '../tools/tool-executors';
 
 // ============================================================================
 // Interfaces
@@ -57,6 +62,8 @@ export interface ExpanderProfile {
     modelConfig: string | null;
     /** If true this is the default profile when no profile is specified. */
     isDefault?: boolean;
+    /** When true, provide read-only tools (web search, file read, etc.) to the model. */
+    toolsEnabled?: boolean;
 }
 
 /** Full promptExpander section from send_to_chat.json. */
@@ -99,6 +106,8 @@ export interface ExpanderProcessResult {
         totalDurationMs: number;
         loadDurationMs: number;
     };
+    /** Number of tool calls made during generation (0 if tools not used). */
+    toolCallCount?: number;
 }
 
 /** Stats returned by Ollama in the final streaming chunk. */
@@ -445,19 +454,39 @@ export class PromptExpanderManager {
         onToken?: (token: string) => void,
         cancellationToken?: vscode.CancellationToken,
         keepAlive?: string,
-    ): Promise<{ text: string; stats?: OllamaStats }> {
+        tools?: OllamaTool[],
+    ): Promise<{ text: string; stats?: OllamaStats; toolCalls?: OllamaToolCall[] }> {
+        return this.ollamaChat(baseUrl, model, [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+        ], temperature, onToken, cancellationToken, keepAlive, tools);
+    }
+
+    /**
+     * Low-level Ollama /api/chat call with full message history support.
+     * Handles streaming, stats extraction, and tool-call detection.
+     */
+    private async ollamaChat(
+        baseUrl: string,
+        model: string,
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        messages: Array<{ role: string; content?: string; tool_calls?: OllamaToolCall[] }>,
+        temperature: number,
+        onToken?: (token: string) => void,
+        cancellationToken?: vscode.CancellationToken,
+        keepAlive?: string,
+        tools?: OllamaTool[],
+    ): Promise<{ text: string; stats?: OllamaStats; toolCalls?: OllamaToolCall[] }> {
         return new Promise((resolve, reject) => {
             const url = new URL('/api/chat', baseUrl);
             const body = JSON.stringify({
                 model,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt },
-                ],
+                messages,
                 stream: true,
                 options: { temperature },
                 // eslint-disable-next-line @typescript-eslint/naming-convention
                 ...(keepAlive !== undefined ? { keep_alive: keepAlive } : {}),
+                ...(tools && tools.length > 0 ? { tools } : {}),
             });
 
             const req = http.request(
@@ -473,6 +502,7 @@ export class PromptExpanderManager {
                     let fullResponse = '';
                     let buffer = '';
                     let stats: OllamaStats | undefined;
+                    let toolCalls: OllamaToolCall[] | undefined;
 
                     res.on('data', (chunk: Buffer) => {
                         buffer += chunk.toString();
@@ -485,6 +515,10 @@ export class PromptExpanderManager {
                                 if (parsed.message?.content) {
                                     fullResponse += parsed.message.content;
                                     onToken?.(parsed.message.content);
+                                }
+                                // Detect tool calls from model
+                                if (parsed.message?.tool_calls && parsed.message.tool_calls.length > 0) {
+                                    toolCalls = parsed.message.tool_calls;
                                 }
                                 if (parsed.done === true) {
                                     stats = {
@@ -505,6 +539,9 @@ export class PromptExpanderManager {
                                 if (parsed.message?.content) {
                                     fullResponse += parsed.message.content;
                                 }
+                                if (parsed.message?.tool_calls && parsed.message.tool_calls.length > 0) {
+                                    toolCalls = parsed.message.tool_calls;
+                                }
                                 if (parsed.done === true && !stats) {
                                     stats = {
                                         promptTokens: parsed.prompt_eval_count ?? 0,
@@ -515,7 +552,7 @@ export class PromptExpanderManager {
                                 }
                             } catch { /* ignore */ }
                         }
-                        resolve({ text: fullResponse, stats });
+                        resolve({ text: fullResponse, stats, toolCalls });
                     });
                     res.on('error', reject);
                 },
@@ -534,6 +571,86 @@ export class PromptExpanderManager {
         });
     }
 
+    /**
+     * Run an Ollama chat with automatic tool-call loop.
+     *
+     * When the model requests tool calls, the tools are executed and results
+     * are fed back as `tool` role messages. The loop continues until the model
+     * produces a final text response (no tool calls) or the max round limit
+     * is reached.
+     *
+     * @param maxRounds Safety cap on tool-call iterations (default 10)
+     * @param onToolCall Optional callback for UI feedback per tool invocation
+     */
+    public async ollamaGenerateWithTools(options: {
+        baseUrl: string;
+        model: string;
+        systemPrompt: string;
+        userPrompt: string;
+        temperature: number;
+        tools: SharedToolDefinition[];
+        onToken?: (token: string) => void;
+        onToolCall?: (toolName: string, args: Record<string, unknown>, result: string) => void;
+        cancellationToken?: vscode.CancellationToken;
+        keepAlive?: string;
+        maxRounds?: number;
+    }): Promise<{ text: string; stats?: OllamaStats; toolCallCount: number }> {
+        const {
+            baseUrl, model, systemPrompt, userPrompt, temperature,
+            tools, onToken, onToolCall, cancellationToken, keepAlive,
+        } = options;
+        const maxRounds = options.maxRounds ?? 10;
+        const ollamaTools = toOllamaTools(tools, () => true); // send all provided tools
+
+        // Build initial message history
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        const messages: Array<{ role: string; content?: string; tool_calls?: OllamaToolCall[] }> = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+        ];
+
+        let totalToolCalls = 0;
+
+        for (let round = 0; round < maxRounds; round++) {
+            const result = await this.ollamaChat(
+                baseUrl, model, messages, temperature,
+                onToken, cancellationToken, keepAlive, ollamaTools,
+            );
+
+            // No tool calls → model produced a final text response
+            if (!result.toolCalls || result.toolCalls.length === 0) {
+                return { text: result.text, stats: result.stats, toolCallCount: totalToolCalls };
+            }
+
+            // Append assistant message with tool_calls
+            messages.push({
+                role: 'assistant',
+                content: result.text || undefined,
+                // eslint-disable-next-line @typescript-eslint/naming-convention
+                tool_calls: result.toolCalls,
+            });
+
+            // Execute each tool and append results
+            for (const tc of result.toolCalls) {
+                totalToolCalls++;
+                const toolResult = await executeToolCall(tools, tc);
+                onToolCall?.(tc.function.name, tc.function.arguments, toolResult);
+
+                messages.push({
+                    role: 'tool',
+                    content: toolResult,
+                });
+            }
+        }
+
+        // Max rounds exceeded — return whatever text we have
+        return {
+            text: `[Tool call limit reached after ${maxRounds} rounds]\n\n` +
+                  (messages.filter(m => m.role === 'assistant').pop()?.content ?? ''),
+            toolCallCount: totalToolCalls,
+        };
+    }
+
     // -----------------------------------------------------------------------
     // Core processing — used by both the command handler and the bridge API
     // -----------------------------------------------------------------------
@@ -545,6 +662,10 @@ export class PromptExpanderManager {
     /**
      * Public method to chat with Ollama using the configured model.
      * Used by other handlers that need Ollama interaction without full prompt-expansion logic.
+     *
+     * When `useTools` is true, the read-only tool set is provided to the model
+     * and a tool-call loop executes automatically. Tool invocations are logged
+     * via the optional `onToolCall` callback.
      */
     public async chatWithOllama(options: {
         systemPrompt: string;
@@ -553,7 +674,9 @@ export class PromptExpanderManager {
         temperature?: number;
         stripThinkingTags?: boolean;
         cancellationToken?: vscode.CancellationToken;
-    }): Promise<{ text: string; rawText: string; thinkContent: string; stats?: OllamaStats }> {
+        useTools?: boolean;
+        onToolCall?: (toolName: string, args: Record<string, unknown>, result: string) => void;
+    }): Promise<{ text: string; rawText: string; thinkContent: string; stats?: OllamaStats; toolCallCount?: number }> {
         const config = this.loadConfig();
         const { mc } = this.resolveModelConfig(config, undefined, options.modelConfigKey);
         const temp = options.temperature ?? mc.temperature;
@@ -565,14 +688,39 @@ export class PromptExpanderManager {
             throw new Error(`Ollama is not running at ${mc.ollamaUrl}`);
         }
 
-        const { text, stats } = await this.ollamaGenerate(
-            mc.ollamaUrl, mc.model, options.systemPrompt, options.userPrompt,
-            temp, undefined, options.cancellationToken, mc.keepAlive,
-        );
+        let text: string;
+        let stats: OllamaStats | undefined;
+        let toolCallCount = 0;
+
+        if (options.useTools) {
+            // Use tool-call loop with read-only tools
+            const result = await this.ollamaGenerateWithTools({
+                baseUrl: mc.ollamaUrl,
+                model: mc.model,
+                systemPrompt: options.systemPrompt,
+                userPrompt: options.userPrompt,
+                temperature: temp,
+                tools: READ_ONLY_TOOLS,
+                onToolCall: options.onToolCall,
+                cancellationToken: options.cancellationToken,
+                keepAlive: mc.keepAlive,
+            });
+            text = result.text;
+            stats = result.stats;
+            toolCallCount = result.toolCallCount;
+        } else {
+            // Simple single-shot call (no tools)
+            const result = await this.ollamaGenerate(
+                mc.ollamaUrl, mc.model, options.systemPrompt, options.userPrompt,
+                temp, undefined, options.cancellationToken, mc.keepAlive,
+            );
+            text = result.text;
+            stats = result.stats;
+        }
 
         const { cleaned, thinkContent } = this.processThinkTags(text, strip);
 
-        return { text: cleaned, rawText: text, thinkContent, stats };
+        return { text: cleaned, rawText: text, thinkContent, stats, toolCallCount };
     }
 
     /** Check if a specific model is loaded in Ollama. Uses configured URL if no baseUrl given. */
@@ -648,17 +796,40 @@ export class PromptExpanderManager {
                 };
             }
 
-            // Call LLM
-            const { text: rawResponse, stats } = await this.ollamaGenerate(
-                mc.ollamaUrl,
-                mc.model,
-                resolvedSystemPrompt,
-                prompt,
-                effectiveTemperature,
-                undefined,
-                cancellationToken,
-                mc.keepAlive,
-            );
+            // Call LLM (with or without tools depending on profile setting)
+            const useTools = profile?.toolsEnabled === true;
+            let rawResponse: string;
+            let stats: OllamaStats | undefined;
+            let toolCallCount = 0;
+
+            if (useTools) {
+                const result = await this.ollamaGenerateWithTools({
+                    baseUrl: mc.ollamaUrl,
+                    model: mc.model,
+                    systemPrompt: resolvedSystemPrompt,
+                    userPrompt: prompt,
+                    temperature: effectiveTemperature,
+                    tools: READ_ONLY_TOOLS,
+                    cancellationToken,
+                    keepAlive: mc.keepAlive,
+                });
+                rawResponse = result.text;
+                stats = result.stats;
+                toolCallCount = result.toolCallCount;
+            } else {
+                const result = await this.ollamaGenerate(
+                    mc.ollamaUrl,
+                    mc.model,
+                    resolvedSystemPrompt,
+                    prompt,
+                    effectiveTemperature,
+                    undefined,
+                    cancellationToken,
+                    mc.keepAlive,
+                );
+                rawResponse = result.text;
+                stats = result.stats;
+            }
 
             if (!rawResponse.trim()) {
                 return {
@@ -692,6 +863,7 @@ export class PromptExpanderManager {
                 profile: effectiveProfileKey,
                 modelConfig: resolvedModelKey,
                 tokenInfo: stats,
+                toolCallCount,
             };
         } catch (err: any) {
             return {
