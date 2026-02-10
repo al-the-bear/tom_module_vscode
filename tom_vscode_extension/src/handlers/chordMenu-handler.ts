@@ -323,6 +323,7 @@ export function chordMenuExecuteHandler(): void {
  * Uses the same QuickPick UI as other chord groups but loads dynamically.
  */
 export async function chordMenuFavoritesHandler(): Promise<void> {
+    console.log('[ChordMenu] === FAVORITES HANDLER CALLED ===');
     const items = loadFavorites();
     if (items.length === 0) {
         vscode.window.showWarningMessage(
@@ -334,7 +335,7 @@ export async function chordMenuFavoritesHandler(): Promise<void> {
     // Temporarily inject as a dynamic chord group so showChordMenu() works
     CHORD_GROUPS['favorites'] = {
         title: 'Favorites',
-        prefix: 'Ctrl+Shift+X',
+        prefix: 'Ctrl+Shift+P',
         items,
     };
     await showChordMenu('favorites');

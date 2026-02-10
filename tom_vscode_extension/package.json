@@ -311,6 +311,10 @@
         "key": "ctrl+shift+x"
       },
       {
+        "command": "-workbench.action.showCommands",
+        "key": "ctrl+shift+p"
+      },
+      {
         "command": "dartscript.chordMenu.conversation",
         "key": "ctrl+shift+c",
         "when": "!dartscript.chordMenuOpen"
@@ -337,7 +341,7 @@
       },
       {
         "command": "dartscript.chordMenu.favorites",
-        "key": "ctrl+shift+x",
+        "key": "ctrl+shift+p",
         "when": "!dartscript.chordMenuOpen"
       }
     ],
