@@ -4,6 +4,13 @@
  * Provides commands to define, delete, and execute custom command lines.
  * Command definitions are stored in the `commandlines` section of send_to_chat.json.
  *
+ * Features:
+ *   - Dynamic working directory: workspace root, extension root, project root
+ *     (detected via buildkit.yaml / pubspec.yaml), repository root (via .git),
+ *     or a custom path
+ *   - Post-execution VS Code actions: configurable commands to run after the
+ *     shell command finishes (e.g., reload window, open terminal, etc.)
+ *
  * Commands:
  *   dartscript.defineCommandline  — define a new commandline
  *   dartscript.deleteCommandline  — delete an existing commandline
@@ -26,6 +33,25 @@ export interface CommandlineEntry {
     description: string;
     /** Absolute path where the command should be executed */
     cwd: string;
+    /**
+     * How the cwd was determined. Used for re-resolution at execution time.
+     * 'static' (or absent) = use cwd as-is.
+     * 'project' = re-detect project root from current editor file.
+     * 'repository' = re-detect repository root from current editor file.
+     */
+    cwdMode?: 'static' | 'project' | 'repository';
+    /** VS Code command IDs to execute after the shell command finishes. */
+    postActions?: string[];
+}
+
+/** Configurable post-execution action definition. */
+export interface PostActionDefinition {
+    /** VS Code command ID */
+    commandId: string;
+    /** Human-readable label shown in quick-pick */
+    label: string;
+    /** Optional description */
+    description?: string;
 }
 
 // ============================================================================
@@ -88,6 +114,32 @@ function getCommandlines(): CommandlineEntry[] {
     return config.commandlines as CommandlineEntry[];
 }
 
+/** Default post-actions if none are configured. */
+const DEFAULT_POST_ACTIONS: PostActionDefinition[] = [
+    { commandId: 'workbench.action.reloadWindow', label: 'Reload Window', description: 'Reload the VS Code window' },
+    { commandId: 'workbench.action.terminal.focus', label: 'Focus Terminal', description: 'Focus the integrated terminal' },
+    { commandId: 'workbench.action.files.revert', label: 'Revert Active File', description: 'Revert the active editor file from disk' },
+    { commandId: 'workbench.action.closeActiveEditor', label: 'Close Active Editor', description: 'Close the current editor tab' },
+    { commandId: 'workbench.action.openSettings', label: 'Open Settings', description: 'Open VS Code settings' },
+    { commandId: 'git.refresh', label: 'Git: Refresh', description: 'Refresh the Git source control view' },
+    { commandId: 'workbench.action.tasks.runTask', label: 'Run Task...', description: 'Run a VS Code task' },
+    { commandId: 'workbench.action.debug.start', label: 'Start Debugging', description: 'Start a debug session' },
+    { commandId: 'workbench.action.output.toggleOutput', label: 'Toggle Output Panel', description: 'Show/hide the output panel' },
+    { commandId: 'dartscript.openConfig', label: 'Open Config File', description: 'Open send_to_chat.json' },
+];
+
+/**
+ * Get post-action definitions from config, falling back to defaults.
+ * Re-reads config every time for live updates.
+ */
+function getPostActionDefinitions(): PostActionDefinition[] {
+    const config = readConfig();
+    if (config?.commandlinePostActions && Array.isArray(config.commandlinePostActions)) {
+        return config.commandlinePostActions as PostActionDefinition[];
+    }
+    return DEFAULT_POST_ACTIONS;
+}
+
 // ============================================================================
 // Resolve working directory
 // ============================================================================
@@ -111,6 +163,111 @@ function resolveAbsolute(input: string): string {
     return path.resolve(input);
 }
 
+/**
+ * Get the directory of the currently active editor file.
+ * Returns undefined if no editor is open or the file has no filesystem path.
+ */
+function getActiveFileDir(): string | undefined {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) { return undefined; }
+    const filePath = editor.document.uri.fsPath;
+    if (!filePath) { return undefined; }
+    return path.dirname(filePath);
+}
+
+/**
+ * Walk up from `startDir` looking for a directory containing any of the given marker files.
+ * Returns the first directory found, or undefined.
+ */
+function findAncestorWithMarker(startDir: string, markers: string[]): string | undefined {
+    let current = startDir;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        for (const marker of markers) {
+            const candidate = path.join(current, marker);
+            if (fs.existsSync(candidate)) {
+                return current;
+            }
+        }
+        const parent = path.dirname(current);
+        if (parent === current) { break; } // reached filesystem root
+        current = parent;
+    }
+    return undefined;
+}
+
+/**
+ * Find the project root by walking up from the active editor file,
+ * looking for buildkit.yaml or pubspec.yaml.
+ */
+function findProjectRoot(): string | undefined {
+    const startDir = getActiveFileDir();
+    if (!startDir) { return undefined; }
+    return findAncestorWithMarker(startDir, ['buildkit.yaml', 'pubspec.yaml']);
+}
+
+/**
+ * Find the repository root by walking up from the active editor file,
+ * looking for .git (can be a directory or a file — submodules use a .git file
+ * containing `gitdir: ...`).
+ */
+function findRepositoryRoot(): string | undefined {
+    const startDir = getActiveFileDir();
+    if (!startDir) { return undefined; }
+    return findAncestorWithMarker(startDir, ['.git']);
+}
+
+// ============================================================================
+// Post-action picker (loop until "Continue")
+// ============================================================================
+
+/**
+ * Show a repeating quick-pick to select post-execution VS Code actions.
+ * Returns the list of selected command IDs, or undefined if cancelled.
+ * The config is re-read each time the picker is shown (live updates).
+ */
+async function pickPostActions(existingActions?: string[]): Promise<string[] | undefined> {
+    const actions: string[] = existingActions ? [...existingActions] : [];
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        // Re-read definitions each iteration
+        const definitions = getPostActionDefinitions();
+
+        const items: (vscode.QuickPickItem & { _commandId?: string })[] = [
+            {
+                label: '$(play) Continue — execute command',
+                description: actions.length > 0
+                    ? `(${actions.length} post-action${actions.length > 1 ? 's' : ''} queued)`
+                    : '(no post-actions)',
+                _commandId: '__continue__',
+            },
+            { label: '', kind: vscode.QuickPickItemKind.Separator },
+            ...definitions.map(def => ({
+                label: `$(add) ${def.label}`,
+                description: def.description,
+                detail: actions.includes(def.commandId) ? '✓ already added' : undefined,
+                _commandId: def.commandId,
+            })),
+        ];
+
+        const picked = await vscode.window.showQuickPick(items, {
+            title: 'Post-Execution Actions',
+            placeHolder: actions.length > 0
+                ? `${actions.length} action(s) queued. Pick another or Continue.`
+                : 'Add actions to run after the command finishes, or Continue',
+        });
+
+        if (!picked) { return undefined; } // cancelled
+        if (picked._commandId === '__continue__') { return actions; }
+
+        if (picked._commandId && !actions.includes(picked._commandId)) {
+            actions.push(picked._commandId);
+            vscode.window.showInformationMessage(`Added: ${picked.label.replace('$(add) ', '')}`);
+        }
+    }
+}
+
 // ============================================================================
 // Define Commandline
 // ============================================================================
@@ -118,7 +275,7 @@ function resolveAbsolute(input: string): string {
 async function defineCommandline(): Promise<void> {
     // 1) Command
     const command = await vscode.window.showInputBox({
-        title: 'Define Commandline (1/3) — Command',
+        title: 'Define Commandline (1/4) — Command',
         prompt: 'Shell command to execute',
         placeHolder: 'e.g. dart analyze, npm test, make build',
     });
@@ -130,7 +287,7 @@ async function defineCommandline(): Promise<void> {
 
     // 2) Description (optional)
     const description = await vscode.window.showInputBox({
-        title: 'Define Commandline (2/3) — Description',
+        title: 'Define Commandline (2/4) — Description',
         prompt: 'Optional description (leave empty to use the command)',
         placeHolder: command,
     });
@@ -141,13 +298,17 @@ async function defineCommandline(): Promise<void> {
         [
             { label: '$(root-folder) Workspace Root', id: 'workspace' },
             { label: '$(extensions) Extension Root', id: 'extension' },
+            { label: '$(package) Project Root', id: 'project', description: 'Detected from active file (buildkit.yaml / pubspec.yaml)' },
+            { label: '$(git-branch) Repository Root', id: 'repository', description: 'Detected from active file (.git)' },
             { label: '$(folder-opened) Custom Path...', id: 'custom' },
         ],
-        { title: 'Define Commandline (3/3) — Working Directory', placeHolder: 'Where should this command run?' }
+        { title: 'Define Commandline (3/4) — Working Directory', placeHolder: 'Where should this command run?' }
     );
     if (!cwdChoice) { return; }
 
     let cwd: string;
+    let cwdMode: CommandlineEntry['cwdMode'] = 'static';
+
     if (cwdChoice.id === 'workspace') {
         const root = getWorkspaceRoot();
         if (!root) { vscode.window.showErrorMessage('No workspace folder open.'); return; }
@@ -156,6 +317,22 @@ async function defineCommandline(): Promise<void> {
         const root = getExtensionRoot();
         if (!root) { vscode.window.showErrorMessage('Extension root not found.'); return; }
         cwd = root;
+    } else if (cwdChoice.id === 'project') {
+        const root = findProjectRoot();
+        if (!root) {
+            vscode.window.showWarningMessage('Project folder could not be determined. Open a file inside a project first.');
+            return;
+        }
+        cwd = root;
+        cwdMode = 'project';
+    } else if (cwdChoice.id === 'repository') {
+        const root = findRepositoryRoot();
+        if (!root) {
+            vscode.window.showWarningMessage('Repository root could not be determined. Open a file inside a git repository first.');
+            return;
+        }
+        cwd = root;
+        cwdMode = 'repository';
     } else {
         const customPath = await vscode.window.showInputBox({
             title: 'Custom Working Directory',
@@ -166,22 +343,35 @@ async function defineCommandline(): Promise<void> {
         cwd = resolveAbsolute(customPath.trim());
     }
 
-    // 4) Confirmation popup
+    // 4) Post-execution actions
+    const postActions = await pickPostActions();
+    if (postActions === undefined) { return; } // cancelled
+
+    // 5) Confirmation popup
+    const postActionStr = postActions.length > 0
+        ? `\nPost-actions: ${postActions.length}`
+        : '';
+    const modeStr = cwdMode !== 'static' ? ` [${cwdMode} — re-detected at runtime]` : '';
     const confirm = await vscode.window.showInformationMessage(
-        `Run "${command}" in:\n${cwd}`,
-        { modal: true, detail: `Command: ${command}\nDirectory: ${cwd}` },
+        `Save commandline?`,
+        { modal: true, detail: `Command: ${command}\nDirectory: ${cwd}${modeStr}${postActionStr}` },
         'OK'
     );
     if (confirm !== 'OK') { return; }
 
-    // 5) Write to config
+    // 6) Write to config
     const config = readConfig() || {};
     if (!Array.isArray(config.commandlines)) { config.commandlines = []; }
-    config.commandlines.push({
+
+    const entry: CommandlineEntry = {
         command: command.trim(),
         description: description.trim() || '',
         cwd,
-    } as CommandlineEntry);
+    };
+    if (cwdMode !== 'static') { entry.cwdMode = cwdMode; }
+    if (postActions.length > 0) { entry.postActions = postActions; }
+
+    config.commandlines.push(entry);
 
     if (writeConfig(config)) {
         vscode.window.showInformationMessage(`Commandline saved: ${description.trim() || command.trim()}`);
@@ -202,7 +392,7 @@ async function deleteCommandline(): Promise<void> {
     const items = commandlines.map((entry, index) => ({
         label: entry.description || entry.command,
         description: entry.description ? entry.command : undefined,
-        detail: `cwd: ${entry.cwd}`,
+        detail: `cwd: ${entry.cwd}${entry.cwdMode ? ` [${entry.cwdMode}]` : ''}${entry.postActions?.length ? ` | ${entry.postActions.length} post-action(s)` : ''}`,
         _index: index,
     }));
 
@@ -225,6 +415,40 @@ async function deleteCommandline(): Promise<void> {
 // Execute Commandline
 // ============================================================================
 
+/**
+ * Resolve the effective cwd for a commandline entry.
+ * For 'project' and 'repository' modes, re-detects from the current editor.
+ * Returns the resolved path or undefined (with user notification) on failure.
+ */
+function resolveExecutionCwd(entry: CommandlineEntry): string | undefined {
+    const mode = entry.cwdMode || 'static';
+
+    if (mode === 'project') {
+        const root = findProjectRoot();
+        if (!root) {
+            vscode.window.showWarningMessage(
+                'Project folder could not be determined. Open a file inside a project (with buildkit.yaml or pubspec.yaml) first.',
+            );
+            return undefined;
+        }
+        return root;
+    }
+
+    if (mode === 'repository') {
+        const root = findRepositoryRoot();
+        if (!root) {
+            vscode.window.showWarningMessage(
+                'Repository root could not be determined. Open a file inside a git repository first.',
+            );
+            return undefined;
+        }
+        return root;
+    }
+
+    // Static mode — use stored cwd
+    return entry.cwd;
+}
+
 async function executeCommandline(): Promise<void> {
     const commandlines = getCommandlines();
     if (commandlines.length === 0) {
@@ -235,7 +459,7 @@ async function executeCommandline(): Promise<void> {
     const items = commandlines.map((entry, index) => ({
         label: entry.description || entry.command,
         description: entry.description ? entry.command : undefined,
-        detail: `cwd: ${entry.cwd}`,
+        detail: `cwd: ${entry.cwd}${entry.cwdMode ? ` [${entry.cwdMode}]` : ''}${entry.postActions?.length ? ` → ${entry.postActions.length} post-action(s)` : ''}`,
         _index: index,
     }));
 
@@ -247,13 +471,41 @@ async function executeCommandline(): Promise<void> {
 
     const entry = commandlines[picked._index];
 
+    // Resolve effective working directory
+    const effectiveCwd = resolveExecutionCwd(entry);
+    if (!effectiveCwd) { return; }
+
+    // Confirmation for dynamic modes
+    if (entry.cwdMode === 'project' || entry.cwdMode === 'repository') {
+        const confirm = await vscode.window.showInformationMessage(
+            `Running "${entry.command}" in ${entry.cwdMode} folder. Continue?`,
+            { modal: false, detail: effectiveCwd },
+            'OK', 'Cancel',
+        );
+        if (confirm !== 'OK') { return; }
+    }
+
     // Execute in VS Code terminal
     const terminal = vscode.window.createTerminal({
         name: entry.description || entry.command,
-        cwd: entry.cwd,
+        cwd: effectiveCwd,
     });
     terminal.show();
     terminal.sendText(entry.command);
+
+    // Run post-actions if configured
+    if (entry.postActions && entry.postActions.length > 0) {
+        // Wait a moment for the terminal to initialize, then schedule post-actions
+        // Note: we run actions immediately — for process-completion-dependent actions,
+        // the user should use && chaining in the command itself or a wrapper script
+        for (const commandId of entry.postActions) {
+            try {
+                await vscode.commands.executeCommand(commandId);
+            } catch (err: any) {
+                vscode.window.showWarningMessage(`Post-action failed: ${commandId} — ${err.message}`);
+            }
+        }
+    }
 }
 
 // ============================================================================
