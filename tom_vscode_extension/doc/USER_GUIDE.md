@@ -408,7 +408,8 @@ Profiles define expansion behaviors. Each profile can override `systemPrompt`, `
 | `temperature` | number \| null | Temperature override. `null` = inherit from model config |
 | `modelConfig` | string \| null | Key into `models` section. `null` = use default model |
 | `isDefault` | boolean | If `true`, this profile is used for the Standard context menu entry |
-| `toolsEnabled` | boolean | If `true`, read-only tools (web search, file read, directory listing, grep) are provided to the model during expansion. The model can autonomously gather context before producing its response. Default: `false`. |
+| `toolsEnabled` | boolean | If `true`, read-only tools (web search, file read, directory listing, grep) are provided to the model during expansion. The model can autonomously gather context before producing its response. Default: `false`. Note: Tools are always available to the model via the tool-call loop; this flag is retained for backward compatibility but all profiles now participate in the tool loop. |
+| `maxRounds` | number | Maximum number of tool-call rounds for this profile. Default: `20`. On the last round tools are withheld to force a final answer. |
 
 When multiple profiles exist, pressing **Ctrl+Cmd+E** shows a quick pick. The default profile is pre-selected.
 
@@ -432,6 +433,9 @@ Placeholders can be used in both `systemPrompt` and `resultTemplate`:
 | `${profile}` | The profile key used |
 | `${lineStart}` | Start line of the selection (1-based) |
 | `${lineEnd}` | End line of the selection (1-based) |
+| `${turnsUsed}` | Number of tool-call rounds completed |
+| `${turnsRemaining}` | Remaining tool-call rounds before the hard limit |
+| `${maxTurns}` | Maximum tool-call rounds allowed |
 
 **Note:** In `systemPrompt`, `${response}`, `${rawResponse}`, and `${thinkTagInfo}` are empty (the response hasn't been generated yet). Use context placeholders (`${filename}`, `${languageId}`, etc.) to give the LLM file/language context. In `resultTemplate`, all placeholders are available.
 
@@ -449,7 +453,7 @@ The `dartscript.ollama.url` and `dartscript.ollama.model` VS Code settings serve
 
 #### Tool-Calling for Ollama
 
-When a profile has `toolsEnabled: true`, the local model receives **read-only tools** that let it autonomously gather context before producing its final response. The supported tools are:
+All Ollama interactions now use a **tool-call loop** by default. The local model receives **read-only tools** that let it autonomously gather context before producing its final response. The model decides whether to use tools — if it doesn't need them, it produces a direct answer on the first turn. The supported tools are:
 
 | Tool | Description |
 |------|-------------|
@@ -466,8 +470,12 @@ When a profile has `toolsEnabled: true`, the local model receives **read-only to
 
 1. The model is called via Ollama's `/api/chat` with the `tools` array
 2. If the model requests a tool call, the extension executes it and feeds the result back
-3. The loop continues until the model produces a final text response (no more tool calls)
-4. A safety cap of 10 rounds prevents runaway loops
+3. Each round includes a **turn budget injection** so the model knows how many rounds remain (e.g., `[Turn 3/20 — 17 remaining]`)
+4. When remaining rounds drop to 5 or fewer, the model receives a "wrap up" nudge; at 2 or fewer, an urgent "produce your final answer now" message
+5. On the **very last round**, tools are withheld entirely — forcing the model to produce a text-only answer
+6. Default maximum: **20 rounds** (configurable per-profile via `maxRounds`)
+
+**Finish signal:** The model signals completion by simply producing a text response without requesting any tool calls. The turn budget messages guide the model to converge on an answer rather than spinning indefinitely.
 
 **Security:** Only read-only tools are provided. No file writes, no command execution, no deletions. File access is confined to the workspace.
 
@@ -480,7 +488,8 @@ When a profile has `toolsEnabled: true`, the local model receives **read-only to
   "resultTemplate": null,
   "temperature": 0.4,
   "modelConfig": null,
-  "toolsEnabled": true
+  "toolsEnabled": true,
+  "maxRounds": 15
 }
 ```
 

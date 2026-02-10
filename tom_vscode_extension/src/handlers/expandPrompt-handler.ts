@@ -64,6 +64,8 @@ export interface ExpanderProfile {
     isDefault?: boolean;
     /** When true, provide read-only tools (web search, file read, etc.) to the model. */
     toolsEnabled?: boolean;
+    /** Maximum tool-call rounds for this profile (default: 20). */
+    maxRounds?: number;
 }
 
 /** Full promptExpander section from send_to_chat.json. */
@@ -108,6 +110,10 @@ export interface ExpanderProcessResult {
     };
     /** Number of tool calls made during generation (0 if tools not used). */
     toolCallCount?: number;
+    /** Number of tool-call rounds used. */
+    turnsUsed?: number;
+    /** Maximum tool-call rounds allowed. */
+    maxTurns?: number;
 }
 
 /** Stats returned by Ollama in the final streaming chunk. */
@@ -347,6 +353,9 @@ export class PromptExpanderManager {
      *   ${profile}       - The profile key used
      *   ${lineStart}     - Start line of the selection (1-based)
      *   ${lineEnd}       - End line of the selection (1-based)
+     *   ${turnsUsed}     - Number of tool-call rounds completed so far
+     *   ${turnsRemaining} - Remaining tool-call rounds before the hard limit
+     *   ${maxTurns}      - Maximum tool-call rounds allowed
      */
     private resolvePlaceholders(template: string, values: { [key: string]: string }): string {
         let result = template;
@@ -365,11 +374,14 @@ export class PromptExpanderManager {
         modelName: string,
         modelConfigKey: string,
         profileName: string,
+        turnInfo?: { turnsUsed: number; maxTurns: number },
     ): { [key: string]: string } {
         const now = new Date();
         const wf = vscode.workspace.workspaceFolders;
         const doc = editor?.document;
         const sel = editor?.selection;
+        const used = turnInfo?.turnsUsed ?? 0;
+        const max = turnInfo?.maxTurns ?? 0;
 
         return {
             original,
@@ -386,6 +398,9 @@ export class PromptExpanderManager {
             profile: profileName,
             lineStart: sel ? String(sel.start.line + 1) : '0',
             lineEnd: sel ? String(sel.end.line + 1) : '0',
+            turnsUsed: String(used),
+            turnsRemaining: String(Math.max(0, max - used)),
+            maxTurns: String(max),
         };
     }
 
@@ -594,12 +609,12 @@ export class PromptExpanderManager {
         cancellationToken?: vscode.CancellationToken;
         keepAlive?: string;
         maxRounds?: number;
-    }): Promise<{ text: string; stats?: OllamaStats; toolCallCount: number }> {
+    }): Promise<{ text: string; stats?: OllamaStats; toolCallCount: number; turnsUsed: number }> {
         const {
             baseUrl, model, systemPrompt, userPrompt, temperature,
             tools, onToken, onToolCall, cancellationToken, keepAlive,
         } = options;
-        const maxRounds = options.maxRounds ?? 10;
+        const maxRounds = options.maxRounds ?? 20;
         const ollamaTools = toOllamaTools(tools, () => true); // send all provided tools
 
         // Build initial message history
@@ -612,14 +627,33 @@ export class PromptExpanderManager {
         let totalToolCalls = 0;
 
         for (let round = 0; round < maxRounds; round++) {
+            // Inject turn budget as a system-level note so the model knows its limits
+            const remaining = maxRounds - round;
+            if (round > 0) {
+                let budgetNote = `[Turn ${round + 1}/${maxRounds} — ${remaining - 1} tool rounds remaining after this one.`;
+                if (remaining <= 2) {
+                    budgetNote += ` URGENT: You are almost out of turns. Provide your FINAL answer now without calling more tools.`;
+                } else if (remaining <= 5) {
+                    budgetNote += ` You are running low on turns. Start wrapping up and produce your answer soon.`;
+                } else {
+                    budgetNote += ` When you have enough context, produce your final answer without calling tools.`;
+                }
+                budgetNote += ']';
+                messages.push({ role: 'system', content: budgetNote });
+            }
+
+            // On the very last round, don't offer tools — force a text-only response
+            const roundTools = remaining <= 1 ? [] : ollamaTools;
+
             const result = await this.ollamaChat(
                 baseUrl, model, messages, temperature,
-                onToken, cancellationToken, keepAlive, ollamaTools,
+                onToken, cancellationToken, keepAlive,
+                roundTools.length > 0 ? roundTools : undefined,
             );
 
             // No tool calls → model produced a final text response
             if (!result.toolCalls || result.toolCalls.length === 0) {
-                return { text: result.text, stats: result.stats, toolCallCount: totalToolCalls };
+                return { text: result.text, stats: result.stats, toolCallCount: totalToolCalls, turnsUsed: round + 1 };
             }
 
             // Append assistant message with tool_calls
@@ -648,6 +682,7 @@ export class PromptExpanderManager {
             text: `[Tool call limit reached after ${maxRounds} rounds]\n\n` +
                   (messages.filter(m => m.role === 'assistant').pop()?.content ?? ''),
             toolCallCount: totalToolCalls,
+            turnsUsed: maxRounds,
         };
     }
 
@@ -663,9 +698,9 @@ export class PromptExpanderManager {
      * Public method to chat with Ollama using the configured model.
      * Used by other handlers that need Ollama interaction without full prompt-expansion logic.
      *
-     * When `useTools` is true, the read-only tool set is provided to the model
-     * and a tool-call loop executes automatically. Tool invocations are logged
-     * via the optional `onToolCall` callback.
+     * Always uses the tool-call loop with read-only tools. The model can
+     * choose whether to invoke tools or just produce a direct answer.
+     * Tool invocations are logged via the optional `onToolCall` callback.
      */
     public async chatWithOllama(options: {
         systemPrompt: string;
@@ -674,9 +709,9 @@ export class PromptExpanderManager {
         temperature?: number;
         stripThinkingTags?: boolean;
         cancellationToken?: vscode.CancellationToken;
-        useTools?: boolean;
+        maxRounds?: number;
         onToolCall?: (toolName: string, args: Record<string, unknown>, result: string) => void;
-    }): Promise<{ text: string; rawText: string; thinkContent: string; stats?: OllamaStats; toolCallCount?: number }> {
+    }): Promise<{ text: string; rawText: string; thinkContent: string; stats?: OllamaStats; toolCallCount?: number; turnsUsed?: number }> {
         const config = this.loadConfig();
         const { mc } = this.resolveModelConfig(config, undefined, options.modelConfigKey);
         const temp = options.temperature ?? mc.temperature;
@@ -688,39 +723,23 @@ export class PromptExpanderManager {
             throw new Error(`Ollama is not running at ${mc.ollamaUrl}`);
         }
 
-        let text: string;
-        let stats: OllamaStats | undefined;
-        let toolCallCount = 0;
+        // Always use tool-call loop — model decides whether to use tools
+        const result = await this.ollamaGenerateWithTools({
+            baseUrl: mc.ollamaUrl,
+            model: mc.model,
+            systemPrompt: options.systemPrompt,
+            userPrompt: options.userPrompt,
+            temperature: temp,
+            tools: READ_ONLY_TOOLS,
+            onToolCall: options.onToolCall,
+            cancellationToken: options.cancellationToken,
+            keepAlive: mc.keepAlive,
+            maxRounds: options.maxRounds ?? 20,
+        });
 
-        if (options.useTools) {
-            // Use tool-call loop with read-only tools
-            const result = await this.ollamaGenerateWithTools({
-                baseUrl: mc.ollamaUrl,
-                model: mc.model,
-                systemPrompt: options.systemPrompt,
-                userPrompt: options.userPrompt,
-                temperature: temp,
-                tools: READ_ONLY_TOOLS,
-                onToolCall: options.onToolCall,
-                cancellationToken: options.cancellationToken,
-                keepAlive: mc.keepAlive,
-            });
-            text = result.text;
-            stats = result.stats;
-            toolCallCount = result.toolCallCount;
-        } else {
-            // Simple single-shot call (no tools)
-            const result = await this.ollamaGenerate(
-                mc.ollamaUrl, mc.model, options.systemPrompt, options.userPrompt,
-                temp, undefined, options.cancellationToken, mc.keepAlive,
-            );
-            text = result.text;
-            stats = result.stats;
-        }
+        const { cleaned, thinkContent } = this.processThinkTags(result.text, strip);
 
-        const { cleaned, thinkContent } = this.processThinkTags(text, strip);
-
-        return { text: cleaned, rawText: text, thinkContent, stats, toolCallCount };
+        return { text: cleaned, rawText: result.text, thinkContent, stats: result.stats, toolCallCount: result.toolCallCount, turnsUsed: result.turnsUsed };
     }
 
     /** Check if a specific model is loaded in Ollama. Uses configured URL if no baseUrl given. */
@@ -796,40 +815,26 @@ export class PromptExpanderManager {
                 };
             }
 
-            // Call LLM (with or without tools depending on profile setting)
-            const useTools = profile?.toolsEnabled === true;
-            let rawResponse: string;
-            let stats: OllamaStats | undefined;
-            let toolCallCount = 0;
+            // Always use the tool-call loop — even if the model doesn't call tools,
+            // it goes through ollamaGenerateWithTools which handles messages correctly.
+            // The model can choose to use tools or just produce a direct answer.
+            const effectiveMaxRounds = profile?.maxRounds ?? 20;
 
-            if (useTools) {
-                const result = await this.ollamaGenerateWithTools({
-                    baseUrl: mc.ollamaUrl,
-                    model: mc.model,
-                    systemPrompt: resolvedSystemPrompt,
-                    userPrompt: prompt,
-                    temperature: effectiveTemperature,
-                    tools: READ_ONLY_TOOLS,
-                    cancellationToken,
-                    keepAlive: mc.keepAlive,
-                });
-                rawResponse = result.text;
-                stats = result.stats;
-                toolCallCount = result.toolCallCount;
-            } else {
-                const result = await this.ollamaGenerate(
-                    mc.ollamaUrl,
-                    mc.model,
-                    resolvedSystemPrompt,
-                    prompt,
-                    effectiveTemperature,
-                    undefined,
-                    cancellationToken,
-                    mc.keepAlive,
-                );
-                rawResponse = result.text;
-                stats = result.stats;
-            }
+            const result = await this.ollamaGenerateWithTools({
+                baseUrl: mc.ollamaUrl,
+                model: mc.model,
+                systemPrompt: resolvedSystemPrompt,
+                userPrompt: prompt,
+                temperature: effectiveTemperature,
+                tools: READ_ONLY_TOOLS,
+                cancellationToken,
+                keepAlive: mc.keepAlive,
+                maxRounds: effectiveMaxRounds,
+            });
+            const rawResponse = result.text;
+            const stats = result.stats;
+            const toolCallCount = result.toolCallCount;
+            const turnsUsed = result.turnsUsed;
 
             if (!rawResponse.trim()) {
                 return {
@@ -847,10 +852,11 @@ export class PromptExpanderManager {
             // Process think tags
             const { cleaned, thinkContent } = this.processThinkTags(rawResponse, mc.stripThinkingTags);
 
-            // Apply result template
+            // Apply result template (with turn info)
             const postValues = this.buildPlaceholderValues(
                 editor, prompt, rawResponse, cleaned, thinkContent,
                 mc.model, resolvedModelKey, effectiveProfileKey,
+                { turnsUsed, maxTurns: effectiveMaxRounds },
             );
             const finalText = this.resolvePlaceholders(effectiveResultTemplate, postValues);
 
@@ -864,6 +870,8 @@ export class PromptExpanderManager {
                 modelConfig: resolvedModelKey,
                 tokenInfo: stats,
                 toolCallCount,
+                turnsUsed,
+                maxTurns: effectiveMaxRounds,
             };
         } catch (err: any) {
             return {
@@ -1342,9 +1350,12 @@ export class PromptExpanderManager {
                 const tokenStr = result.tokenInfo
                     ? ` | ${result.tokenInfo.promptTokens}+${result.tokenInfo.completionTokens} tokens, ${(result.tokenInfo.totalDurationMs / 1000).toFixed(1)}s`
                     : '';
-                bridgeLog(`[Prompt Expander] ${originalText.length} → ${result.result.length} chars [${profileKey}/${result.modelConfig}]${tokenStr}`);
+                const toolStr = result.toolCallCount
+                    ? ` | ${result.toolCallCount} tool calls in ${result.turnsUsed}/${result.maxTurns} turns`
+                    : '';
+                bridgeLog(`[Prompt Expander] ${originalText.length} → ${result.result.length} chars [${profileKey}/${result.modelConfig}]${tokenStr}${toolStr}`);
                 vscode.window.showInformationMessage(
-                    `Expanded (${originalText.length} → ${result.result.length} chars) [${profileKey}]${tokenStr}`,
+                    `Expanded (${originalText.length} → ${result.result.length} chars) [${profileKey}]${tokenStr}${toolStr}`,
                 );
             }
         } catch (error) {
