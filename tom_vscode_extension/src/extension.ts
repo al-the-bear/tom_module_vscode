@@ -56,6 +56,7 @@ import {
     registerCommandlineCommands,
     telegramTestHandler,
     telegramToggleHandler,
+    telegramConfigureHandler,
     disposeTelegramStandalone,
 } from './handlers';
 
@@ -381,6 +382,14 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
+    // Telegram Configure
+    const telegramConfigureCmd = vscode.commands.registerCommand(
+        'dartscript.telegramConfigure',
+        async () => {
+            await telegramConfigureHandler();
+        }
+    );
+
     // Add all commands to subscriptions
     context.subscriptions.push(
         sendToChatCmd,
@@ -410,7 +419,8 @@ function registerCommands(context: vscode.ExtensionContext) {
         continueBotConversationCmd,
         addToBotConversationCmd,
         telegramTestCmd,
-        telegramToggleCmd
+        telegramToggleCmd,
+        telegramConfigureCmd
     );
 }
 

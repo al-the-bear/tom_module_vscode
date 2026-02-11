@@ -305,6 +305,11 @@
         "command": "dartscript.telegramToggle",
         "title": "DS: Telegram Start/Stop Polling",
         "category": "DartScript"
+      },
+      {
+        "command": "dartscript.telegramConfigure",
+        "title": "DS: Configure Telegram...",
+        "category": "DartScript"
       }
     ],
     "keybindings": [

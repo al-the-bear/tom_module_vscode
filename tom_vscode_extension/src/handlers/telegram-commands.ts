@@ -200,6 +200,118 @@ function handleStandaloneCommand(cmd: TelegramCommand): void {
 }
 
 // ============================================================================
+// Configure Telegram command
+// ============================================================================
+
+/**
+ * Interactive configuration for Telegram integration.
+ * Prompts for env var name, allowed user IDs, default chat ID, and enabled state,
+ * then writes the values back to send_to_chat.json → botConversation.telegram.
+ */
+export async function telegramConfigureHandler(): Promise<void> {
+    bridgeLog('[Telegram] Configure command invoked');
+
+    const configPath = getConfigPath();
+    if (!configPath || !fs.existsSync(configPath)) {
+        vscode.window.showErrorMessage('Cannot find send_to_chat.json config file.');
+        return;
+    }
+
+    let raw: any;
+    try {
+        raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    } catch (err: any) {
+        vscode.window.showErrorMessage(`Error reading config: ${err.message}`);
+        return;
+    }
+
+    const telegram = raw?.botConversation?.telegram;
+    if (!telegram) {
+        vscode.window.showErrorMessage('No botConversation.telegram section in send_to_chat.json.');
+        return;
+    }
+
+    // --- Step 1: Bot token env var name ---
+    const tokenEnv = await vscode.window.showInputBox({
+        title: 'Configure Telegram (1/4): Bot Token Environment Variable',
+        prompt: 'Name of the environment variable holding the bot token',
+        value: telegram.botTokenEnv ?? 'TELEGRAM_BOT_TOKEN',
+        placeHolder: 'TELEGRAM_BOT_TOKEN',
+        ignoreFocusOut: true,
+    });
+    if (tokenEnv === undefined) { return; } // cancelled
+
+    // --- Step 2: Allowed user IDs ---
+    const currentUsers = (telegram.allowedUserIds ?? []).join(', ');
+    const usersInput = await vscode.window.showInputBox({
+        title: 'Configure Telegram (2/4): Allowed User IDs',
+        prompt: 'Comma-separated Telegram user IDs allowed to send commands',
+        value: currentUsers,
+        placeHolder: '123456789, 987654321',
+        ignoreFocusOut: true,
+    });
+    if (usersInput === undefined) { return; } // cancelled
+
+    const allowedUserIds = usersInput
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s.length > 0)
+        .map(Number)
+        .filter(n => !isNaN(n) && n > 0);
+
+    // --- Step 3: Default chat ID ---
+    const currentChat = telegram.defaultChatId !== null && telegram.defaultChatId !== undefined ? String(telegram.defaultChatId) : '';
+    const chatIdInput = await vscode.window.showInputBox({
+        title: 'Configure Telegram (3/4): Default Chat ID',
+        prompt: 'Telegram chat ID for notifications (leave empty for none)',
+        value: currentChat,
+        placeHolder: '-1001234567890',
+        ignoreFocusOut: true,
+    });
+    if (chatIdInput === undefined) { return; } // cancelled
+
+    const defaultChatId = chatIdInput.trim().length > 0 ? Number(chatIdInput.trim()) : null;
+    if (defaultChatId !== null && isNaN(defaultChatId)) {
+        vscode.window.showErrorMessage('Invalid chat ID — must be a number.');
+        return;
+    }
+
+    // --- Step 4: Enabled toggle ---
+    const enabledPick = await vscode.window.showQuickPick(
+        [
+            { label: 'Enabled', description: 'Telegram notifications active', value: true },
+            { label: 'Disabled', description: 'Telegram notifications inactive', value: false },
+        ],
+        {
+            title: 'Configure Telegram (4/4): Enable Notifications?',
+            placeHolder: telegram.enabled ? 'Currently: enabled' : 'Currently: disabled',
+            ignoreFocusOut: true,
+        }
+    );
+    if (!enabledPick) { return; } // cancelled
+
+    // --- Write config ---
+    telegram.botTokenEnv = tokenEnv;
+    telegram.allowedUserIds = allowedUserIds;
+    telegram.defaultChatId = defaultChatId;
+    telegram.enabled = enabledPick.value;
+
+    try {
+        fs.writeFileSync(configPath, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
+        const summary = [
+            `Token env: ${tokenEnv}`,
+            `Users: ${allowedUserIds.length > 0 ? allowedUserIds.join(', ') : '(none)'}`,
+            `Chat ID: ${defaultChatId ?? '(none)'}`,
+            `Enabled: ${enabledPick.value}`,
+        ].join(' | ');
+        vscode.window.showInformationMessage(`✅ Telegram configured — ${summary}`);
+        bridgeLog(`[Telegram] Configuration saved: ${summary}`);
+    } catch (err: any) {
+        vscode.window.showErrorMessage(`Failed to write config: ${err.message}`);
+    }
+}
+
+// ============================================================================
 // Disposal
 // ============================================================================
 
