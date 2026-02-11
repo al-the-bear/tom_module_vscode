@@ -54,6 +54,7 @@ import {
     setBotConversationManager,
     registerChordMenuCommands,
     registerCommandlineCommands,
+    registerCombinedCommands,
     telegramTestHandler,
     telegramToggleHandler,
     telegramConfigureHandler,
@@ -94,6 +95,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register commandline commands
     registerCommandlineCommands(context);
+
+    // Register combined commands (configurable multi-command shortcuts)
+    registerCombinedCommands(context);
 
     // Check for test reinstall marker and send reload prompt to Copilot Chat
     checkTestReinstallMarker();

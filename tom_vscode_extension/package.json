@@ -310,6 +310,21 @@
         "command": "dartscript.telegramConfigure",
         "title": "DS: Configure Telegram...",
         "category": "DartScript"
+      },
+      {
+        "command": "dartscript.combined.maximizeExplorer",
+        "title": "DS: Maximize Explorer",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.combined.maximizeEditor",
+        "title": "DS: Maximize Editor",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.combined.maximizeChat",
+        "title": "DS: Maximize Chat",
+        "category": "DartScript"
       }
     ],
     "keybindings": [
@@ -352,15 +367,15 @@
         "when": "!dartscript.chordMenuOpen"
       },
       {
-        "command": "workbench.action.toggleSidebarVisibility",
+        "command": "dartscript.combined.maximizeExplorer",
         "key": "ctrl+shift+1"
       },
       {
-        "command": "workbench.action.toggleEditorVisibility",
+        "command": "dartscript.combined.maximizeEditor",
         "key": "ctrl+shift+2"
       },
       {
-        "command": "workbench.action.toggleAuxiliaryBar",
+        "command": "dartscript.combined.maximizeChat",
         "key": "ctrl+shift+3"
       }
     ],
