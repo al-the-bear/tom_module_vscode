@@ -408,10 +408,24 @@ async function todosHandler(_cmd: ParsedTelegramCommand): Promise<TelegramComman
     return { text: lines.join('\n'), attachmentFilename: 'todos.txt' };
 }
 
+/**
+ * Normalize Telegram "smart typography" back to plain ASCII.
+ * Telegram converts -- to em-dash, etc. We need to reverse this for CLI args.
+ */
+function normalizeArgs(args: string): string {
+    return args
+        .replace(/—/g, '--')   // em-dash → double hyphen
+        .replace(/–/g, '-')    // en-dash → single hyphen  
+        .replace(/'/g, "'")    // smart single quote
+        .replace(/'/g, "'")    // smart single quote
+        .replace(/"/g, '"')    // smart double quote
+        .replace(/"/g, '"');   // smart double quote
+}
+
 // --- bk (buildkit) ---
 async function bkHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
     const cwd = getCwd();
-    const args = cmd.rawArgs;
+    const args = normalizeArgs(cmd.rawArgs);
     const fullCmd = args ? `buildkit ${args}` : 'buildkit';
 
     bridgeLog(`[Telegram] Running: ${fullCmd} in ${cwd}`);
@@ -428,7 +442,7 @@ async function bkHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandRes
 // --- tk (testkit) ---
 async function tkHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
     const cwd = getCwd();
-    const args = cmd.rawArgs;
+    const args = normalizeArgs(cmd.rawArgs);
     const fullCmd = args ? `testkit ${args}` : 'testkit';
 
     bridgeLog(`[Telegram] Running: ${fullCmd} in ${cwd}`);
