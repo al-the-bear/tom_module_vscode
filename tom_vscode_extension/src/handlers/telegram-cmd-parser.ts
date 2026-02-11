@@ -30,6 +30,8 @@ export interface ParsedTelegramCommand {
     flags: Record<string, string | boolean>;
     /** Original raw text */
     raw: string;
+    /** Raw arguments after the command name (unparsed, for pass-through commands like bk/tk) */
+    rawArgs: string;
     /** Sender metadata */
     userId: number;
     chatId: number;
@@ -119,6 +121,11 @@ export class TelegramCommandRegistry {
         if (!command) { return null; }
         const def = this.commands.get(command);
 
+        // Extract rawArgs: everything after the first token (command name), unparsed
+        // Find where the command token ends in the original text
+        const firstTokenEnd = trimmed.indexOf(tokens[0]) + tokens[0].length;
+        const rawArgs = trimmed.substring(firstTokenEnd).trim();
+
         // Extract flags and positional args from remaining tokens
         const flags: Record<string, string | boolean> = {};
         const positional: string[] = [];
@@ -149,9 +156,9 @@ export class TelegramCommandRegistry {
             }
         }
 
-        bridgeLog(`[TelegramCmd] Parsed: ${command}${subcommand ? ' ' + subcommand : ''} args=[${args.join(', ')}] flags=${JSON.stringify(flags)}`);
+        bridgeLog(`[TelegramCmd] Parsed: ${command}${subcommand ? ' ' + subcommand : ''} args=[${args.join(', ')}] rawArgs="${rawArgs}" flags=${JSON.stringify(flags)}`);
 
-        return { command, subcommand, args, flags, raw: trimmed, userId, chatId, username };
+        return { command, subcommand, args, flags, raw: trimmed, rawArgs, userId, chatId, username };
     }
 
     /** Generate help text for all commands or a specific command. */

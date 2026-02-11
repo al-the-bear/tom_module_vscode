@@ -122,6 +122,26 @@ export class TelegramResponseFormatter {
     }
 
     /**
+     * Send a plain text message without any Markdown parsing.
+     * Use this for acknowledgment messages that contain user input.
+     */
+    async sendPlainMessage(text: string, chatId: number): Promise<boolean> {
+        if (!this.config.botToken) { return false; }
+
+        const truncated = text.length > TELEGRAM_MAX_MESSAGE
+            ? text.substring(0, TELEGRAM_MAX_MESSAGE - TRUNCATION_MARKER.length) + TRUNCATION_MARKER
+            : text;
+
+        return this.apiCall('sendMessage', {
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            chat_id: chatId,
+            text: truncated,
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            disable_web_page_preview: true,
+        });
+    }
+
+    /**
      * Send a file attachment (document) to a Telegram chat.
      * Uses multipart/form-data upload.
      */

@@ -411,7 +411,7 @@ async function todosHandler(_cmd: ParsedTelegramCommand): Promise<TelegramComman
 // --- bk (buildkit) ---
 async function bkHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
     const cwd = getCwd();
-    const args = cmd.args.join(' ');
+    const args = cmd.rawArgs;
     const fullCmd = args ? `buildkit ${args}` : 'buildkit';
 
     bridgeLog(`[Telegram] Running: ${fullCmd} in ${cwd}`);
@@ -428,7 +428,7 @@ async function bkHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandRes
 // --- tk (testkit) ---
 async function tkHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
     const cwd = getCwd();
-    const args = cmd.args.join(' ');
+    const args = cmd.rawArgs;
     const fullCmd = args ? `testkit ${args}` : 'testkit';
 
     bridgeLog(`[Telegram] Running: ${fullCmd} in ${cwd}`);
@@ -609,7 +609,7 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
             { name: 'analyze', description: 'Run dart analyze', usage: 'dart analyze [project]' },
         ],
         handler: dartHandler,
-        startMessage: '⏳ Running dart {args}\.\.\.',
+        startMessage: '⏳ Running dart {args}...',
     });
 
     // /problems
@@ -632,14 +632,14 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
         description: 'Run buildkit with arguments',
         usage: 'bk [args...]',
         handler: bkHandler,
-        startMessage: '⏳ Running buildkit {args}\.\.\.',
+        startMessage: '⏳ Running buildkit {args}...',
     });
     registry.register({
         name: 'buildkit',
         description: 'Run buildkit with arguments (alias: bk)',
         usage: 'buildkit [args...]',
         handler: bkHandler,
-        startMessage: '⏳ Running buildkit {args}\.\.\.',
+        startMessage: '⏳ Running buildkit {args}...',
     });
 
     // tk (testkit)
@@ -648,14 +648,14 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
         description: 'Run testkit with arguments',
         usage: 'tk [args...]',
         handler: tkHandler,
-        startMessage: '⏳ Running testkit {args}\.\.\.',
+        startMessage: '⏳ Running testkit {args}...',
     });
     registry.register({
         name: 'testkit',
         description: 'Run testkit with arguments (alias: tk)',
         usage: 'testkit [args...]',
         handler: tkHandler,
-        startMessage: '⏳ Running testkit {args}\.\.\.',
+        startMessage: '⏳ Running testkit {args}...',
     });
 
     // /bridge

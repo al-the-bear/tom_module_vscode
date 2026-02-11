@@ -16,7 +16,6 @@ import { TelegramNotifier, TelegramConfig, TelegramCommand, TelegramApiResult, p
 import { TelegramCommandRegistry, ParsedTelegramCommand } from './telegram-cmd-parser';
 import { TelegramResponseFormatter } from './telegram-cmd-response';
 import { createCommandRegistry } from './telegram-cmd-handlers';
-import { escapeMarkdownV2 } from './telegram-markdown';
 
 // ============================================================================
 // State
@@ -209,9 +208,8 @@ function handleStandaloneCommand(cmd: TelegramCommand): void {
             if (def) {
                 // Send immediate acknowledgment for long-running commands
                 if (def.startMessage) {
-                    const argsText = escapeMarkdownV2(parsed.args.join(' '));
-                    const ackMsg = def.startMessage.replace('{args}', argsText);
-                    responseFormatter?.sendMessage(ackMsg, cmd.chatId);
+                    const ackMsg = def.startMessage.replace('{args}', parsed.rawArgs);
+                    responseFormatter?.sendPlainMessage(ackMsg, cmd.chatId);
                 }
                 // Execute the command handler (non-blocking via .then())
                 def.handler(parsed).then((result) => {
