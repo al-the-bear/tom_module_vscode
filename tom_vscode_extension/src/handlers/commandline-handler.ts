@@ -553,6 +553,49 @@ async function resolveExecutionCwd(entry: CommandlineEntry): Promise<string | un
     }
 }
 
+// ============================================================================
+// VS Code Expression Execution
+// ============================================================================
+
+/**
+ * Execute a commandline entry whose command starts with `vscode.` as a
+ * JavaScript expression instead of sending it to a shell terminal.
+ *
+ * The expression is evaluated with `vscode` in scope (the VS Code API module),
+ * so typical usage looks like:
+ *
+ *     vscode.commands.executeCommand('revealInOs', someUri)
+ *     vscode.env.openExternal(vscode.Uri.parse('https://example.com'))
+ *
+ * After successful evaluation, any configured post-actions are executed in
+ * sequence — identical to how they work for normal shell commands.
+ */
+async function executeAsVscodeExpression(
+    expression: string,
+    postActions: string[],
+): Promise<void> {
+    console.log(`[commandline-handler] Evaluating VS Code expression: ${expression}`);
+    try {
+        // Build an async wrapper so the expression can use `await`
+        const asyncFn = new Function('vscode', `return (async () => { return ${expression}; })()`);
+        const result = await asyncFn(vscode);
+        console.log(`[commandline-handler] Expression result:`, result);
+    } catch (err: any) {
+        console.error(`[commandline-handler] Expression evaluation failed:`, err);
+        vscode.window.showErrorMessage(`VS Code expression failed: ${err.message}`);
+        return; // Skip post-actions on error
+    }
+
+    // Run post-actions
+    for (const commandId of postActions) {
+        try {
+            await vscode.commands.executeCommand(commandId);
+        } catch (err: any) {
+            vscode.window.showWarningMessage(`Post-action failed: ${commandId} - ${err.message}`);
+        }
+    }
+}
+
 /**
  * Execute a command in a terminal and run post-actions after it completes.
  * Uses VS Code Shell Integration API to detect command completion.
@@ -641,10 +684,12 @@ async function executeCommandline(): Promise<void> {
     const items: CommandlineQuickPickItem[] = commandlines.map((entry, index) => {
         const key = index < AUTO_KEYS.length ? AUTO_KEYS[index] : '';
         const prefix = key ? `[${key}] ` : '';
+        const isVscodeExpr = entry.command.trimStart().startsWith('vscode.');
+        const cwdInfo = isVscodeExpr ? 'VS Code expression' : `cwd: ${cwdModeLabel(entry.cwdMode)}`;
         return {
             label: `${prefix}${entry.description || entry.command}`,
             description: entry.description ? entry.command : undefined,
-            detail: `cwd: ${cwdModeLabel(entry.cwdMode)}${entry.postActions?.length ? ` -> ${entry.postActions.length} post-action(s)` : ''}`,
+            detail: `${cwdInfo}${entry.postActions?.length ? ` -> ${entry.postActions.length} post-action(s)` : ''}`,
             _index: index,
             _key: key,
         };
@@ -695,13 +740,20 @@ async function executeCommandline(): Promise<void> {
 
     const entry = commandlines[selected._index];
 
-    // Resolve effective working directory at runtime
-    const effectiveCwd = await resolveExecutionCwd(entry);
-    if (!effectiveCwd) { return; }
-
     // Expand placeholders in command string
     const expandedCommand = expandPlaceholders(entry.command);
     if (expandedCommand === undefined) { return; } // error already shown
+
+    // ── vscode. prefix → evaluate as JS expression ──────────────────────
+    if (expandedCommand.trimStart().startsWith('vscode.')) {
+        await executeAsVscodeExpression(expandedCommand, entry.postActions || []);
+        return;
+    }
+
+    // ── Normal shell command ─────────────────────────────────────────────
+    // Resolve effective working directory at runtime
+    const effectiveCwd = await resolveExecutionCwd(entry);
+    if (!effectiveCwd) { return; }
 
     // Confirmation only for dynamic modes (project, repository, document)
     const mode: CwdMode = entry.cwdMode || 'custom';
