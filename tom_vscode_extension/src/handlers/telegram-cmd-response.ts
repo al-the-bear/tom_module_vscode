@@ -88,7 +88,7 @@ export class TelegramResponseFormatter {
 
     /**
      * Send a plain text message to a chat.
-     * Uses Markdown parse mode.
+     * Uses Markdown parse mode with fallback to plain text on error.
      */
     async sendMessage(text: string, chatId: number): Promise<boolean> {
         if (!this.config.botToken) { return false; }
@@ -97,7 +97,8 @@ export class TelegramResponseFormatter {
             ? text.substring(0, TELEGRAM_MAX_MESSAGE - TRUNCATION_MARKER.length) + TRUNCATION_MARKER
             : text;
 
-        return this.apiCall('sendMessage', {
+        // Try with Markdown first
+        const success = await this.apiCall('sendMessage', {
             // eslint-disable-next-line @typescript-eslint/naming-convention
             chat_id: chatId,
             text: truncated,
@@ -106,6 +107,19 @@ export class TelegramResponseFormatter {
             // eslint-disable-next-line @typescript-eslint/naming-convention
             disable_web_page_preview: true,
         });
+
+        if (!success) {
+            // Fallback: send without Markdown (strip formatting)
+            bridgeLog('[Telegram] Markdown send failed, retrying without parse_mode');
+            return this.apiCall('sendMessage', {
+                // eslint-disable-next-line @typescript-eslint/naming-convention
+                chat_id: chatId,
+                text: this.stripMarkdown(truncated),
+                // eslint-disable-next-line @typescript-eslint/naming-convention
+                disable_web_page_preview: true,
+            });
+        }
+        return true;
     }
 
     /**

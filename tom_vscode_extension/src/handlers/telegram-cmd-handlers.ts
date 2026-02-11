@@ -25,7 +25,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
-import { bridgeLog, getWorkspaceRoot, getBridgeClient } from './handler_shared';
+import { bridgeLog, getWorkspaceRoot, getBridgeClient, getConfigPath } from './handler_shared';
 import {
     TelegramCommandRegistry,
     TelegramCommandResult,
@@ -57,9 +57,14 @@ function displayPath(absPath: string): string {
     const wsRoot = getWorkspaceRoot();
     if (wsRoot && absPath.startsWith(wsRoot)) {
         const rel = path.relative(wsRoot, absPath);
-        return rel || '.';
+        return rel || path.basename(wsRoot);
     }
     return absPath;
+}
+
+/** Escape text for Telegram Markdown V1 (escape _ and * that are not part of formatting). */
+function escTg(text: string): string {
+    return text.replace(/_/g, '\\_').replace(/\*/g, '\\*').replace(/\[/g, '\\[').replace(/`/g, '\\`');
 }
 
 // ============================================================================
@@ -200,7 +205,7 @@ async function lsHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandRes
 
     try {
         const entries = fs.readdirSync(targetDir, { withFileTypes: true });
-        const lines: string[] = [`📂 *${displayPath(targetDir)}*\n`];
+        const lines: string[] = [`📂 *${escTg(displayPath(targetDir))}*\n`];
 
         // Sort: directories first, then files
         const dirs = entries.filter(e => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name));
@@ -209,11 +214,11 @@ async function lsHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandRes
         for (const d of dirs) {
             // Skip hidden dirs and common noise
             if (d.name.startsWith('.') && d.name !== '.tom') { continue; }
-            lines.push(`📁 ${d.name}/`);
+            lines.push(`📁 ${escTg(d.name)}/`);
         }
         for (const f of files) {
             if (f.name.startsWith('.') && f.name !== '.gitignore') { continue; }
-            lines.push(`   ${f.name}`);
+            lines.push(`   ${escTg(f.name)}`);
         }
 
         lines.push(`\n_${dirs.length} dirs, ${files.length} files_`);
@@ -228,29 +233,29 @@ async function cdHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandRes
     if (cmd.args.length === 0) {
         // cd with no args → go to workspace root
         telegramCwd = getWorkspaceRoot() ?? process.cwd();
-        return { text: `📂 ${displayPath(telegramCwd)}` };
+        return { text: `📂 ${escTg(displayPath(telegramCwd))}` };
     }
 
     const target = resolvePath(cmd.args.join(' '));
 
     if (!fs.existsSync(target)) {
-        return { text: `❌ Directory not found: ${cmd.args.join(' ')}` };
+        return { text: `❌ Directory not found: ${escTg(cmd.args.join(' '))}` };
     }
     if (!fs.statSync(target).isDirectory()) {
-        return { text: `❌ Not a directory: ${cmd.args.join(' ')}` };
+        return { text: `❌ Not a directory: ${escTg(cmd.args.join(' '))}` };
     }
 
     telegramCwd = target;
-    return { text: `📂 ${displayPath(telegramCwd)}` };
+    return { text: `📂 ${escTg(displayPath(telegramCwd))}` };
 }
 
 // --- /cwd ---
 async function cwdHandler(_cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
     const cwd = getCwd();
     const project = detectProject(cwd);
-    let text = `📂 *Current directory:*\n${displayPath(cwd)}`;
+    let text = `📂 *Current directory:*\n${escTg(displayPath(cwd))}`;
     if (project) {
-        text += `\n📦 *Project:* ${project.name}`;
+        text += `\n📦 *Project:* ${escTg(project.name)}`;
     }
     return { text };
 }
@@ -268,7 +273,7 @@ async function projectHandler(cmd: ParsedTelegramCommand): Promise<TelegramComma
         const lines = ['📦 *Projects*\n'];
         for (const p of projects.sort((a, b) => a.name.localeCompare(b.name))) {
             const relPath = wsRoot ? path.relative(wsRoot, p.absPath) : p.absPath;
-            lines.push(`• \`${p.name}\` — ${relPath}`);
+            lines.push(`• \`${escTg(p.name)}\` — ${escTg(relPath)}`);
         }
         return { text: lines.join('\n'), attachmentFilename: 'projects.txt' };
     }
@@ -281,7 +286,7 @@ async function projectHandler(cmd: ParsedTelegramCommand): Promise<TelegramComma
     }
 
     telegramCwd = project.absPath;
-    return { text: `📦 Switched to *${project.name}*\n📂 ${displayPath(project.absPath)}` };
+    return { text: `📦 Switched to *${escTg(project.name)}*\n📂 ${escTg(displayPath(project.absPath))}` };
 }
 
 // --- /dart analyze ---
@@ -359,7 +364,7 @@ async function problemsHandler(_cmd: ParsedTelegramCommand): Promise<TelegramCom
         if (fi.errors > 0) { parts.push(`${fi.errors}E`); }
         if (fi.warnings > 0) { parts.push(`${fi.warnings}W`); }
         if (fi.infos > 0) { parts.push(`${fi.infos}I`); }
-        lines.push(`• ${fi.file} (${parts.join(', ')})`);
+        lines.push(`• ${escTg(fi.file)} (${parts.join(', ')})`);
     }
     if (fileIssues.length > 20) {
         lines.push(`\n_... and ${fileIssues.length - 20} more files_`);
@@ -395,7 +400,7 @@ async function todosHandler(_cmd: ParsedTelegramCommand): Promise<TelegramComman
 
     const lines = [`📝 *TODOs/FIXMEs* (${todoItems.length})\n`];
     for (const item of todoItems.slice(0, 30)) {
-        lines.push(`• ${item.file}:${item.line} — ${item.message}`);
+        lines.push(`• ${escTg(item.file)}:${item.line} — ${escTg(item.message)}`);
     }
     if (todoItems.length > 30) {
         lines.push(`\n_... and ${todoItems.length - 30} more_`);
@@ -501,9 +506,28 @@ async function bridgeHandler(cmd: ParsedTelegramCommand): Promise<TelegramComman
             if (!mode || !['development', 'production', 'dev', 'prod'].includes(mode)) {
                 return { text: '❌ Usage: /bridge mode <development|production>' };
             }
-            // Mode switching would require bridge restart with different profile
-            await vscode.commands.executeCommand('dartscript.switchBridgeProfile');
-            return { text: `🔄 *Bridge profile switch* initiated. Select profile in VS Code.` };
+            // Map short names to profile keys
+            const profileKey = (mode === 'dev' || mode === 'development') ? 'development' : 'production';
+
+            // Directly write the profile to config and restart
+            const configPath = getConfigPath();
+            if (configPath && fs.existsSync(configPath)) {
+                try {
+                    const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+                    if (raw.dartscriptBridge?.profiles?.[profileKey]) {
+                        raw.dartscriptBridge.current = profileKey;
+                        fs.writeFileSync(configPath, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
+                        // Restart bridge with new profile
+                        await vscode.commands.executeCommand('dartscript.restartBridge');
+                        return { text: `🔄 *Bridge mode switched to ${profileKey}* and restarting.` };
+                    } else {
+                        return { text: `❌ Profile '${profileKey}' not found in config.` };
+                    }
+                } catch (err: any) {
+                    return { text: `❌ Failed to switch profile: ${err.message}` };
+                }
+            }
+            return { text: '❌ Config file not found.' };
         }
 
         default:
@@ -547,8 +571,8 @@ async function statusHandler(_cmd: ParsedTelegramCommand): Promise<TelegramComma
     const lines = [
         `📊 *Status*\n`,
         `*Workspace:* ${wsRoot ? path.basename(wsRoot) : 'none'}`,
-        `*CWD:* ${displayPath(cwd)}`,
-        project ? `*Project:* ${project.name}` : '*Project:* (none)',
+        `*CWD:* ${escTg(displayPath(cwd))}`,
+        project ? `*Project:* ${escTg(project.name)}` : '*Project:* (none)',
         `*Time:* ${new Date().toLocaleString()}`,
     ];
 
