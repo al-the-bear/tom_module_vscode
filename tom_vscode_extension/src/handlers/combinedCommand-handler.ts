@@ -169,6 +169,7 @@ export function registerCombinedCommands(
     // These are the statically registered command names in package.json.
     // Add new entries here when adding new combined commands.
     const registeredNames = [
+        'maximizeToggle',
         'maximizeExplorer',
         'maximizeEditor',
         'maximizeChat',

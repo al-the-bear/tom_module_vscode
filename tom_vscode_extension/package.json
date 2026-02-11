@@ -325,6 +325,11 @@
         "command": "dartscript.combined.maximizeChat",
         "title": "DS: Maximize Chat",
         "category": "DartScript"
+      },
+      {
+        "command": "dartscript.combined.maximizeToggle",
+        "title": "DS: Maximize Toggle",
+        "category": "DartScript"
       }
     ],
     "keybindings": [
@@ -367,16 +372,20 @@
         "when": "!dartscript.chordMenuOpen"
       },
       {
+        "command": "dartscript.combined.maximizeToggle",
+        "key": "ctrl+shift+1"
+      },
+      {
         "command": "dartscript.combined.maximizeExplorer",
         "key": "ctrl+shift+2"
       },
       {
         "command": "dartscript.combined.maximizeEditor",
-        "key": "ctrl+shift+4"
+        "key": "ctrl+shift+3"
       },
       {
         "command": "dartscript.combined.maximizeChat",
-        "key": "ctrl+shift+3"
+        "key": "ctrl+shift+4"
       }
     ],
     "menus": {
