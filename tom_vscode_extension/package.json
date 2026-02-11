@@ -350,6 +350,18 @@
         "command": "dartscript.chordMenu.favorites",
         "key": "ctrl+shift+x",
         "when": "!dartscript.chordMenuOpen"
+      },
+      {
+        "command": "workbench.action.toggleSidebarVisibility",
+        "key": "ctrl+shift+1"
+      },
+      {
+        "command": "workbench.action.toggleEditorVisibility",
+        "key": "ctrl+shift+2"
+      },
+      {
+        "command": "workbench.action.toggleAuxiliaryBar",
+        "key": "ctrl+shift+3"
       }
     ],
     "menus": {
