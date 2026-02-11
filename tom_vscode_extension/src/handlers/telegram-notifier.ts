@@ -21,7 +21,9 @@ import { bridgeLog } from './handler_shared';
 export interface TelegramConfig {
     /** Whether Telegram integration is enabled. */
     enabled: boolean;
-    /** Telegram Bot API token (from @BotFather). */
+    /** Name of the environment variable that holds the Bot API token. */
+    botTokenEnv: string;
+    /** Resolved Bot API token (read from the environment variable at parse time). */
     botToken: string;
     /** Whitelisted Telegram user IDs (numeric). Only these can interact. */
     allowedUserIds: number[];
@@ -77,6 +79,7 @@ export type TelegramCommandCallback = (command: TelegramCommand) => void;
 
 export const TELEGRAM_DEFAULTS: TelegramConfig = {
     enabled: false,
+    botTokenEnv: '',
     botToken: '',
     allowedUserIds: [],
     defaultChatId: 0,
@@ -423,9 +426,20 @@ export class TelegramNotifier {
 export function parseTelegramConfig(raw: any): TelegramConfig {
     if (!raw || typeof raw !== 'object') { return { ...TELEGRAM_DEFAULTS }; }
 
+    // Resolve bot token from environment variable
+    const botTokenEnv = typeof raw.botTokenEnv === 'string' ? raw.botTokenEnv : TELEGRAM_DEFAULTS.botTokenEnv;
+    let botToken = '';
+    if (botTokenEnv) {
+        botToken = process.env[botTokenEnv] ?? '';
+        if (!botToken) {
+            bridgeLog(`[Telegram] Environment variable '${botTokenEnv}' is not set or empty`);
+        }
+    }
+
     return {
         enabled: typeof raw.enabled === 'boolean' ? raw.enabled : TELEGRAM_DEFAULTS.enabled,
-        botToken: typeof raw.botToken === 'string' ? raw.botToken : TELEGRAM_DEFAULTS.botToken,
+        botTokenEnv,
+        botToken,
         allowedUserIds: Array.isArray(raw.allowedUserIds)
             ? raw.allowedUserIds.filter((id: any) => typeof id === 'number')
             : TELEGRAM_DEFAULTS.allowedUserIds,

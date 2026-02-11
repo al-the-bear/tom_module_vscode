@@ -69,8 +69,12 @@ export async function telegramTestHandler(): Promise<void> {
     const config = loadTelegramConfig();
     if (!config) { return; }
 
+    if (!config.botTokenEnv) {
+        vscode.window.showWarningMessage('Telegram botTokenEnv is not configured. Set it in send_to_chat.json → botConversation.telegram.');
+        return;
+    }
     if (!config.botToken) {
-        vscode.window.showWarningMessage('Telegram botToken is not configured. Set it in send_to_chat.json → botConversation.telegram.');
+        vscode.window.showWarningMessage(`Environment variable '${config.botTokenEnv}' is not set. Export it before starting VS Code.`);
         return;
     }
     if (!config.defaultChatId) {
@@ -130,8 +134,12 @@ export async function telegramToggleHandler(): Promise<void> {
     const config = loadTelegramConfig();
     if (!config) { return; }
 
+    if (!config.botTokenEnv) {
+        vscode.window.showWarningMessage('Telegram botTokenEnv is not configured. Set it in send_to_chat.json → botConversation.telegram.');
+        return;
+    }
     if (!config.botToken) {
-        vscode.window.showWarningMessage('Telegram botToken is not configured. Set it in send_to_chat.json → botConversation.telegram.');
+        vscode.window.showWarningMessage(`Environment variable '${config.botTokenEnv}' is not set. Export it before starting VS Code.`);
         return;
     }
     if (config.allowedUserIds.length === 0) {
