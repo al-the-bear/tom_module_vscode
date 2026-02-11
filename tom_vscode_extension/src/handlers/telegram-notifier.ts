@@ -12,6 +12,7 @@
 
 import * as https from 'https';
 import { bridgeLog } from './handler_shared';
+import { escapeMarkdownV2, stripMarkdown } from './telegram-markdown';
 
 // ============================================================================
 // Interfaces
@@ -146,15 +147,28 @@ export class TelegramNotifier {
             return { ok: false, error: 'No target chat ID configured' };
         }
 
-        return this.apiCallWithDetails('sendMessage', {
+        const result = await this.apiCallWithDetails('sendMessage', {
             // eslint-disable-next-line @typescript-eslint/naming-convention
             chat_id: targetChatId,
             text: this.truncate(text, 4096), // Telegram max message length
             // eslint-disable-next-line @typescript-eslint/naming-convention
-            parse_mode: 'Markdown',
+            parse_mode: 'MarkdownV2',
             // eslint-disable-next-line @typescript-eslint/naming-convention
             disable_web_page_preview: true,
         });
+
+        if (!result.ok) {
+            // Fallback: send without MarkdownV2 (strip formatting)
+            bridgeLog(`[Telegram] MarkdownV2 send failed: ${result.error}, retrying without parse_mode`);
+            return this.apiCallWithDetails('sendMessage', {
+                // eslint-disable-next-line @typescript-eslint/naming-convention
+                chat_id: targetChatId,
+                text: this.truncate(stripMarkdown(text), 4096),
+                // eslint-disable-next-line @typescript-eslint/naming-convention
+                disable_web_page_preview: true,
+            });
+        }
+        return result;
     }
 
     /** Send a conversation start notification. */
@@ -468,9 +482,9 @@ export class TelegramNotifier {
         return text.substring(0, maxLen - 3) + '...';
     }
 
-    /** Escape Markdown special characters for Telegram Markdown V1. */
+    /** Escape MarkdownV2 special characters for Telegram. */
     private escapeMarkdown(text: string): string {
-        return text.replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
+        return escapeMarkdownV2(text);
     }
 
     /** Dispose/cleanup. */

@@ -5,11 +5,9 @@
  *  - Truncation to Telegram's 4096 char limit (default 4000 usable)
  *  - Sending long responses as file attachments
  *  - --attach flag for forced attachment mode
- *  - Markdown conversion/stripping for Telegram compatibility
+ *  - Markdown conversion via telegramify-markdown (MarkdownV2)
  *
- * Telegram supports a subset of Markdown V1:
- *   *bold*, _italic_, `code`, ```pre```, [link](url)
- * Everything else is stripped.
+ * Uses telegramify-markdown to convert standard Markdown to Telegram MarkdownV2.
  */
 
 import * as https from 'https';
@@ -17,6 +15,7 @@ import * as http from 'http';
 import { bridgeLog } from './handler_shared';
 import { TelegramConfig } from './telegram-notifier';
 import { TelegramCommandResult, ParsedTelegramCommand } from './telegram-cmd-parser';
+import { toTelegramMarkdownV2, escapeMarkdownV2, stripMarkdown } from './telegram-markdown';
 
 // ============================================================================
 // Constants
@@ -60,9 +59,9 @@ export class TelegramResponseFormatter {
         const forceAttach = result.forceAttachment || cmd.flags['attach'] === true;
         let text = result.text;
 
-        // --- Convert markdown for Telegram ---
+        // --- Convert markdown for Telegram MarkdownV2 ---
         if (!result.rawText) {
-            text = this.convertMarkdown(text);
+            text = this.convertToTelegramMarkdown(text);
         }
 
         // --- Decide: inline message vs attachment ---
@@ -97,20 +96,20 @@ export class TelegramResponseFormatter {
             ? text.substring(0, TELEGRAM_MAX_MESSAGE - TRUNCATION_MARKER.length) + TRUNCATION_MARKER
             : text;
 
-        // Try with Markdown first
+        // Try with MarkdownV2 first
         const success = await this.apiCall('sendMessage', {
             // eslint-disable-next-line @typescript-eslint/naming-convention
             chat_id: chatId,
             text: truncated,
             // eslint-disable-next-line @typescript-eslint/naming-convention
-            parse_mode: 'Markdown',
+            parse_mode: 'MarkdownV2',
             // eslint-disable-next-line @typescript-eslint/naming-convention
             disable_web_page_preview: true,
         });
 
         if (!success) {
-            // Fallback: send without Markdown (strip formatting)
-            bridgeLog('[Telegram] Markdown send failed, retrying without parse_mode');
+            // Fallback: send without MarkdownV2 (strip formatting)
+            bridgeLog('[Telegram] MarkdownV2 send failed, retrying without parse_mode');
             return this.apiCall('sendMessage', {
                 // eslint-disable-next-line @typescript-eslint/naming-convention
                 chat_id: chatId,
@@ -199,57 +198,29 @@ export class TelegramResponseFormatter {
     // -----------------------------------------------------------------------
 
     /**
-     * Convert general Markdown to Telegram-compatible Markdown V1.
+     * Convert standard Markdown to Telegram MarkdownV2 format.
      *
-     * Telegram supports: *bold*, _italic_, `inline code`, ```pre```, [text](url)
-     * Everything else is stripped or converted.
+     * Uses telegramify-markdown (Remark-based) to properly convert
+     * standard Markdown syntax to Telegram MarkdownV2, handling:
+     *  - Escaping of special characters
+     *  - Bold, italic, code, links, lists, blockquotes
+     *  - Stripping unsupported tags
      */
-    convertMarkdown(text: string): string {
-        let result = text;
-
-        // Convert headers (## Title → *Title*)
-        result = result.replace(/^#{1,6}\s+(.+)$/gm, '*$1*');
-
-        // Convert bold (**text** → *text*) — Telegram uses single *
-        result = result.replace(/\*\*(.+?)\*\*/g, '*$1*');
-
-        // Convert strikethrough (~~text~~ → text)
-        result = result.replace(/~~(.+?)~~/g, '$1');
-
-        // Convert HTML tags — strip them
-        result = result.replace(/<[^>]+>/g, '');
-
-        // Convert horizontal rules to simple line
-        result = result.replace(/^[-*_]{3,}$/gm, '————');
-
-        // Convert bullet lists (- item → • item)
-        result = result.replace(/^[\t ]*[-*+]\s+/gm, '• ');
-
-        // Convert numbered lists — keep as-is (1. item)
-
-        // Convert blockquotes (> text → | text)
-        result = result.replace(/^>\s?/gm, '│ ');
-
-        // Fenced code blocks: ```lang\ncode\n``` → ```\ncode\n```
-        result = result.replace(/```[a-zA-Z]*\n/g, '```\n');
-
-        return result;
+    convertToTelegramMarkdown(text: string): string {
+        try {
+            return toTelegramMarkdownV2(text);
+        } catch (err: any) {
+            bridgeLog(`[Telegram] Markdown conversion error: ${err.message}`);
+            // Fallback: escape all special chars for MarkdownV2 plain text
+            return escapeMarkdownV2(text);
+        }
     }
 
     /**
-     * Strip all Markdown formatting for plain-text output (attachments).
+     * Strip all Markdown formatting for plain-text output (attachments/fallback).
      */
     stripMarkdown(text: string): string {
-        let result = text;
-        result = result.replace(/^#{1,6}\s+/gm, '');
-        result = result.replace(/\*\*(.+?)\*\*/g, '$1');
-        result = result.replace(/\*(.+?)\*/g, '$1');
-        result = result.replace(/_(.+?)_/g, '$1');
-        result = result.replace(/`{1,3}([^`]+)`{1,3}/g, '$1');
-        result = result.replace(/~~(.+?)~~/g, '$1');
-        result = result.replace(/<[^>]+>/g, '');
-        result = result.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-        return result;
+        return stripMarkdown(text);
     }
 
     // -----------------------------------------------------------------------

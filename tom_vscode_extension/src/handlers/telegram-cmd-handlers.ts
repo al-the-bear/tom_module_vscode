@@ -31,6 +31,7 @@ import {
     TelegramCommandResult,
     ParsedTelegramCommand,
 } from './telegram-cmd-parser';
+import { escapeMarkdownV2 } from './telegram-markdown';
 
 // ============================================================================
 // State — virtual working directory for the Telegram session
@@ -62,10 +63,8 @@ function displayPath(absPath: string): string {
     return absPath;
 }
 
-/** Escape text for Telegram Markdown V1 (escape _ and * that are not part of formatting). */
-function escTg(text: string): string {
-    return text.replace(/_/g, '\\_').replace(/\*/g, '\\*').replace(/\[/g, '\\[').replace(/`/g, '\\`');
-}
+/** Escape text for Telegram MarkdownV2 (escape special chars in user-supplied text). */
+const esc = escapeMarkdownV2;
 
 // ============================================================================
 // Project discovery
@@ -205,7 +204,7 @@ async function lsHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandRes
 
     try {
         const entries = fs.readdirSync(targetDir, { withFileTypes: true });
-        const lines: string[] = [`📂 *${escTg(displayPath(targetDir))}*\n`];
+        const lines: string[] = [`📂 *${esc(displayPath(targetDir))}*\n`];
 
         // Sort: directories first, then files
         const dirs = entries.filter(e => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name));
@@ -214,11 +213,11 @@ async function lsHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandRes
         for (const d of dirs) {
             // Skip hidden dirs and common noise
             if (d.name.startsWith('.') && d.name !== '.tom') { continue; }
-            lines.push(`📁 ${escTg(d.name)}/`);
+            lines.push(`📁 ${esc(d.name)}/`);
         }
         for (const f of files) {
             if (f.name.startsWith('.') && f.name !== '.gitignore') { continue; }
-            lines.push(`   ${escTg(f.name)}`);
+            lines.push(`   ${esc(f.name)}`);
         }
 
         lines.push(`\n_${dirs.length} dirs, ${files.length} files_`);
@@ -233,29 +232,29 @@ async function cdHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandRes
     if (cmd.args.length === 0) {
         // cd with no args → go to workspace root
         telegramCwd = getWorkspaceRoot() ?? process.cwd();
-        return { text: `📂 ${escTg(displayPath(telegramCwd))}` };
+        return { text: `📂 ${esc(displayPath(telegramCwd))}` };
     }
 
     const target = resolvePath(cmd.args.join(' '));
 
     if (!fs.existsSync(target)) {
-        return { text: `❌ Directory not found: ${escTg(cmd.args.join(' '))}` };
+        return { text: `❌ Directory not found: ${esc(cmd.args.join(' '))}` };
     }
     if (!fs.statSync(target).isDirectory()) {
-        return { text: `❌ Not a directory: ${escTg(cmd.args.join(' '))}` };
+        return { text: `❌ Not a directory: ${esc(cmd.args.join(' '))}` };
     }
 
     telegramCwd = target;
-    return { text: `📂 ${escTg(displayPath(telegramCwd))}` };
+    return { text: `📂 ${esc(displayPath(telegramCwd))}` };
 }
 
 // --- /cwd ---
 async function cwdHandler(_cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
     const cwd = getCwd();
     const project = detectProject(cwd);
-    let text = `📂 *Current directory:*\n${escTg(displayPath(cwd))}`;
+    let text = `📂 *Current directory:*\n${esc(displayPath(cwd))}`;
     if (project) {
-        text += `\n📦 *Project:* ${escTg(project.name)}`;
+        text += `\n📦 *Project:* ${esc(project.name)}`;
     }
     return { text };
 }
@@ -273,7 +272,7 @@ async function projectHandler(cmd: ParsedTelegramCommand): Promise<TelegramComma
         const lines = ['📦 *Projects*\n'];
         for (const p of projects.sort((a, b) => a.name.localeCompare(b.name))) {
             const relPath = wsRoot ? path.relative(wsRoot, p.absPath) : p.absPath;
-            lines.push(`• \`${escTg(p.name)}\` — ${escTg(relPath)}`);
+            lines.push(`• \`${esc(p.name)}\` — ${esc(relPath)}`);
         }
         return { text: lines.join('\n'), attachmentFilename: 'projects.txt' };
     }
@@ -286,7 +285,7 @@ async function projectHandler(cmd: ParsedTelegramCommand): Promise<TelegramComma
     }
 
     telegramCwd = project.absPath;
-    return { text: `📦 Switched to *${escTg(project.name)}*\n📂 ${escTg(displayPath(project.absPath))}` };
+    return { text: `📦 Switched to *${esc(project.name)}*\n📂 ${esc(displayPath(project.absPath))}` };
 }
 
 // --- /dart analyze ---
@@ -364,7 +363,7 @@ async function problemsHandler(_cmd: ParsedTelegramCommand): Promise<TelegramCom
         if (fi.errors > 0) { parts.push(`${fi.errors}E`); }
         if (fi.warnings > 0) { parts.push(`${fi.warnings}W`); }
         if (fi.infos > 0) { parts.push(`${fi.infos}I`); }
-        lines.push(`• ${escTg(fi.file)} (${parts.join(', ')})`);
+        lines.push(`• ${esc(fi.file)} (${parts.join(', ')})`);
     }
     if (fileIssues.length > 20) {
         lines.push(`\n_... and ${fileIssues.length - 20} more files_`);
@@ -400,7 +399,7 @@ async function todosHandler(_cmd: ParsedTelegramCommand): Promise<TelegramComman
 
     const lines = [`📝 *TODOs/FIXMEs* (${todoItems.length})\n`];
     for (const item of todoItems.slice(0, 30)) {
-        lines.push(`• ${escTg(item.file)}:${item.line} — ${escTg(item.message)}`);
+        lines.push(`• ${esc(item.file)}:${item.line} — ${esc(item.message)}`);
     }
     if (todoItems.length > 30) {
         lines.push(`\n_... and ${todoItems.length - 30} more_`);
@@ -571,8 +570,8 @@ async function statusHandler(_cmd: ParsedTelegramCommand): Promise<TelegramComma
     const lines = [
         `📊 *Status*\n`,
         `*Workspace:* ${wsRoot ? path.basename(wsRoot) : 'none'}`,
-        `*CWD:* ${escTg(displayPath(cwd))}`,
-        project ? `*Project:* ${escTg(project.name)}` : '*Project:* (none)',
+        `*CWD:* ${esc(displayPath(cwd))}`,
+        project ? `*Project:* ${esc(project.name)}` : '*Project:* (none)',
         `*Time:* ${new Date().toLocaleString()}`,
     ];
 
