@@ -30,8 +30,10 @@ interface ChordMenuItem {
     key: string;
     /** Human-readable label for the command */
     label: string;
-    /** The VS Code command ID to execute */
+    /** The VS Code command ID to execute (single command) */
     commandId: string;
+    /** Multiple VS Code command IDs to execute sequentially (overrides commandId if set) */
+    commandIds?: string[];
     /** Optional: only show this item when a condition is met */
     when?: () => boolean;
 }
@@ -177,12 +179,23 @@ function loadFavorites(): ChordMenuItem[] {
         const favs = config?.favorites;
         if (!Array.isArray(favs)) { return []; }
         return favs
-            .filter((f: any) => f.key && f.label && f.commandId)
-            .map((f: any) => ({
-                key: String(f.key).toLowerCase(),
-                label: String(f.label),
-                commandId: String(f.commandId),
-            }));
+            .filter((f: any) => f.key && f.label && (f.commandId || f.commandIds))
+            .map((f: any) => {
+                const item: ChordMenuItem = {
+                    key: String(f.key).toLowerCase(),
+                    label: String(f.label),
+                    commandId: f.commandId ? String(f.commandId) : '',
+                };
+                if (Array.isArray(f.commandIds) && f.commandIds.length > 0) {
+                    const mappedIds = f.commandIds.map((id: any) => String(id));
+                    item.commandIds = mappedIds;
+                    // Use first commandId as fallback if commandId not set
+                    if (!item.commandId && mappedIds.length > 0) {
+                        item.commandId = mappedIds[0];
+                    }
+                }
+                return item;
+            });
     } catch (e) {
         console.error(`[ChordMenu] Failed to load favorites from ${configPath}:`, e);
         return [];
@@ -246,12 +259,19 @@ async function showChordMenu(groupId: string): Promise<void> {
 
     let executed = false;
 
-    const executeItem = (item: ChordMenuItem) => {
+    const executeItem = async (item: ChordMenuItem) => {
         if (executed) { return; }
         executed = true;
-        console.log(`[ChordMenu] executeItem: '${item.key}' → '${item.label}' (${item.commandId})`);
+        console.log(`[ChordMenu] executeItem: '${item.key}' → '${item.label}' (${item.commandIds ? item.commandIds.join(', ') : item.commandId})`);
         quickPick.hide();
-        vscode.commands.executeCommand(item.commandId);
+
+        // Execute multiple commands sequentially if commandIds is set
+        const commands = item.commandIds && item.commandIds.length > 0
+            ? item.commandIds
+            : [item.commandId];
+        for (const cmdId of commands) {
+            await vscode.commands.executeCommand(cmdId);
+        }
     };
 
     // Auto-execute on single character match (plain key, no modifiers).
