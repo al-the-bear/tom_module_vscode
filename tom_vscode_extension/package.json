@@ -373,7 +373,7 @@
       },
       {
         "command": "dartscript.combined.maximizeToggle",
-        "key": "ctrl+shift+6"
+        "key": "ctrl+shift+[IntlBackslash]"
       },
       {
         "command": "dartscript.combined.maximizeExplorer",
