@@ -632,6 +632,18 @@ async function executeWithPostActions(
     });
 }
 
+/** Auto-assign keys: 1-9, then a-z */
+const AUTO_KEYS = [
+    '1','2','3','4','5','6','7','8','9',
+    'a','b','c','d','e','f','g','h','i','j','k','l','m',
+    'n','o','p','q','r','s','t','u','v','w','x','y','z',
+];
+
+interface CommandlineQuickPickItem extends vscode.QuickPickItem {
+    _index: number;
+    _key: string;
+}
+
 async function executeCommandline(): Promise<void> {
   try {
     const commandlines = getCommandlines();
@@ -640,20 +652,62 @@ async function executeCommandline(): Promise<void> {
         return;
     }
 
-    const items = commandlines.map((entry, index) => ({
-        label: entry.description || entry.command,
-        description: entry.description ? entry.command : undefined,
-        detail: `cwd: ${cwdModeLabel(entry.cwdMode)}${entry.postActions?.length ? ` -> ${entry.postActions.length} post-action(s)` : ''}`,
-        _index: index,
-    }));
-
-    const picked = await vscode.window.showQuickPick(items, {
-        title: 'Execute Commandline',
-        placeHolder: 'Select a commandline to execute',
+    const items: CommandlineQuickPickItem[] = commandlines.map((entry, index) => {
+        const key = index < AUTO_KEYS.length ? AUTO_KEYS[index] : '';
+        const prefix = key ? `[${key}] ` : '';
+        return {
+            label: `${prefix}${entry.description || entry.command}`,
+            description: entry.description ? entry.command : undefined,
+            detail: `cwd: ${cwdModeLabel(entry.cwdMode)}${entry.postActions?.length ? ` -> ${entry.postActions.length} post-action(s)` : ''}`,
+            _index: index,
+            _key: key,
+        };
     });
-    if (!picked) { return; }
 
-    const entry = commandlines[picked._index];
+    // Use createQuickPick for key-based auto-selection
+    const selected = await new Promise<CommandlineQuickPickItem | undefined>((resolve) => {
+        const qp = vscode.window.createQuickPick<CommandlineQuickPickItem>();
+        qp.title = 'Execute Commandline';
+        qp.placeholder = 'Type a key to execute, or select with arrow keys';
+        qp.matchOnDescription = true;
+        qp.matchOnDetail = false;
+        qp.items = items;
+
+        let resolved = false;
+
+        qp.onDidChangeValue((value) => {
+            if (resolved) { return; }
+            if (value.length !== 1) { return; }
+            const k = value.toLowerCase();
+            const match = items.filter(i => i._key === k);
+            if (match.length === 1) {
+                resolved = true;
+                qp.hide();
+                resolve(match[0]);
+            }
+        });
+
+        qp.onDidAccept(() => {
+            if (resolved) { return; }
+            const sel = qp.selectedItems[0];
+            if (sel) {
+                resolved = true;
+                qp.hide();
+                resolve(sel);
+            }
+        });
+
+        qp.onDidHide(() => {
+            qp.dispose();
+            if (!resolved) { resolve(undefined); }
+        });
+
+        qp.show();
+    });
+
+    if (!selected) { return; }
+
+    const entry = commandlines[selected._index];
 
     // Resolve effective working directory at runtime
     const effectiveCwd = await resolveExecutionCwd(entry);
