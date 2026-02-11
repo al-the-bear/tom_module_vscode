@@ -13,6 +13,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { bridgeLog } from './handler_shared';
 import { TelegramNotifier, TelegramConfig, TelegramCommand, parseTelegramConfig } from './telegram-notifier';
+import { TelegramCommandRegistry, ParsedTelegramCommand } from './telegram-cmd-parser';
+import { TelegramResponseFormatter } from './telegram-cmd-response';
+import { createCommandRegistry } from './telegram-cmd-handlers';
 
 // ============================================================================
 // State
@@ -21,6 +24,10 @@ import { TelegramNotifier, TelegramConfig, TelegramCommand, parseTelegramConfig 
 /** Singleton notifier for standalone polling mode. */
 let standaloneTelegram: TelegramNotifier | null = null;
 let isPollingActive = false;
+
+/** Command infrastructure for rich command handling. */
+let commandRegistry: TelegramCommandRegistry | null = null;
+let responseFormatter: TelegramResponseFormatter | null = null;
 
 // ============================================================================
 // Config loading
@@ -151,6 +158,19 @@ export async function telegramToggleHandler(): Promise<void> {
     const pollingConfig: TelegramConfig = { ...config, enabled: true };
     standaloneTelegram = new TelegramNotifier(pollingConfig);
 
+    // Initialize command infrastructure
+    responseFormatter = new TelegramResponseFormatter(pollingConfig);
+    commandRegistry = createCommandRegistry(() => {
+        // Stop callback — triggered by /stop command
+        standaloneTelegram?.sendMessage('⏹ Polling stopped via Telegram command.');
+        standaloneTelegram?.dispose();
+        standaloneTelegram = null;
+        isPollingActive = false;
+        commandRegistry = null;
+        responseFormatter = null;
+        vscode.window.showInformationMessage('⏹ Telegram polling stopped (via /stop command).');
+    });
+
     standaloneTelegram.onCommand((cmd: TelegramCommand) => {
         handleStandaloneCommand(cmd);
     });
@@ -163,38 +183,49 @@ export async function telegramToggleHandler(): Promise<void> {
 
 /**
  * Handle commands received via standalone Telegram polling.
- * Shows them as VS Code notifications.
+ * Dispatches to the command registry for rich command handling.
  */
 function handleStandaloneCommand(cmd: TelegramCommand): void {
-    bridgeLog(`[Telegram] Standalone command: ${cmd.type} from @${cmd.username}`);
+    bridgeLog(`[Telegram] Standalone command: ${cmd.type} raw="${cmd.text}" from @${cmd.username}`);
 
+    // If we have a command registry, try to parse and dispatch
+    if (commandRegistry && responseFormatter) {
+        // Reconstruct the raw text: for 'unknown' type, the raw text is in cmd.text
+        // For known types, build a synthetic /command text
+        let rawText = cmd.text;
+        if (cmd.type !== 'unknown' && cmd.type !== 'info') {
+            rawText = `/${cmd.type}`;
+        }
+
+        // Only dispatch slash commands to the registry
+        if (rawText.startsWith('/')) {
+            const parsed = commandRegistry.parse(rawText, cmd.userId, cmd.chatId, cmd.username);
+
+            if (parsed) {
+                const def = commandRegistry.get(parsed.command);
+                if (def) {
+                    // Execute the command handler
+                    def.handler(parsed).then((result) => {
+                        responseFormatter?.sendResult(result, parsed);
+                    }).catch((err: Error) => {
+                        responseFormatter?.sendMessage(`❌ Command error: ${err.message}`, cmd.chatId);
+                        bridgeLog(`[Telegram] Command error: ${err.message}`, 'ERROR');
+                    });
+                    return;
+                }
+            }
+        }
+    }
+
+    // Fallback for non-slash messages or unrecognized commands
     switch (cmd.type) {
-        case 'status':
-            standaloneTelegram?.sendMessage(
-                `📊 *VS Code Status*\n\n` +
-                `*Polling:* Active\n` +
-                `*Workspace:* ${vscode.workspace.workspaceFolders?.[0]?.name ?? 'none'}\n` +
-                `*Time:* ${new Date().toLocaleString()}`
-            );
-            break;
-
         case 'info':
             vscode.window.showInformationMessage(`📩 Telegram from @${cmd.username}: ${cmd.text}`);
             standaloneTelegram?.sendMessage(`✅ Message displayed in VS Code.`);
             break;
 
-        case 'stop':
-            // Stop polling via Telegram
-            standaloneTelegram?.sendMessage('⏹ Polling stopped via Telegram command.');
-            standaloneTelegram?.dispose();
-            standaloneTelegram = null;
-            isPollingActive = false;
-            vscode.window.showInformationMessage('⏹ Telegram polling stopped (via /stop command).');
-            break;
-
         default:
-            vscode.window.showInformationMessage(`📩 Telegram /${cmd.type} from @${cmd.username}`);
-            standaloneTelegram?.sendMessage(`ℹ️ Command /${cmd.type} received. No action in standalone mode.`);
+            standaloneTelegram?.sendMessage(`❓ Unknown command. Send /help for a list of commands.`);
             break;
     }
 }
@@ -322,4 +353,6 @@ export function disposeTelegramStandalone(): void {
         standaloneTelegram = null;
         isPollingActive = false;
     }
+    commandRegistry = null;
+    responseFormatter = null;
 }
