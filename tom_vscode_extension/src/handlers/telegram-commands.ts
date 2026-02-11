@@ -85,7 +85,9 @@ export async function telegramTestHandler(): Promise<void> {
     }
 
     // Log configuration details for debugging
+    const botId = config.botToken.includes(':') ? config.botToken.split(':')[0] : '(unknown format)';
     bridgeLog(`[Telegram] Using token from env var: ${config.botTokenEnv}`);
+    bridgeLog(`[Telegram] Bot ID: ${botId}`);
     bridgeLog(`[Telegram] Target chat ID: ${config.defaultChatId}`);
     bridgeLog(`[Telegram] Token length: ${config.botToken.length} chars`);
 
