@@ -8,16 +8,17 @@ The DartScript extension provides keyboard-driven AI workflows, a bidirectional 
 |---|------|-------------|
 | 1 | [Chord Menu Shortcuts](#1-chord-menu-shortcuts) | Which-key style keyboard shortcut system with 6 chord menus |
 | 2 | [Favorites & Multi-Command Shortcuts](#2-favorites--multi-command-shortcuts) | User-configurable shortcut picker with multi-command support |
-| 3 | [Send to Copilot Chat](#3-send-to-copilot-chat) | Template-based prompt sending to GitHub Copilot Chat |
-| 4 | [Tom AI Chat](#4-tom-ai-chat) | Agentic `.chat.md` workflow with 60+ workspace tools |
-| 5 | [Bot Conversation](#5-bot-conversation) | Automated multi-turn Ollama↔Copilot conversation loop |
-| 6 | [Local LLM / Prompt Expander](#6-local-llm--prompt-expander) | Ollama integration with profiles, tool calling, and inline expansion |
-| 7 | [Script Execution & Bridge](#7-script-execution--bridge) | Run Dart scripts via bridge; JSON-RPC Dart↔VS Code communication |
-| 8 | [VS Code API Access from Dart](#8-vs-code-api-access-from-dart) | Typed Dart wrappers for VS Code Window, Workspace, Commands, LM APIs |
-| 9 | [Telegram Integration](#9-telegram-integration) | Remote workspace control via Telegram bot with 14 commands |
-| 10 | [CLI Integration](#10-cli-integration) | TCP server for Tom CLI→VS Code external access |
-| 11 | [Commandline Manager](#11-commandline-manager) | Save, execute, and manage shell commands with smart cwd resolution |
-| 12 | [Developer Utilities](#12-developer-utilities) | Debug logging, API info, process monitor, configuration dump |
+| 3 | [Combined Commands](#3-combined-commands) | Direct keybindings for configurable command sequences |
+| 4 | [Send to Copilot Chat](#4-send-to-copilot-chat) | Template-based prompt sending to GitHub Copilot Chat |
+| 5 | [Tom AI Chat](#5-tom-ai-chat) | Agentic `.chat.md` workflow with 60+ workspace tools |
+| 6 | [Bot Conversation](#6-bot-conversation) | Automated multi-turn Ollama↔Copilot conversation loop |
+| 7 | [Local LLM / Prompt Expander](#7-local-llm--prompt-expander) | Ollama integration with profiles, tool calling, and inline expansion |
+| 8 | [Script Execution & Bridge](#8-script-execution--bridge) | Run Dart scripts via bridge; JSON-RPC Dart↔VS Code communication |
+| 9 | [VS Code API Access from Dart](#9-vs-code-api-access-from-dart) | Typed Dart wrappers for VS Code Window, Workspace, Commands, LM APIs |
+| 10 | [Telegram Integration](#10-telegram-integration) | Remote workspace control via Telegram bot with 14 commands |
+| 11 | [CLI Integration](#11-cli-integration) | TCP server for Tom CLI→VS Code external access |
+| 12 | [Commandline Manager](#12-commandline-manager) | Save, execute, and manage shell commands and VS Code expressions |
+| 13 | [Developer Utilities](#13-developer-utilities) | Debug logging, API info, process monitor, configuration dump |
 
 ---
 
@@ -42,11 +43,24 @@ User-configurable shortcut picker loaded from `send_to_chat.json → favorites`.
 |------------|-------------|
 | Single command | Map a key to any VS Code command ID |
 | Multi-command | Map a key to execute multiple commands sequentially (`commandIds` array) |
-| JSON-configured | Add, remove, or reorder entries by editing `send_to_chat.json` |
+| JSON-configured | Add, remove, or reorder entries by editing the config file |
 
 Example: key `x` executes both `workbench.action.toggleSidebarVisibility` and `workbench.action.toggleAuxiliaryBar` in sequence to toggle both sidebars.
 
-## 3. Send to Copilot Chat
+## 3. Combined Commands
+
+Direct keybindings that execute configurable sequences of VS Code commands for quick layout management.
+
+| Keybinding | Command ID | Default Action |
+|------------|------------|----------------|
+| `Ctrl+Shift+^` | `dartscript.maximizeToggle` | Toggle sidebar and auxiliary bar |
+| `Ctrl+Shift+2` | `dartscript.maximizeExplorer` | Show explorer, hide aux bar and panel |
+| `Ctrl+Shift+3` | `dartscript.maximizeEditor` | Hide both sidebars and panel |
+| `Ctrl+Shift+4` | `dartscript.maximizeChat` | Hide explorer and panel, show aux bar |
+
+Each command corresponds to a `combinedCommands` entry in the config file (e.g., `maximizeToggle`, `maximizeExplorer`). Entries contain an array of VS Code command IDs to execute in sequence. Users can customize actions by editing the config.
+
+## 4. Send to Copilot Chat
 
 Send selected text or full files to GitHub Copilot Chat using configurable templates with placeholder substitution.
 
@@ -59,7 +73,7 @@ Send selected text or full files to GitHub Copilot Chat using configurable templ
 | Built-in templates | Context menu | Trail Reminder, TODO Execution, Code Review, Explain, Add to Todo, Fix Markdown |
 | Answer values | Command palette | Show/clear captured `${dartscript.chat.*}` placeholder values |
 
-## 4. Tom AI Chat
+## 5. Tom AI Chat
 
 Agentic `.chat.md` workflow with multi-iteration tool-calling loops and 60+ workspace tools.
 
@@ -74,7 +88,7 @@ Agentic `.chat.md` workflow with multi-iteration tool-calling loops and 60+ work
 
 **Registered LM Tools (14):** `tom_createFile`, `tom_readFile`, `tom_editFile`, `tom_multiEditFile`, `tom_listDirectory`, `tom_findFiles`, `tom_findTextInFiles`, `tom_runCommand`, `tom_runVscodeCommand`, `tom_getErrors`, `tom_fetchWebpage`, `tom_readGuideline`, `tom_webSearch`, `tom_manageTodo`
 
-## 5. Bot Conversation
+## 6. Bot Conversation
 
 Automated multi-turn conversation loop between a local Ollama model and GitHub Copilot Chat.
 
@@ -89,7 +103,7 @@ Automated multi-turn conversation loop between a local Ollama model and GitHub C
 | Logging | Automatic | Full markdown log with timestamps |
 | Telegram alerts | Automatic | Notifications on start, turn, and completion |
 
-## 6. Local LLM / Prompt Expander
+## 7. Local LLM / Prompt Expander
 
 Send text to a local Ollama instance for expansion, rewriting, or annotation with optional tool-calling loops.
 
@@ -103,7 +117,7 @@ Send text to a local Ollama instance for expansion, rewriting, or annotation wit
 | Tool calling | Automatic | Read-only tools (file read, grep, web search, guidelines) up to 20 rounds |
 | Think tag stripping | Config | Auto-strip `<think>` tags from reasoning models |
 
-## 7. Script Execution & Bridge
+## 8. Script Execution & Bridge
 
 Run Dart scripts through the bridge and manage the JSON-RPC bridge process.
 
@@ -115,7 +129,7 @@ Run Dart scripts through the bridge and manage the JSON-RPC bridge process.
 | Switch Profile | Switch between bridge profiles |
 | Run Tests | Run all D4rt bridge test scripts from `test/` directory |
 
-## 8. VS Code API Access from Dart
+## 9. VS Code API Access from Dart
 
 The Dart bridge exposes typed wrappers so Dart scripts can call VS Code APIs programmatically.
 
@@ -129,7 +143,7 @@ The Dart bridge exposes typed wrappers so Dart scripts can call VS Code APIs pro
 | Extensions | getAllExtensions, getExtension |
 | D4rt Helpers | 80+ utility functions for common operations (log, showInfo, openFile, etc.) |
 
-## 9. Telegram Integration
+## 10. Telegram Integration
 
 Remote workspace control via Telegram bot with standalone polling and 14 CLI-like commands.
 
@@ -158,7 +172,7 @@ Remote workspace control via Telegram bot with standalone polling and 14 CLI-lik
 | `/status` | Workspace and polling status overview |
 | `/stop` | Stop Telegram polling |
 
-## 10. CLI Integration
+## 11. CLI Integration
 
 TCP socket server for Tom CLI→VS Code external communication.
 
@@ -168,21 +182,26 @@ TCP socket server for Tom CLI→VS Code external communication.
 | Custom Port | Start with user-specified port |
 | Stop Server | Shut down the CLI integration server |
 
-## 11. Commandline Manager
+## 12. Commandline Manager
 
-Save, organize, and execute shell commands with smart working directory resolution.
+Save, organize, and execute shell commands or VS Code expressions with smart working directory resolution.
 
 | Feature | Shortcut | Description |
 |---------|----------|-------------|
 | Execute | `Ctrl+Shift+E → E` | Pick from saved commands, run in terminal |
 | Add | `Ctrl+Shift+E → A` | Multi-step wizard with cwd mode selection |
 | Delete | `Ctrl+Shift+E → D` | Remove a saved command |
-| Open Config | `Ctrl+Shift+E → O` | Open `send_to_chat.json` in editor |
+| Open Config | `Ctrl+Shift+E → O` | Open config file in editor |
 
-**CWD modes:** workspace, extension, project, repository, document folder, custom path.
-**Placeholders:** `${currentfile.name}`, `${currentfile.ext}`, `${currentfile.path}`
+**CWD modes:** none (no working directory), workspace, extension, project, repository, document folder, custom path.
 
-## 12. Developer Utilities
+**Placeholders:** `${currentfile.name}`, `${currentfile.ext}`, `${currentfile.path}`, `${selection}`
+
+**VS Code Expressions:** Commands starting with `vscode.` are evaluated as JavaScript expressions with access to `vscode`, `os`, `path`, and `fs` modules. Example: `vscode.env.openExternal(vscode.Uri.file(os.homedir() + '/.tom'))` opens the ~/.tom folder in Finder.
+
+**Quick selection:** The picker shows auto-assigned keys (1-9, a-z) for fast keyboard selection without arrow navigation.
+
+## 13. Developer Utilities
 
 | Feature | Description |
 |---------|-------------|
@@ -195,4 +214,4 @@ Save, organize, and execute shell commands with smart working directory resoluti
 
 ---
 
-*53 registered commands across 18 handler files. Configuration via VS Code settings (`dartscript.*`) and `send_to_chat.json`.*
+*57 registered commands across 18 handler files. Configuration via VS Code settings (`dartscript.*`) and config file (`dartscript.configPath`, default: `~/.tom/vscode/tom_vscode_extension.json`).*
