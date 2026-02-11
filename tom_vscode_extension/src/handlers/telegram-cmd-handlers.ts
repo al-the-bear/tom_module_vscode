@@ -13,8 +13,8 @@
  *   dart analyze         — Run dart analyze on current project
  *   problems             — Show VS Code Problems pane summary
  *   todos                — Show TODO/FIXME comments from Problems pane
- *   tests [project...]   — Run testkit :test
- *   baseline [project]   — Create testkit :baseline
+ *   bk [args...]         — Run buildkit with arguments
+ *   tk [args...]         — Run testkit with arguments
  *   bridge <restart|stop|mode> — Control the Dart bridge
  *   cli-integration <start|stop> [port] — CLI integration server
  *   status               — Workspace/polling status overview
@@ -408,71 +408,37 @@ async function todosHandler(_cmd: ParsedTelegramCommand): Promise<TelegramComman
     return { text: lines.join('\n'), attachmentFilename: 'todos.txt' };
 }
 
-// --- /tests ---
-async function testsHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
-    let targetDir = getCwd();
+// --- bk (buildkit) ---
+async function bkHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
+    const cwd = getCwd();
+    const args = cmd.args.join(' ');
+    const fullCmd = args ? `buildkit ${args}` : 'buildkit';
 
-    if (cmd.args.length > 0) {
-        // Treat first arg as project name
-        const project = findProject(cmd.args[0]);
-        if (project) {
-            targetDir = project.absPath;
-        } else {
-            return { text: `❌ Project not found: ${cmd.args[0]}` };
-        }
-    }
-
-    // Verify it's a Dart project
-    const project = detectProject(targetDir);
-    if (!project) {
-        return { text: `❌ No Dart project found. Use /project <name> first or /tests <project>.` };
-    }
-
-    // Check if testkit is available
-    const testkitCheck = await execShell('which testkit', project.absPath, 5000);
-    const useTestkit = testkitCheck.exitCode === 0;
-
-    const testCmd = useTestkit ? 'testkit :test' : 'dart test';
-    const { stdout, stderr, exitCode } = await execShell(testCmd, project.absPath, 120000);
+    bridgeLog(`[Telegram] Running: ${fullCmd} in ${cwd}`);
+    const { stdout, stderr, exitCode } = await execShell(fullCmd, cwd, 120000);
     const output = (stdout + '\n' + stderr).trim();
     const icon = exitCode === 0 ? '✅' : '❌';
 
     return {
-        text: `${icon} *${testCmd}* — ${project.name}\n\`\`\`\n${output}\n\`\`\``,
-        attachmentFilename: `tests_${project.name}.txt`,
+        text: `${icon} *buildkit ${esc(args)}*\n\`\`\`\n${output}\n\`\`\``,
+        attachmentFilename: `buildkit_output.txt`,
     };
 }
 
-// --- /baseline ---
-async function baselineHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
-    let targetDir = getCwd();
+// --- tk (testkit) ---
+async function tkHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
+    const cwd = getCwd();
+    const args = cmd.args.join(' ');
+    const fullCmd = args ? `testkit ${args}` : 'testkit';
 
-    if (cmd.args.length > 0) {
-        const project = findProject(cmd.args[0]);
-        if (project) {
-            targetDir = project.absPath;
-        } else {
-            return { text: `❌ Project not found: ${cmd.args[0]}` };
-        }
-    }
-
-    const project = detectProject(targetDir);
-    if (!project) {
-        return { text: `❌ No Dart project found. Use /project <name> first or /baseline <project>.` };
-    }
-
-    const testkitCheck = await execShell('which testkit', project.absPath, 5000);
-    if (testkitCheck.exitCode !== 0) {
-        return { text: `❌ testkit not found. Install it to use /baseline.` };
-    }
-
-    const { stdout, stderr, exitCode } = await execShell('testkit :baseline', project.absPath, 120000);
+    bridgeLog(`[Telegram] Running: ${fullCmd} in ${cwd}`);
+    const { stdout, stderr, exitCode } = await execShell(fullCmd, cwd, 120000);
     const output = (stdout + '\n' + stderr).trim();
     const icon = exitCode === 0 ? '✅' : '❌';
 
     return {
-        text: `${icon} *testkit :baseline* — ${project.name}\n\`\`\`\n${output}\n\`\`\``,
-        attachmentFilename: `baseline_${project.name}.txt`,
+        text: `${icon} *testkit ${esc(args)}*\n\`\`\`\n${output}\n\`\`\``,
+        attachmentFilename: `testkit_output.txt`,
     };
 }
 
@@ -659,20 +625,32 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
         handler: todosHandler,
     });
 
-    // /tests
+    // bk (buildkit)
     registry.register({
-        name: 'tests',
-        description: 'Run tests via testkit or dart test',
-        usage: 'tests [project]',
-        handler: testsHandler,
+        name: 'bk',
+        description: 'Run buildkit with arguments',
+        usage: 'bk [args...]',
+        handler: bkHandler,
+    });
+    registry.register({
+        name: 'buildkit',
+        description: 'Run buildkit with arguments (alias: bk)',
+        usage: 'buildkit [args...]',
+        handler: bkHandler,
     });
 
-    // /baseline
+    // tk (testkit)
     registry.register({
-        name: 'baseline',
-        description: 'Create test baseline with testkit',
-        usage: 'baseline [project]',
-        handler: baselineHandler,
+        name: 'tk',
+        description: 'Run testkit with arguments',
+        usage: 'tk [args...]',
+        handler: tkHandler,
+    });
+    registry.register({
+        name: 'testkit',
+        description: 'Run testkit with arguments (alias: tk)',
+        usage: 'testkit [args...]',
+        handler: tkHandler,
     });
 
     // /bridge
@@ -713,7 +691,7 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
         description: 'Stop Telegram polling',
         handler: async (_cmd) => {
             stopCallback();
-            return { text: '⏹ Polling stopped via /stop command.', silent: true };
+            return { text: '⏹ Polling stopped via stop command.', silent: true };
         },
     });
 

@@ -333,8 +333,8 @@ Send continue to resume or info <text> to add context\.`);
         // If it doesn't match any known command, treat as info text
         const firstWord = lower.split(/\s/)[0];
         const knownCommands = ['stop', 'halt', 'pause', 'continue', 'resume', 'status', 'info', 'add',
-            'help', 'ls', 'cd', 'cwd', 'project', 'dart', 'problems', 'todos', 'tests',
-            'baseline', 'bridge', 'cli-integration', 'test'];
+            'help', 'ls', 'cd', 'cwd', 'project', 'dart', 'problems', 'todos',
+            'bk', 'buildkit', 'tk', 'testkit', 'bridge', 'cli-integration'];
         if (!knownCommands.includes(firstWord)) {
             // Not a recognized command — treat as info message
             return { type: 'info', text, userId, chatId, username };
