@@ -5,20 +5,20 @@
  * Each handler receives a ParsedTelegramCommand and returns a TelegramCommandResult.
  *
  * Commands:
- *   /help [command]       — Show available commands or details for one
- *   /ls [path]            — List files in current/given directory
- *   /cd <path>            — Change working directory
- *   /cwd                  — Show current working directory
- *   /project [name]       — Change into a project root folder
- *   /dart analyze         — Run dart analyze on current project
- *   /problems             — Show VS Code Problems pane summary
- *   /todos                — Show TODO/FIXME comments from Problems pane
- *   /tests [project...]   — Run testkit :test
- *   /baseline [project]   — Create testkit :baseline
- *   /bridge <restart|stop|mode> — Control the Dart bridge
- *   /cli-integration <start|stop> [port] — CLI integration server
- *   /status               — Workspace/polling status overview
- *   /stop                 — Stop Telegram polling
+ *   help [command]       — Show available commands or details for one
+ *   ls [path]            — List files in current/given directory
+ *   cd <path>            — Change working directory
+ *   cwd                  — Show current working directory
+ *   project [name]       — Change into a project root folder
+ *   dart analyze         — Run dart analyze on current project
+ *   problems             — Show VS Code Problems pane summary
+ *   todos                — Show TODO/FIXME comments from Problems pane
+ *   tests [project...]   — Run testkit :test
+ *   baseline [project]   — Create testkit :baseline
+ *   bridge <restart|stop|mode> — Control the Dart bridge
+ *   cli-integration <start|stop> [port] — CLI integration server
+ *   status               — Workspace/polling status overview
+ *   stop                 — Stop Telegram polling
  */
 
 import * as vscode from 'vscode';
@@ -291,7 +291,7 @@ async function projectHandler(cmd: ParsedTelegramCommand): Promise<TelegramComma
 // --- /dart analyze ---
 async function dartHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
     if (!cmd.subcommand || cmd.subcommand !== 'analyze') {
-        return { text: '❌ Usage: /dart analyze [project]\nRuns `dart analyze` on the current or specified project.' };
+        return { text: '❌ Usage: dart analyze [project]\nRuns `dart analyze` on the current or specified project.' };
     }
 
     let targetDir = getCwd();
@@ -479,7 +479,7 @@ async function baselineHandler(cmd: ParsedTelegramCommand): Promise<TelegramComm
 // --- /bridge ---
 async function bridgeHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
     if (!cmd.subcommand) {
-        return { text: '❌ Usage: /bridge <restart|stop|mode>\n\n• /bridge restart — Restart the Dart bridge\n• /bridge stop — Stop the Dart bridge\n• /bridge mode <dev|prod> — Switch bridge mode' };
+        return { text: '❌ Usage: bridge <restart|stop|mode>\n\n• bridge restart — Restart the Dart bridge\n• bridge stop — Stop the Dart bridge\n• bridge mode <dev|prod> — Switch bridge mode' };
     }
 
     switch (cmd.subcommand) {
@@ -503,7 +503,7 @@ async function bridgeHandler(cmd: ParsedTelegramCommand): Promise<TelegramComman
         case 'mode': {
             const mode = cmd.args[0]?.toLowerCase();
             if (!mode || !['development', 'production', 'dev', 'prod'].includes(mode)) {
-                return { text: '❌ Usage: /bridge mode <development|production>' };
+                return { text: '❌ Usage: bridge mode <development|production>' };
             }
             // Map short names to profile keys
             const profileKey = (mode === 'dev' || mode === 'development') ? 'development' : 'production';
@@ -537,7 +537,7 @@ async function bridgeHandler(cmd: ParsedTelegramCommand): Promise<TelegramComman
 // --- /cli-integration ---
 async function cliIntegrationHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandResult> {
     if (!cmd.subcommand) {
-        return { text: '❌ Usage: /cli-integration <start|stop> [port]\n\n• /cli-integration start [port] — Start CLI server\n• /cli-integration stop — Stop CLI server' };
+        return { text: '❌ Usage: cli-integration <start|stop> [port]\n\n• cli-integration start [port] — Start CLI server\n• cli-integration stop — Stop CLI server' };
     }
 
     switch (cmd.subcommand) {
@@ -599,7 +599,7 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
     registry.register({
         name: 'help',
         description: 'Show available commands or details for one',
-        usage: '/help [command]',
+        usage: 'help [command]',
         handler: (cmd) => helpHandler(cmd, registry),
     });
 
@@ -607,7 +607,7 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
     registry.register({
         name: 'ls',
         description: 'List files in current or given directory',
-        usage: '/ls [path]',
+        usage: 'ls [path]',
         handler: lsHandler,
     });
 
@@ -615,7 +615,7 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
     registry.register({
         name: 'cd',
         description: 'Change working directory',
-        usage: '/cd <path>',
+        usage: 'cd <path>',
         handler: cdHandler,
     });
 
@@ -630,7 +630,7 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
     registry.register({
         name: 'project',
         description: 'List projects or switch to a project root',
-        usage: '/project [name]',
+        usage: 'project [name]',
         handler: projectHandler,
     });
 
@@ -638,9 +638,9 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
     registry.register({
         name: 'dart',
         description: 'Run Dart tooling commands',
-        usage: '/dart analyze [project]',
+        usage: 'dart analyze [project]',
         subcommands: [
-            { name: 'analyze', description: 'Run dart analyze', usage: '/dart analyze [project]' },
+            { name: 'analyze', description: 'Run dart analyze', usage: 'dart analyze [project]' },
         ],
         handler: dartHandler,
     });
@@ -663,7 +663,7 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
     registry.register({
         name: 'tests',
         description: 'Run tests via testkit or dart test',
-        usage: '/tests [project]',
+        usage: 'tests [project]',
         handler: testsHandler,
     });
 
@@ -671,7 +671,7 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
     registry.register({
         name: 'baseline',
         description: 'Create test baseline with testkit',
-        usage: '/baseline [project]',
+        usage: 'baseline [project]',
         handler: baselineHandler,
     });
 
@@ -679,11 +679,11 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
     registry.register({
         name: 'bridge',
         description: 'Control the Dart bridge',
-        usage: '/bridge <restart|stop|mode>',
+        usage: 'bridge <restart|stop|mode>',
         subcommands: [
             { name: 'restart', description: 'Restart the Dart bridge' },
             { name: 'stop', description: 'Stop the Dart bridge' },
-            { name: 'mode', description: 'Switch bridge profile', usage: '/bridge mode <dev|prod>' },
+            { name: 'mode', description: 'Switch bridge profile', usage: 'bridge mode <dev|prod>' },
         ],
         handler: bridgeHandler,
     });
@@ -692,9 +692,9 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
     registry.register({
         name: 'cli-integration',
         description: 'Control CLI Integration Server',
-        usage: '/cli-integration <start|stop> [port]',
+        usage: 'cli-integration <start|stop> [port]',
         subcommands: [
-            { name: 'start', description: 'Start the CLI server', usage: '/cli-integration start [port]' },
+            { name: 'start', description: 'Start the CLI server', usage: 'cli-integration start [port]' },
             { name: 'stop', description: 'Stop the CLI server' },
         ],
         handler: cliIntegrationHandler,

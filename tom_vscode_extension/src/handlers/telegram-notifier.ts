@@ -4,7 +4,7 @@
  * Uses the Telegram Bot HTTP API directly (no npm dependency needed).
  * Supports:
  *  - Sending turn-by-turn notifications
- *  - Receiving commands: /stop, /halt, /continue, /info <text>
+ *  - Receiving commands: stop, halt, continue, info <text>
  *  - Explicit user ID whitelisting for security
  *
  * Configuration lives in botConversation.telegram section of send_to_chat.json.
@@ -61,7 +61,7 @@ interface TelegramUpdate {
 export interface TelegramCommand {
     /** Command type. */
     type: 'stop' | 'halt' | 'continue' | 'info' | 'status' | 'unknown';
-    /** Additional text (for /info). */
+    /** Additional text (for info command). */
     text: string;
     /** Telegram user ID who sent the command. */
     userId: number;
@@ -178,8 +178,8 @@ export class TelegramNotifier {
             `*ID:* \`${conversationId}\`\n` +
             `*Profile:* ${profile}\n` +
             `*Goal:* ${this.escapeMarkdown(goal)}\n\n` +
-            `Commands: /stop /halt /continue /status\n` +
-            `Send info: /info <your message>`;
+            `Commands: stop halt continue status\n` +
+            `Send info: info <your message>`;
         await this.sendMessage(msg);
     }
 
@@ -220,7 +220,8 @@ export class TelegramNotifier {
 
     /** Send a halt notification. */
     async notifyHalted(turn: number): Promise<void> {
-        await this.sendMessage(`⏸ *Conversation halted* after turn ${turn}.\nSend /continue to resume or /info <text> to add context.`);
+        await this.sendMessage(`⏸ *Conversation halted* after turn ${turn}\.
+Send continue to resume or info <text> to add context\.`);
     }
 
     /** Send a continue notification. */
@@ -303,31 +304,39 @@ export class TelegramNotifier {
         }
     }
 
-    /** Parse a text message into a TelegramCommand. */
+    /** Parse a text message into a TelegramCommand. Accepts with or without / prefix. */
     private parseCommand(text: string, userId: number, chatId: number, username: string): TelegramCommand | null {
-        const lower = text.toLowerCase();
+        // Strip optional leading / for command matching
+        const stripped = text.startsWith('/') ? text.substring(1) : text;
+        const lower = stripped.toLowerCase();
 
-        if (lower === '/stop' || lower === '/stop@' || lower.startsWith('/stop ')) {
+        if (lower === 'stop' || lower === 'stop@' || lower.startsWith('stop ')) {
             return { type: 'stop', text: '', userId, chatId, username };
         }
-        if (lower === '/halt' || lower === '/halt@' || lower === '/pause' || lower.startsWith('/halt ')) {
+        if (lower === 'halt' || lower === 'halt@' || lower === 'pause' || lower.startsWith('halt ')) {
             return { type: 'halt', text: '', userId, chatId, username };
         }
-        if (lower === '/continue' || lower === '/continue@' || lower === '/resume' || lower.startsWith('/continue ')) {
+        if (lower === 'continue' || lower === 'continue@' || lower === 'resume' || lower.startsWith('continue ')) {
             return { type: 'continue', text: '', userId, chatId, username };
         }
-        if (lower === '/status') {
+        if (lower === 'status') {
             return { type: 'status', text: '', userId, chatId, username };
         }
-        if (lower.startsWith('/info ') || lower.startsWith('/add ')) {
-            const infoText = text.substring(text.indexOf(' ') + 1).trim();
+        if (lower.startsWith('info ') || lower.startsWith('add ')) {
+            const infoText = stripped.substring(stripped.indexOf(' ') + 1).trim();
             if (infoText) {
                 return { type: 'info', text: infoText, userId, chatId, username };
             }
         }
 
-        // Plain text messages (not starting with /) treated as /info when conversation is active
-        if (!text.startsWith('/')) {
+        // Check if this looks like a command (first word matches a known pattern)
+        // If it doesn't match any known command, treat as info text
+        const firstWord = lower.split(/\s/)[0];
+        const knownCommands = ['stop', 'halt', 'pause', 'continue', 'resume', 'status', 'info', 'add',
+            'help', 'ls', 'cd', 'cwd', 'project', 'dart', 'problems', 'todos', 'tests',
+            'baseline', 'bridge', 'cli-integration', 'test'];
+        if (!knownCommands.includes(firstWord)) {
+            // Not a recognized command — treat as info message
             return { type: 'info', text, userId, chatId, username };
         }
 

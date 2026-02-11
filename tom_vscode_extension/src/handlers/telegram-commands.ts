@@ -164,14 +164,14 @@ export async function telegramToggleHandler(): Promise<void> {
     // Initialize command infrastructure
     responseFormatter = new TelegramResponseFormatter(pollingConfig);
     commandRegistry = createCommandRegistry(() => {
-        // Stop callback — triggered by /stop command
+        // Stop callback — triggered by stop command
         standaloneTelegram?.sendMessage('⏹ Polling stopped via Telegram command.');
         standaloneTelegram?.dispose();
         standaloneTelegram = null;
         isPollingActive = false;
         commandRegistry = null;
         responseFormatter = null;
-        vscode.window.showInformationMessage('⏹ Telegram polling stopped (via /stop command).');
+        vscode.window.showInformationMessage('⏹ Telegram polling stopped (via stop command).');
     });
 
     standaloneTelegram.onCommand((cmd: TelegramCommand) => {
@@ -194,41 +194,39 @@ function handleStandaloneCommand(cmd: TelegramCommand): void {
     // If we have a command registry, try to parse and dispatch
     if (commandRegistry && responseFormatter) {
         // Reconstruct the raw text: for 'unknown' type, the raw text is in cmd.text
-        // For known types, build a synthetic /command text
+        // For known types, build a synthetic command text
         let rawText = cmd.text;
         if (cmd.type !== 'unknown' && cmd.type !== 'info') {
-            rawText = `/${cmd.type}`;
+            rawText = cmd.type;
         }
 
-        // Only dispatch slash commands to the registry
-        if (rawText.startsWith('/')) {
-            const parsed = commandRegistry.parse(rawText, cmd.userId, cmd.chatId, cmd.username);
+        // Try dispatching to the registry (parser accepts with or without / prefix)
+        const parsed = commandRegistry.parse(rawText, cmd.userId, cmd.chatId, cmd.username);
 
-            if (parsed) {
-                const def = commandRegistry.get(parsed.command);
-                if (def) {
-                    // Execute the command handler
-                    def.handler(parsed).then((result) => {
-                        responseFormatter?.sendResult(result, parsed);
-                    }).catch((err: Error) => {
-                        responseFormatter?.sendMessage(`❌ Command error: ${err.message}`, cmd.chatId);
-                        bridgeLog(`[Telegram] Command error: ${err.message}`, 'ERROR');
-                    });
-                    return;
-                }
+        if (parsed) {
+            const def = commandRegistry.get(parsed.command);
+            if (def) {
+                // Execute the command handler
+                def.handler(parsed).then((result) => {
+                    responseFormatter?.sendResult(result, parsed);
+                }).catch((err: Error) => {
+                    responseFormatter?.sendMessage(`❌ Command error: ${err.message}`, cmd.chatId);
+                    bridgeLog(`[Telegram] Command error: ${err.message}`, 'ERROR');
+                });
+                return;
             }
         }
     }
 
-    // Fallback for non-slash messages or unrecognized commands
+    // Fallback for unrecognized commands
     switch (cmd.type) {
         case 'info':
             vscode.window.showInformationMessage(`📩 Telegram from @${cmd.username}: ${cmd.text}`);
-            standaloneTelegram?.sendMessage(`✅ Message displayed in VS Code.`);
+            standaloneTelegram?.sendMessage(`✅ Message displayed in VS Code\\.`);
             break;
 
         default:
-            standaloneTelegram?.sendMessage(`❓ Unknown command. Send /help for a list of commands.`);
+            standaloneTelegram?.sendMessage(`❓ Unknown command\\. Send help for a list of commands\\.`);
             break;
     }
 }

@@ -68,7 +68,7 @@ export class TelegramResponseFormatter {
         if (forceAttach || text.length > DEFAULT_TRUNCATE_LIMIT) {
             // Send as attachment
             const filename = result.attachmentFilename ?? 'response.txt';
-            const shortSummary = `/${cmd.command}${cmd.subcommand ? ' ' + cmd.subcommand : ''} executed.\nSee attachment _${filename}_`;
+            const shortSummary = `${cmd.command}${cmd.subcommand ? ' ' + cmd.subcommand : ''} executed.\nSee attachment _${filename}_`;
 
             // Send the brief confirmation first
             await this.sendMessage(shortSummary, cmd.chatId);

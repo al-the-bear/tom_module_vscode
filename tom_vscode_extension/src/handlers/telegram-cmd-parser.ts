@@ -2,10 +2,11 @@
  * Telegram Command Parser — CLI-like command/subcommand parsing for Telegram bot messages.
  *
  * Supports:
- *  - Commands with subcommands: /bridge restart, /cli-integration start 8080
+ *  - Commands with subcommands: bridge restart, cli-integration start 8080
  *  - Global flags: --attach (send reply as attachment)
- *  - Positional arguments: /cd somedir, /file path/to/file
+ *  - Positional arguments: cd somedir, file path/to/file
  *  - Help generation per command
+ *  - Optional / prefix (accepted but not required)
  *
  * The parser is modeled after CLI argument parsers (like yargs/commander) but
  * tailored for short Telegram messages.
@@ -19,7 +20,7 @@ import { bridgeLog } from './handler_shared';
 
 /** A parsed command ready for execution. */
 export interface ParsedTelegramCommand {
-    /** Top-level command name without leading slash, e.g. "bridge" */
+    /** Top-level command name (without leading slash if any), e.g. "bridge" */
     command: string;
     /** Subcommand name if any, e.g. "restart" */
     subcommand: string | null;
@@ -37,11 +38,11 @@ export interface ParsedTelegramCommand {
 
 /** Definition for a registered command. */
 export interface TelegramCommandDef {
-    /** Command name (without /), e.g. "ls" or "bridge" */
+    /** Command name, e.g. "ls" or "bridge" */
     name: string;
-    /** Short description shown in /help */
+    /** Short description shown in help */
     description: string;
-    /** Usage pattern shown in help, e.g. "/bridge <restart|stop|mode>" */
+    /** Usage pattern shown in help, e.g. "bridge <restart|stop|mode>" */
     usage?: string;
     /** Subcommand definitions (if this command has subcommands) */
     subcommands?: TelegramSubcommandDef[];
@@ -92,21 +93,23 @@ export class TelegramCommandRegistry {
         return Array.from(this.commands.values());
     }
 
-    /** Parse a raw Telegram message into a ParsedTelegramCommand. */
+    /** Parse a raw Telegram message into a ParsedTelegramCommand. Accepts with or without / prefix. */
     parse(text: string, userId: number, chatId: number, username: string): ParsedTelegramCommand | null {
         const trimmed = text.trim();
-        if (!trimmed.startsWith('/')) { return null; }
+        if (!trimmed) { return null; }
 
         // Tokenize: split by whitespace, respecting double-quoted strings
         const tokens = this.tokenize(trimmed);
         if (tokens.length === 0) { return null; }
 
-        // First token is /<command> — strip the leading slash and any @botname suffix
-        let commandToken = tokens[0].substring(1); // remove /
+        // First token is the command — strip optional leading slash and any @botname suffix
+        let commandToken = tokens[0];
+        if (commandToken.startsWith('/')) { commandToken = commandToken.substring(1); }
         const atIndex = commandToken.indexOf('@');
         if (atIndex >= 0) { commandToken = commandToken.substring(0, atIndex); }
 
         const command = commandToken.toLowerCase();
+        if (!command) { return null; }
         const def = this.commands.get(command);
 
         // Extract flags and positional args from remaining tokens
@@ -139,7 +142,7 @@ export class TelegramCommandRegistry {
             }
         }
 
-        bridgeLog(`[TelegramCmd] Parsed: /${command}${subcommand ? ' ' + subcommand : ''} args=[${args.join(', ')}] flags=${JSON.stringify(flags)}`);
+        bridgeLog(`[TelegramCmd] Parsed: ${command}${subcommand ? ' ' + subcommand : ''} args=[${args.join(', ')}] flags=${JSON.stringify(flags)}`);
 
         return { command, subcommand, args, flags, raw: trimmed, userId, chatId, username };
     }
@@ -147,15 +150,17 @@ export class TelegramCommandRegistry {
     /** Generate help text for all commands or a specific command. */
     generateHelp(commandName?: string): string {
         if (commandName) {
-            const def = this.commands.get(commandName.toLowerCase());
-            if (!def) { return `Unknown command: /${commandName}`; }
+            // Strip optional / prefix from the query
+            const name = commandName.startsWith('/') ? commandName.substring(1) : commandName;
+            const def = this.commands.get(name.toLowerCase());
+            if (!def) { return `Unknown command: ${name}`; }
 
-            let help = `*/${def.name}* — ${def.description}\n`;
+            let help = `*${def.name}* — ${def.description}\n`;
             if (def.usage) { help += `Usage: ${def.usage}\n`; }
             if (def.subcommands && def.subcommands.length > 0) {
                 help += '\nSubcommands:\n';
                 for (const sc of def.subcommands) {
-                    help += `  /${def.name} ${sc.name} — ${sc.description}\n`;
+                    help += `  ${def.name} ${sc.name} — ${sc.description}\n`;
                     if (sc.usage) { help += `    ${sc.usage}\n`; }
                 }
             }
@@ -167,9 +172,9 @@ export class TelegramCommandRegistry {
         let help = '📋 *Available Commands*\n\n';
         const sorted = Array.from(this.commands.values()).sort((a, b) => a.name.localeCompare(b.name));
         for (const def of sorted) {
-            help += `/${def.name} — ${def.description}\n`;
+            help += `${def.name} — ${def.description}\n`;
         }
-        help += '\n_Use /help <command> for details. --attach on any command to get file output._';
+        help += '\n_Use help <command> for details\\. \\-\\-attach on any command to get file output\\._';
         return help;
     }
 
