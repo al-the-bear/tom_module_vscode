@@ -22,7 +22,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { bridgeLog, getCopilotModel, sendCopilotRequest, getWorkspaceRoot } from './handler_shared';
+import { bridgeLog, getCopilotModel, sendCopilotRequest, getWorkspaceRoot, getConfigPath } from './handler_shared';
 import { getPromptExpanderManager } from './expandPrompt-handler';
 import type { OllamaStats } from './expandPrompt-handler';
 import { TelegramNotifier, TelegramConfig, TelegramCommand, parseTelegramConfig, TELEGRAM_DEFAULTS } from './telegram-notifier';
@@ -442,21 +442,7 @@ export class BotConversationManager {
     // -----------------------------------------------------------------------
 
     private getConfigPath(): string | undefined {
-        const configSetting = vscode.workspace
-            .getConfiguration('dartscript.sendToChat')
-            .get<string>('configPath');
-        if (configSetting) {
-            const wf = vscode.workspace.workspaceFolders;
-            if (wf && wf.length > 0) {
-                return configSetting.replace(/\$\{workspaceFolder\}/g, wf[0].uri.fsPath);
-            }
-            return configSetting;
-        }
-        const wf = vscode.workspace.workspaceFolders;
-        if (wf && wf.length > 0) {
-            return path.join(wf[0].uri.fsPath, '_ai', 'send_to_chat', 'send_to_chat.json');
-        }
-        return undefined;
+        return getConfigPath();
     }
 
     loadConfig(): BotConversationConfig {

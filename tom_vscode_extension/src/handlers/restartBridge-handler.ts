@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import {
     handleError,
     getWorkspaceRoot,
+    getConfigPath,
     getBridgeClient,
     setBridgeClient
 } from './handler_shared';
@@ -37,23 +38,7 @@ export interface BridgeConfig {
 // Config Loading
 // ────────────────────────────────────────────────────────────────
 
-function getConfigPath(): string | undefined {
-    const configSetting = vscode.workspace
-        .getConfiguration('dartscript.sendToChat')
-        .get<string>('configPath');
-    if (configSetting) {
-        const wf = vscode.workspace.workspaceFolders;
-        if (wf && wf.length > 0) {
-            return configSetting.replace(/\$\{workspaceFolder\}/g, wf[0].uri.fsPath);
-        }
-        return configSetting;
-    }
-    const wf = vscode.workspace.workspaceFolders;
-    if (wf && wf.length > 0) {
-        return path.join(wf[0].uri.fsPath, '_ai', 'send_to_chat', 'send_to_chat.json');
-    }
-    return undefined;
-}
+// getConfigPath() is imported from handler_shared
 
 function resolveWorkspacePlaceholders(value: string): string {
     const wf = vscode.workspace.workspaceFolders;

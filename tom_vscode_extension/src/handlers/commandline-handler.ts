@@ -22,6 +22,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getConfigPath } from './handler_shared';
 
 // ============================================================================
 // Types
@@ -67,22 +68,7 @@ export interface PostActionDefinition {
 // Config Helpers
 // ============================================================================
 
-/**
- * Get the configuration file path (same as sendToChatAdvanced).
- */
-function getConfigPath(): string | undefined {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders || workspaceFolders.length === 0) {
-        return undefined;
-    }
-
-    const configSetting = vscode.workspace.getConfiguration('dartscript.sendToChat').get<string>('configPath');
-    if (!configSetting) {
-        return path.join(workspaceFolders[0].uri.fsPath, '_ai', 'send_to_chat', 'send_to_chat.json');
-    }
-
-    return configSetting.replace('${workspaceFolder}', workspaceFolders[0].uri.fsPath);
-}
+// getConfigPath() is imported from handler_shared
 
 /**
  * Read and parse the config file. Returns the full JSON object.

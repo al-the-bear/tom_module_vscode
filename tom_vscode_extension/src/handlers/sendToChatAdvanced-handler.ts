@@ -8,6 +8,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getConfigPath } from './handler_shared';
 
 /**
  * Configuration entry for a send-to-chat template
@@ -76,18 +77,7 @@ export class SendToChatAdvancedManager {
      * Get the configuration file path
      */
     private getConfigPath(): string | undefined {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
-            return undefined;
-        }
-
-        const configSetting = vscode.workspace.getConfiguration('dartscript.sendToChat').get<string>('configPath');
-        if (!configSetting) {
-            return path.join(workspaceFolders[0].uri.fsPath, '_ai', 'send_to_chat.json');
-        }
-
-        // Replace ${workspaceFolder} with actual path
-        return configSetting.replace('${workspaceFolder}', workspaceFolders[0].uri.fsPath);
+        return getConfigPath();
     }
 
     /**

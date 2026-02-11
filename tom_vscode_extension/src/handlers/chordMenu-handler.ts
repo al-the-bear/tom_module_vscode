@@ -20,6 +20,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { getConfigPath } from './handler_shared';
 
 // ============================================================================
 // Types
@@ -151,20 +152,7 @@ const CHORD_GROUPS: Record<string, ChordGroup> = {
 // Favorites (loaded from send_to_chat.json → "favorites" section)
 // ============================================================================
 
-/**
- * Returns the config file path for `send_to_chat.json`.
- */
-function getConfigPath(): string | undefined {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders || workspaceFolders.length === 0) {
-        return undefined;
-    }
-    const configSetting = vscode.workspace.getConfiguration('dartscript.sendToChat').get<string>('configPath');
-    if (!configSetting) {
-        return path.join(workspaceFolders[0].uri.fsPath, '_ai', 'send_to_chat', 'send_to_chat.json');
-    }
-    return configSetting.replace('${workspaceFolder}', workspaceFolders[0].uri.fsPath);
-}
+// getConfigPath() is imported from handler_shared
 
 /**
  * Reads the `favorites` array from send_to_chat.json.

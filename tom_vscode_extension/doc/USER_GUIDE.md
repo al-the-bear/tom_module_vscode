@@ -1106,7 +1106,7 @@ Access settings via **File > Preferences > Settings** and search for "DartScript
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `dartscript.sendToChat.configPath` | `${workspaceFolder}/_ai/send_to_chat/send_to_chat.json` | Path to prompt templates |
+| `dartscript.configPath` | `~/.tom/vscode/tom_vscode_extension.json` | Path to extension config file |
 | `dartscript.sendToChat.showNotifications` | `true` | Show notifications when sending |
 | `dartscript.sendToChat.chatAnswerFolder` | `_ai/chat_replies` | Folder for chat responses |
 
@@ -1135,7 +1135,7 @@ These VS Code settings serve as fallbacks. Prefer configuring via the `promptExp
   "dartscript.copilotModel": "gpt-4o",
   "dartscript.maxContextSize": 100000,
   "dartscript.sendToChat.showNotifications": true,
-  "dartscript.sendToChat.configPath": "${workspaceFolder}/my-templates/prompts.json"
+  "dartscript.configPath": "~/.tom/vscode/tom_vscode_extension.json"
 }
 ```
 

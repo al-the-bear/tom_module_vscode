@@ -947,10 +947,10 @@
           ],
           "description": "Preferred Copilot model"
         },
-        "dartscript.sendToChat.configPath": {
+        "dartscript.configPath": {
           "type": "string",
-          "default": "${workspaceFolder}/_ai/send_to_chat/send_to_chat.json",
-          "description": "Path to send_to_chat.json configuration file for custom prompt templates"
+          "default": "~/.tom/vscode/tom_vscode_extension.json",
+          "description": "Path to the extension configuration file (supports ~ for home directory and ${workspaceFolder})"
         },
         "dartscript.sendToChat.showNotifications": {
           "type": "boolean",

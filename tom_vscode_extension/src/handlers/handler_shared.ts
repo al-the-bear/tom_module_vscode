@@ -8,6 +8,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { DartBridgeClient } from '../vscode-bridge';
 
 // ============================================================================
@@ -81,6 +82,38 @@ export function getWorkspaceRoot(): string | undefined {
         return undefined;
     }
     return workspaceFolders[0].uri.fsPath;
+}
+
+/**
+ * Get the resolved path to the extension config file.
+ *
+ * Reads the `dartscript.configPath` setting (default: `~/.tom/vscode/tom_vscode_extension.json`).
+ * Supports `~` (home directory) and `${workspaceFolder}` placeholders.
+ */
+export function getConfigPath(): string | undefined {
+    const configSetting = vscode.workspace
+        .getConfiguration('dartscript')
+        .get<string>('configPath');
+
+    if (!configSetting) {
+        // Fallback default
+        return path.join(os.homedir(), '.tom', 'vscode', 'tom_vscode_extension.json');
+    }
+
+    let resolved = configSetting;
+
+    // Resolve ~ to home directory
+    if (resolved.startsWith('~/') || resolved === '~') {
+        resolved = path.join(os.homedir(), resolved.slice(2));
+    }
+
+    // Resolve ${workspaceFolder}
+    const wf = vscode.workspace.workspaceFolders;
+    if (wf && wf.length > 0) {
+        resolved = resolved.replace(/\$\{workspaceFolder\}/g, wf[0].uri.fsPath);
+    }
+
+    return resolved;
 }
 
 /**

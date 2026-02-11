@@ -11,7 +11,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { bridgeLog } from './handler_shared';
+import { bridgeLog, getConfigPath } from './handler_shared';
 import { TelegramNotifier, TelegramConfig, TelegramCommand, parseTelegramConfig } from './telegram-notifier';
 import { TelegramCommandRegistry, ParsedTelegramCommand } from './telegram-cmd-parser';
 import { TelegramResponseFormatter } from './telegram-cmd-response';
@@ -33,12 +33,7 @@ let responseFormatter: TelegramResponseFormatter | null = null;
 // Config loading
 // ============================================================================
 
-/** Resolve the path to send_to_chat.json. */
-function getConfigPath(): string | undefined {
-    const wf = vscode.workspace.workspaceFolders;
-    if (!wf || wf.length === 0) { return undefined; }
-    return path.join(wf[0].uri.fsPath, '_ai', 'send_to_chat', 'send_to_chat.json');
-}
+// getConfigPath() is imported from handler_shared
 
 /** Load the Telegram config from send_to_chat.json → botConversation.telegram. */
 function loadTelegramConfig(): TelegramConfig | undefined {

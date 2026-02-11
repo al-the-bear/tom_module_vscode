@@ -10,6 +10,7 @@ export {
     bridgeLog,
     handleError,
     getWorkspaceRoot,
+    getConfigPath,
     getWorkspaceStructure,
     ensureBridgeRunning,
     getCopilotModel,

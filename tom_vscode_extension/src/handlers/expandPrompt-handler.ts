@@ -19,7 +19,7 @@ import * as vscode from 'vscode';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
-import { handleError, bridgeLog, getBridgeClient } from './handler_shared';
+import { handleError, bridgeLog, getBridgeClient, getConfigPath } from './handler_shared';
 import {
     OllamaTool, OllamaToolCall, SharedToolDefinition,
     executeToolCall, toOllamaTools,
@@ -204,21 +204,7 @@ export class PromptExpanderManager {
     // -----------------------------------------------------------------------
 
     private getConfigPath(): string | undefined {
-        const configSetting = vscode.workspace
-            .getConfiguration('dartscript.sendToChat')
-            .get<string>('configPath');
-        if (configSetting) {
-            const wf = vscode.workspace.workspaceFolders;
-            if (wf && wf.length > 0) {
-                return configSetting.replace(/\$\{workspaceFolder\}/g, wf[0].uri.fsPath);
-            }
-            return configSetting;
-        }
-        const wf = vscode.workspace.workspaceFolders;
-        if (wf && wf.length > 0) {
-            return path.join(wf[0].uri.fsPath, '_ai', 'send_to_chat', 'send_to_chat.json');
-        }
-        return undefined;
+        return getConfigPath();
     }
 
     /** Load config fresh from disk + VS Code settings. Never cached. */
