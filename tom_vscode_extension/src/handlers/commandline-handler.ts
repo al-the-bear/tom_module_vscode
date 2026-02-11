@@ -22,6 +22,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { getConfigPath } from './handler_shared';
 
 // ============================================================================
@@ -576,9 +577,13 @@ async function executeAsVscodeExpression(
 ): Promise<void> {
     console.log(`[commandline-handler] Evaluating VS Code expression: ${expression}`);
     try {
-        // Build an async wrapper so the expression can use `await`
-        const asyncFn = new Function('vscode', `return (async () => { return ${expression}; })()`);
-        const result = await asyncFn(vscode);
+        // Build an async wrapper so the expression can use `await`.
+        // Expose vscode, path, fs, and os so expressions can reference them.
+        const asyncFn = new Function(
+            'vscode', 'path', 'fs', 'os',
+            `return (async () => { return ${expression}; })()`,
+        );
+        const result = await asyncFn(vscode, path, fs, os);
         console.log(`[commandline-handler] Expression result:`, result);
     } catch (err: any) {
         console.error(`[commandline-handler] Expression evaluation failed:`, err);
