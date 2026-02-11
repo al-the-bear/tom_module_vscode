@@ -117,19 +117,23 @@ function loadCombinedCommands(): CombinedCommandsMap {
  * immediately without reload.
  */
 async function executeCombinedCommand(name: string): Promise<void> {
+    console.log(`[CombinedCommand] Executing "${name}"...`);
     const allCommands = loadCombinedCommands();
     const entry = allCommands[name];
 
     if (!entry) {
-        vscode.window.showWarningMessage(
-            `Combined command "${name}" is not configured in send_to_chat.json → combinedCommands.`,
-        );
+        const msg = `Combined command "${name}" is not configured in send_to_chat.json → combinedCommands.`;
+        console.error(`[CombinedCommand] ${msg}`);
+        vscode.window.showWarningMessage(msg);
         return;
     }
+
+    console.log(`[CombinedCommand] "${name}" → executing ${entry.commands.length} command(s): ${entry.commands.join(', ')}`);
 
     for (const cmdId of entry.commands) {
         try {
             await vscode.commands.executeCommand(cmdId);
+            console.log(`[CombinedCommand] ✓ "${cmdId}"`);
         } catch (err) {
             console.error(
                 `[CombinedCommand] Error executing "${cmdId}" in "${name}":`,

@@ -368,15 +368,18 @@
       },
       {
         "command": "dartscript.combined.maximizeExplorer",
-        "key": "ctrl+shift+1"
+        "key": "ctrl+shift+1",
+        "mac": "cmd+shift+1"
       },
       {
         "command": "dartscript.combined.maximizeEditor",
-        "key": "ctrl+shift+2"
+        "key": "ctrl+shift+2",
+        "mac": "cmd+shift+2"
       },
       {
         "command": "dartscript.combined.maximizeChat",
-        "key": "ctrl+shift+3"
+        "key": "ctrl+shift+3",
+        "mac": "cmd+shift+3"
       }
     ],
     "menus": {
