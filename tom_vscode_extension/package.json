@@ -373,7 +373,7 @@
       },
       {
         "command": "dartscript.combined.maximizeToggle",
-        "key": "ctrl+shift+1"
+        "key": "ctrl+shift+6"
       },
       {
         "command": "dartscript.combined.maximizeExplorer",
