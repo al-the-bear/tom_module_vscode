@@ -73,6 +73,12 @@ export interface TelegramCommand {
 /** Callback type for when a command is received. */
 export type TelegramCommandCallback = (command: TelegramCommand) => void;
 
+/** Result of a Telegram API call with error details. */
+export interface TelegramApiResult {
+    ok: boolean;
+    error?: string;
+}
+
 // ============================================================================
 // Default config
 // ============================================================================
@@ -125,12 +131,22 @@ export class TelegramNotifier {
 
     /** Send a text message to the default chat. */
     async sendMessage(text: string, chatId?: number): Promise<boolean> {
-        if (!this.isEnabled) { return false; }
+        const result = await this.sendMessageWithDetails(text, chatId);
+        return result.ok;
+    }
+
+    /** Send a text message and return detailed result (including error message). */
+    async sendMessageWithDetails(text: string, chatId?: number): Promise<TelegramApiResult> {
+        if (!this.isEnabled) {
+            return { ok: false, error: 'Telegram notifier is not enabled (check botToken and allowedUserIds)' };
+        }
 
         const targetChatId = chatId ?? this.config.defaultChatId;
-        if (!targetChatId) { return false; }
+        if (!targetChatId) {
+            return { ok: false, error: 'No target chat ID configured' };
+        }
 
-        return this.apiCall('sendMessage', {
+        return this.apiCallWithDetails('sendMessage', {
             // eslint-disable-next-line @typescript-eslint/naming-convention
             chat_id: targetChatId,
             text: this.truncate(text, 4096), // Telegram max message length
@@ -346,6 +362,54 @@ export class TelegramNotifier {
             req.on('timeout', () => {
                 req.destroy();
                 resolve(false);
+            });
+
+            req.write(data);
+            req.end();
+        });
+    }
+
+    /** Call a Telegram Bot API method and return detailed result. */
+    private apiCallWithDetails(method: string, body: any): Promise<TelegramApiResult> {
+        return new Promise((resolve) => {
+            const data = JSON.stringify(body);
+            const options: https.RequestOptions = {
+                hostname: 'api.telegram.org',
+                path: `/bot${this.config.botToken}/${method}`,
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json', // eslint-disable-line @typescript-eslint/naming-convention
+                    'Content-Length': Buffer.byteLength(data), // eslint-disable-line @typescript-eslint/naming-convention
+                },
+                timeout: 10000,
+            };
+
+            const req = https.request(options, (res) => {
+                let responseBody = '';
+                res.on('data', (chunk: Buffer) => { responseBody += chunk.toString(); });
+                res.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(responseBody);
+                        if (parsed.ok === true) {
+                            resolve({ ok: true });
+                        } else {
+                            const errorMsg = parsed.description ?? 'Unknown Telegram API error';
+                            bridgeLog(`[Telegram] API error (${method}): ${errorMsg}`);
+                            resolve({ ok: false, error: errorMsg });
+                        }
+                    } catch {
+                        resolve({ ok: false, error: 'Failed to parse Telegram API response' });
+                    }
+                });
+            });
+
+            req.on('error', (err) => {
+                bridgeLog(`[Telegram] Request error (${method}): ${err.message}`);
+                resolve({ ok: false, error: `Network error: ${err.message}` });
+            });
+            req.on('timeout', () => {
+                req.destroy();
+                resolve({ ok: false, error: 'Request timed out' });
             });
 
             req.write(data);

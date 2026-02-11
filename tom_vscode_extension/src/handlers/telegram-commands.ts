@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { bridgeLog, getConfigPath } from './handler_shared';
-import { TelegramNotifier, TelegramConfig, TelegramCommand, parseTelegramConfig } from './telegram-notifier';
+import { TelegramNotifier, TelegramConfig, TelegramCommand, TelegramApiResult, parseTelegramConfig } from './telegram-notifier';
 import { TelegramCommandRegistry, ParsedTelegramCommand } from './telegram-cmd-parser';
 import { TelegramResponseFormatter } from './telegram-cmd-response';
 import { createCommandRegistry } from './telegram-cmd-handlers';
@@ -99,13 +99,14 @@ export async function telegramTestHandler(): Promise<void> {
     await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: 'Testing Telegram connection...' },
         async () => {
-            const success = await notifier.sendMessage(testMsg);
-            if (success) {
+            const result: TelegramApiResult = await notifier.sendMessageWithDetails(testMsg);
+            if (result.ok) {
                 vscode.window.showInformationMessage('✅ Telegram test message sent successfully!');
                 bridgeLog('[Telegram] Test message sent successfully');
             } else {
-                vscode.window.showErrorMessage('❌ Failed to send Telegram test message. Check bot token and chat ID.');
-                bridgeLog('[Telegram] Test message FAILED', 'ERROR');
+                const errorDetail = result.error ?? 'Unknown error';
+                vscode.window.showErrorMessage(`❌ Telegram test failed: ${errorDetail}`);
+                bridgeLog(`[Telegram] Test message FAILED: ${errorDetail}`, 'ERROR');
             }
         }
     );
