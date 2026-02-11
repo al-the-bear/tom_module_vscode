@@ -30,7 +30,7 @@ import { getConfigPath } from './handler_shared';
 // ============================================================================
 
 /** How the working directory is determined at execution time. */
-export type CwdMode = 'workspace' | 'extension' | 'project' | 'repository' | 'document' | 'custom';
+export type CwdMode = 'workspace' | 'extension' | 'project' | 'repository' | 'document' | 'custom' | 'none';
 
 export interface CommandlineEntry {
     /** The shell command to execute. May contain placeholders. */
@@ -311,6 +311,7 @@ async function defineCommandline(): Promise<void> {
 
     // 3) Working directory mode — no resolution here, just store the mode
     const cwdItems = [
+        { label: '$(circle-slash) No Working Directory', _id: 'none' as CwdMode, description: 'No cwd — command/expression runs without a working directory' },
         { label: '$(root-folder) Workspace Root', _id: 'workspace' as CwdMode },
         { label: '$(extensions) Extension Root', _id: 'extension' as CwdMode },
         { label: '$(package) Project Root', _id: 'project' as CwdMode, description: 'Resolved at runtime from active file (buildkit.yaml / pubspec.yaml)' },
@@ -399,6 +400,7 @@ async function defineCommandline(): Promise<void> {
  */
 function cwdModeLabel(mode: CwdMode | undefined): string {
     switch (mode) {
+        case 'none': return 'No Working Directory';
         case 'workspace': return 'Workspace Root';
         case 'extension': return 'Extension Root';
         case 'project': return 'Project Root (dynamic)';
@@ -492,6 +494,10 @@ async function resolveExecutionCwd(entry: CommandlineEntry): Promise<string | un
         vscode.window.showErrorMessage(msg, { modal: true });
 
     switch (mode) {
+        case 'none': {
+            // No working directory — return empty string (not undefined)
+            return '';
+        }
         case 'workspace': {
             const root = getWorkspaceRoot();
             if (!root) {
@@ -758,7 +764,7 @@ async function executeCommandline(): Promise<void> {
     // ── Normal shell command ─────────────────────────────────────────────
     // Resolve effective working directory at runtime
     const effectiveCwd = await resolveExecutionCwd(entry);
-    if (!effectiveCwd) { return; }
+    if (effectiveCwd === undefined) { return; } // undefined = error, '' = no cwd
 
     // Confirmation only for dynamic modes (project, repository, document)
     const mode: CwdMode = entry.cwdMode || 'custom';
@@ -775,9 +781,10 @@ async function executeCommandline(): Promise<void> {
     const postActions: string[] = entry.postActions || [];
 
     // Execute in VS Code terminal
+    // If effectiveCwd is empty ('none' mode), don't set cwd — let shell use its default
     const terminal = vscode.window.createTerminal({
         name: entry.description || entry.command,
-        cwd: effectiveCwd,
+        cwd: effectiveCwd || undefined,
     });
     terminal.show();
 
