@@ -84,6 +84,11 @@ export async function telegramTestHandler(): Promise<void> {
         return;
     }
 
+    // Log configuration details for debugging
+    bridgeLog(`[Telegram] Using token from env var: ${config.botTokenEnv}`);
+    bridgeLog(`[Telegram] Target chat ID: ${config.defaultChatId}`);
+    bridgeLog(`[Telegram] Token length: ${config.botToken.length} chars`);
+
     // Create a temporary notifier with enabled forced to true for the test
     const testConfig: TelegramConfig = {
         ...config,
@@ -105,8 +110,8 @@ export async function telegramTestHandler(): Promise<void> {
                 bridgeLog('[Telegram] Test message sent successfully');
             } else {
                 const errorDetail = result.error ?? 'Unknown error';
-                vscode.window.showErrorMessage(`❌ Telegram test failed: ${errorDetail}`);
-                bridgeLog(`[Telegram] Test message FAILED: ${errorDetail}`, 'ERROR');
+                vscode.window.showErrorMessage(`❌ Telegram test failed (chatId: ${config.defaultChatId}): ${errorDetail}`);
+                bridgeLog(`[Telegram] Test message FAILED to chatId ${config.defaultChatId}: ${errorDetail}`, 'ERROR');
             }
         }
     );
