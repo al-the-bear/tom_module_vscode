@@ -168,10 +168,10 @@ function detectProject(fromDir: string): ProjectInfo | undefined {
 // Shell command executor
 // ============================================================================
 
-/** Run a shell command and return stdout + stderr. */
+/** Run a shell command and return stdout + stderr. Pass timeoutMs=0 for no timeout. */
 function execShell(cmd: string, cwd: string, timeoutMs: number = 30000): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve) => {
-        exec(cmd, { cwd, timeout: timeoutMs, maxBuffer: 1024 * 512 }, (error, stdout, stderr) => {
+        exec(cmd, { cwd, timeout: timeoutMs, maxBuffer: 1024 * 1024 * 5 }, (error, stdout, stderr) => {
             resolve({
                 stdout: stdout?.toString() ?? '',
                 stderr: stderr?.toString() ?? '',
@@ -312,7 +312,7 @@ async function dartHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandR
         return { text: `❌ No Dart project found at ${displayPath(targetDir)}.\nUse /project <name> to switch to a project first.` };
     }
 
-    const { stdout, stderr, exitCode } = await execShell('dart analyze', project.absPath, 60000);
+    const { stdout, stderr, exitCode } = await execShell('dart analyze', project.absPath, 0);
     const output = (stdout + '\n' + stderr).trim();
     const icon = exitCode === 0 ? '✅' : '❌';
 
@@ -415,7 +415,7 @@ async function bkHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandRes
     const fullCmd = args ? `buildkit ${args}` : 'buildkit';
 
     bridgeLog(`[Telegram] Running: ${fullCmd} in ${cwd}`);
-    const { stdout, stderr, exitCode } = await execShell(fullCmd, cwd, 120000);
+    const { stdout, stderr, exitCode } = await execShell(fullCmd, cwd, 0);
     const output = (stdout + '\n' + stderr).trim();
     const icon = exitCode === 0 ? '✅' : '❌';
 
@@ -432,7 +432,7 @@ async function tkHandler(cmd: ParsedTelegramCommand): Promise<TelegramCommandRes
     const fullCmd = args ? `testkit ${args}` : 'testkit';
 
     bridgeLog(`[Telegram] Running: ${fullCmd} in ${cwd}`);
-    const { stdout, stderr, exitCode } = await execShell(fullCmd, cwd, 120000);
+    const { stdout, stderr, exitCode } = await execShell(fullCmd, cwd, 0);
     const output = (stdout + '\n' + stderr).trim();
     const icon = exitCode === 0 ? '✅' : '❌';
 
@@ -609,6 +609,7 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
             { name: 'analyze', description: 'Run dart analyze', usage: 'dart analyze [project]' },
         ],
         handler: dartHandler,
+        startMessage: '⏳ Running dart {args}\.\.\.',
     });
 
     // /problems
@@ -631,12 +632,14 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
         description: 'Run buildkit with arguments',
         usage: 'bk [args...]',
         handler: bkHandler,
+        startMessage: '⏳ Running buildkit {args}\.\.\.',
     });
     registry.register({
         name: 'buildkit',
         description: 'Run buildkit with arguments (alias: bk)',
         usage: 'buildkit [args...]',
         handler: bkHandler,
+        startMessage: '⏳ Running buildkit {args}\.\.\.',
     });
 
     // tk (testkit)
@@ -645,12 +648,14 @@ export function createCommandRegistry(stopCallback: () => void): TelegramCommand
         description: 'Run testkit with arguments',
         usage: 'tk [args...]',
         handler: tkHandler,
+        startMessage: '⏳ Running testkit {args}\.\.\.',
     });
     registry.register({
         name: 'testkit',
         description: 'Run testkit with arguments (alias: tk)',
         usage: 'testkit [args...]',
         handler: tkHandler,
+        startMessage: '⏳ Running testkit {args}\.\.\.',
     });
 
     // /bridge

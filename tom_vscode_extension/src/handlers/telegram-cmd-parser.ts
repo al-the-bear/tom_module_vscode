@@ -48,6 +48,13 @@ export interface TelegramCommandDef {
     subcommands?: TelegramSubcommandDef[];
     /** Handler function */
     handler: (cmd: ParsedTelegramCommand) => Promise<TelegramCommandResult>;
+    /**
+     * If set, this message is sent immediately when the command is dispatched,
+     * before the handler completes. Useful for long-running commands (bk, tk, dart)
+     * so the user knows the command was received and is running.
+     * Supports {args} placeholder which is replaced with the raw arguments.
+     */
+    startMessage?: string;
 }
 
 /** Subcommand definition. */
