@@ -61,6 +61,9 @@ import {
     telegramToggleHandler,
     telegramConfigureHandler,
     disposeTelegramStandalone,
+    showStatusPageHandler,
+    toggleTrailHandler,
+    getConfigPath,
 } from './handlers';
 
 // Tom AI Chat tools
@@ -402,6 +405,36 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
+    // Toggle AI Trail logging
+    const toggleTrailCmd = vscode.commands.registerCommand(
+        'dartscript.toggleTrail',
+        async () => {
+            await toggleTrailHandler();
+        }
+    );
+
+    // Show Status Page
+    const showStatusPageCmd = vscode.commands.registerCommand(
+        'dartscript.showStatusPage',
+        async () => {
+            await showStatusPageHandler();
+        }
+    );
+
+    // Open Extension Settings File
+    const openExtensionSettingsCmd = vscode.commands.registerCommand(
+        'dartscript.openExtensionSettings',
+        async () => {
+            const configPath = getConfigPath();
+            if (configPath && fs.existsSync(configPath)) {
+                const doc = await vscode.workspace.openTextDocument(configPath);
+                await vscode.window.showTextDocument(doc);
+            } else {
+                vscode.window.showWarningMessage(`Extension settings file not found: ${configPath}`);
+            }
+        }
+    );
+
     // Add all commands to subscriptions
     context.subscriptions.push(
         sendToChatCmd,
@@ -432,7 +465,10 @@ function registerCommands(context: vscode.ExtensionContext) {
         addToBotConversationCmd,
         telegramTestCmd,
         telegramToggleCmd,
-        telegramConfigureCmd
+        telegramConfigureCmd,
+        toggleTrailCmd,
+        showStatusPageCmd,
+        openExtensionSettingsCmd
     );
 }
 

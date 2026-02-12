@@ -32,6 +32,25 @@ interface CliServerStatusResponse {
 }
 
 /**
+ * Get the current CLI server status.
+ * Returns { running, port } or { running: false } if bridge not available.
+ */
+export async function getCliServerStatus(): Promise<CliServerStatusResponse> {
+    const bridgeClient = getBridgeClient();
+    if (!bridgeClient) {
+        return { running: false };
+    }
+
+    try {
+        const response = await bridgeClient.sendRequest<CliServerStatusResponse>('getCliServerStatus');
+        return response;
+    } catch (error) {
+        bridgeLog(`Failed to get CLI server status: ${error}`, 'ERROR');
+        return { running: false };
+    }
+}
+
+/**
  * Start the CLI integration server on auto-selected port (19900-19909)
  * The Dart bridge will find an available port starting from 19900.
  */

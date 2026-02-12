@@ -352,6 +352,11 @@ export async function telegramConfigureHandler(): Promise<void> {
 // Disposal
 // ============================================================================
 
+/** Check if Telegram polling is currently active. */
+export function isTelegramPollingActive(): boolean {
+    return isPollingActive;
+}
+
 /** Dispose standalone Telegram resources. Called on extension deactivation. */
 export function disposeTelegramStandalone(): void {
     if (standaloneTelegram) {

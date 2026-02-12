@@ -356,3 +356,54 @@ export async function openTrailFolder(type: TrailType): Promise<void> {
     const uri = vscode.Uri.file(folder);
     await vscode.commands.executeCommand('revealInExplorer', uri);
 }
+
+/**
+ * Toggle trail logging on/off and persist to config
+ */
+export async function toggleTrail(): Promise<boolean> {
+    loadTrailConfig();
+    const newState = !trailConfig.enabled;
+    
+    try {
+        const configPath = getConfigPath();
+        if (!configPath) {
+            vscode.window.showErrorMessage('No workspace folder open');
+            return trailConfig.enabled;
+        }
+        
+        // Read existing config or create new one
+        let config: Record<string, any> = {};
+        if (fs.existsSync(configPath)) {
+            config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        }
+        
+        // Update trail section
+        if (!config.trail) {
+            config.trail = {};
+        }
+        config.trail.enabled = newState;
+        
+        // Write back
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+        
+        // Update in-memory state
+        trailConfig.enabled = newState;
+        
+        vscode.window.showInformationMessage(`AI Trail logging ${newState ? 'enabled' : 'disabled'}`);
+        return newState;
+    } catch (e) {
+        console.error('[TrailLogger] Failed to toggle trail:', e);
+        vscode.window.showErrorMessage(`Failed to toggle trail: ${e}`);
+        return trailConfig.enabled;
+    }
+}
+
+/**
+ * Set trail enabled state programmatically (for status page)
+ */
+export async function setTrailEnabled(enabled: boolean): Promise<void> {
+    if (trailConfig.enabled === enabled) {
+        return; // No change needed
+    }
+    await toggleTrail();
+}

@@ -321,6 +321,21 @@
         "category": "DartScript"
       },
       {
+        "command": "dartscript.toggleTrail",
+        "title": "DS: Toggle AI Trail Logging",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.showStatusPage",
+        "title": "DS: Extension Status Page",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.openExtensionSettings",
+        "title": "DS: Open Extension Settings",
+        "category": "DartScript"
+      },
+      {
         "command": "dartscript.combined.maximizeExplorer",
         "title": "DS: Maximize Explorer",
         "category": "DartScript"
