@@ -65,6 +65,8 @@ interface SendToChatConfig {
             temperature?: number | null;
             modelConfig?: string | null;
             toolsEnabled?: boolean;
+            stripThinkingTags?: boolean | null;
+            isDefault?: boolean;
         } };
     };
     botConversation: {
@@ -428,6 +430,7 @@ interface TemplateEditorConfig {
         placeholder?: string;
         value?: string;
         help?: string;
+        readonly?: boolean;
     }[];
 }
 
@@ -449,9 +452,10 @@ async function showTemplateEditorPanel(
     );
     
     const fieldsHtml = config.fields.map(f => {
+        const readonlyAttr = f.readonly ? 'readonly disabled style="opacity: 0.7; cursor: not-allowed;"' : '';
         const inputHtml = f.type === 'textarea' 
-            ? `<textarea id="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}" rows="6">${escapeHtml(f.value || '')}</textarea>`
-            : `<input type="text" id="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(f.value || '')}">`;
+            ? `<textarea id="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}" rows="6" ${readonlyAttr}>${escapeHtml(f.value || '')}</textarea>`
+            : `<input type="text" id="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(f.value || '')}" ${readonlyAttr}>`;
         const helpHtml = f.help ? `<div class="help">${f.help}</div>` : '';
         return `<div class="field">
             <label for="${f.name}">${f.label}</label>
@@ -926,8 +930,8 @@ class CopilotNotepadProvider implements vscode.WebviewViewProvider {
             title: 'New Copilot Template',
             fields: [
                 { name: 'name', label: 'Template Name', type: 'text', placeholder: 'my_template' },
-                { name: 'prefix', label: 'Prefix (added before your prompt)', type: 'textarea', placeholder: 'Please help me with the following:\\n\\n', help: PLACEHOLDER_HELP },
-                { name: 'suffix', label: 'Suffix (added after your prompt)', type: 'textarea', placeholder: '\\n\\nUse best practices.' }
+                { name: 'prefix', label: 'Prefix (added before your prompt)', type: 'textarea', placeholder: 'Please help me with the following:\\n\\n' },
+                { name: 'suffix', label: 'Suffix (added after your prompt)', type: 'textarea', placeholder: '\\n\\nUse best practices.', help: PLACEHOLDER_HELP }
             ]
         }, async (values) => {
             if (!values.name) {
@@ -962,8 +966,8 @@ class CopilotNotepadProvider implements vscode.WebviewViewProvider {
             title: `Edit Template: ${this._selectedTemplate}`,
             fields: [
                 { name: 'name', label: 'Template Name', type: 'text', placeholder: 'my_template', value: this._selectedTemplate },
-                { name: 'prefix', label: 'Prefix (added before your prompt)', type: 'textarea', placeholder: 'Please help me with the following:\\n\\n', value: template.prefix, help: PLACEHOLDER_HELP },
-                { name: 'suffix', label: 'Suffix (added after your prompt)', type: 'textarea', placeholder: '\\n\\nUse best practices.', value: template.suffix }
+                { name: 'prefix', label: 'Prefix (added before your prompt)', type: 'textarea', placeholder: 'Please help me with the following:\\n\\n', value: template.prefix },
+                { name: 'suffix', label: 'Suffix (added after your prompt)', type: 'textarea', placeholder: '\\n\\nUse best practices.', value: template.suffix, help: PLACEHOLDER_HELP }
             ]
         }, async (values) => {
             if (!values.name) {
@@ -1311,7 +1315,12 @@ class LocalLlmNotepadProvider implements vscode.WebviewViewProvider {
             fields: [
                 { name: 'name', label: 'Profile Key', type: 'text', placeholder: 'my_profile' },
                 { name: 'label', label: 'Display Label', type: 'text', placeholder: 'My Profile' },
-                { name: 'systemPrompt', label: 'System Prompt', type: 'textarea', placeholder: 'You are a helpful coding assistant...', help: PLACEHOLDER_HELP }
+                { name: 'systemPrompt', label: 'System Prompt', type: 'textarea', placeholder: 'You are a helpful coding assistant...' },
+                { name: 'resultTemplate', label: 'Result Template', type: 'textarea', placeholder: '${response}', help: 'Use <code>${response}</code> for LLM output, <code>${original}</code> for original prompt.' },
+                { name: 'temperature', label: 'Temperature', type: 'text', placeholder: '0.4 (leave empty for global default)' },
+                { name: 'stripThinkingTags', label: 'Strip Thinking Tags', type: 'text', placeholder: 'true/false (leave empty for global default)' },
+                { name: 'toolsEnabled', label: 'Tools Enabled', type: 'text', placeholder: 'true/false', value: 'true' },
+                { name: 'isDefault', label: 'Is Default Profile', type: 'text', placeholder: 'true/false', value: 'false', help: PLACEHOLDER_HELP }
             ]
         }, async (values) => {
             if (!values.name) {
@@ -1325,8 +1334,12 @@ class LocalLlmNotepadProvider implements vscode.WebviewViewProvider {
                 }
                 config.promptExpander.profiles[values.name] = { 
                     label: values.label || values.name, 
-                    systemPrompt: values.systemPrompt || null, 
-                    toolsEnabled: true 
+                    systemPrompt: values.systemPrompt || null,
+                    resultTemplate: values.resultTemplate || null,
+                    temperature: values.temperature ? parseFloat(values.temperature) : null,
+                    stripThinkingTags: values.stripThinkingTags === 'true' ? true : values.stripThinkingTags === 'false' ? false : null,
+                    toolsEnabled: values.toolsEnabled !== 'false',
+                    isDefault: values.isDefault === 'true'
                 };
                 if (saveSendToChatConfig(config)) {
                     this._loadProfiles();
@@ -1351,35 +1364,36 @@ class LocalLlmNotepadProvider implements vscode.WebviewViewProvider {
             type: 'localLlm',
             title: `Edit Profile: ${profile.label}`,
             fields: [
-                { name: 'name', label: 'Profile Key', type: 'text', placeholder: 'my_profile', value: this._selectedProfile },
+                { name: 'name', label: 'Profile Key (read-only)', type: 'text', placeholder: 'my_profile', value: this._selectedProfile, readonly: true },
                 { name: 'label', label: 'Display Label', type: 'text', placeholder: 'My Profile', value: profile.label },
-                { name: 'systemPrompt', label: 'System Prompt', type: 'textarea', placeholder: 'You are a helpful coding assistant...', value: fullProfile?.systemPrompt || '', help: PLACEHOLDER_HELP }
+                { name: 'systemPrompt', label: 'System Prompt', type: 'textarea', placeholder: 'You are a helpful coding assistant...', value: fullProfile?.systemPrompt || '' },
+                { name: 'resultTemplate', label: 'Result Template', type: 'textarea', placeholder: '${response}', value: fullProfile?.resultTemplate || '', help: 'Use <code>${response}</code> for LLM output, <code>${original}</code> for original prompt.' },
+                { name: 'temperature', label: 'Temperature', type: 'text', placeholder: '0.4 (leave empty for global default)', value: fullProfile?.temperature != null ? String(fullProfile.temperature) : '' },
+                { name: 'stripThinkingTags', label: 'Strip Thinking Tags', type: 'text', placeholder: 'true/false (leave empty for global default)', value: fullProfile?.stripThinkingTags != null ? String(fullProfile.stripThinkingTags) : '' },
+                { name: 'toolsEnabled', label: 'Tools Enabled', type: 'text', placeholder: 'true/false', value: fullProfile?.toolsEnabled != null ? String(fullProfile.toolsEnabled) : 'true' },
+                { name: 'isDefault', label: 'Is Default Profile', type: 'text', placeholder: 'true/false', value: fullProfile?.isDefault ? 'true' : 'false', help: PLACEHOLDER_HELP }
             ]
         }, async (values) => {
-            if (!values.name) {
-                vscode.window.showWarningMessage('Profile key is required');
-                return;
-            }
             const cfg = loadSendToChatConfig();
             if (cfg) {
                 if (!cfg.promptExpander) {
                     cfg.promptExpander = { profiles: {} };
                 }
-                // If name changed, delete old
-                if (values.name !== this._selectedProfile && cfg.promptExpander.profiles[this._selectedProfile]) {
-                    delete cfg.promptExpander.profiles[this._selectedProfile];
-                }
-                cfg.promptExpander.profiles[values.name] = { 
-                    label: values.label || values.name, 
-                    systemPrompt: values.systemPrompt || null, 
-                    toolsEnabled: true 
+                // Key is now read-only, always use this._selectedProfile
+                cfg.promptExpander.profiles[this._selectedProfile] = { 
+                    label: values.label || this._selectedProfile, 
+                    systemPrompt: values.systemPrompt || null,
+                    resultTemplate: values.resultTemplate || null,
+                    temperature: values.temperature ? parseFloat(values.temperature) : null,
+                    stripThinkingTags: values.stripThinkingTags === 'true' ? true : values.stripThinkingTags === 'false' ? false : null,
+                    toolsEnabled: values.toolsEnabled !== 'false',
+                    isDefault: values.isDefault === 'true'
                 };
                 if (saveSendToChatConfig(cfg)) {
                     this._loadProfiles();
-                    this._selectedProfile = values.name;
                     await this._saveDraft();
                     this._sendState();
-                    vscode.window.showInformationMessage(`Profile "${values.label || values.name}" updated`);
+                    vscode.window.showInformationMessage(`Profile "${values.label || this._selectedProfile}" updated`);
                 }
             }
         });
@@ -1646,7 +1660,9 @@ class ConversationNotepadProvider implements vscode.WebviewViewProvider {
                 { name: 'label', label: 'Display Label', type: 'text', placeholder: 'My Conversation' },
                 { name: 'description', label: 'Description', type: 'text', placeholder: 'What this conversation does...' },
                 { name: 'maxTurns', label: 'Max Turns', type: 'text', placeholder: '10' },
-                { name: 'initialPromptTemplate', label: 'Initial Prompt Template', type: 'textarea', placeholder: 'Goal: {{goal}}\\n\\nPlease help me...', help: `Use <code>{{goal}}</code> to insert the user\'s prompt.<br><br>${PLACEHOLDER_HELP}` }
+                { name: 'temperature', label: 'Temperature', type: 'text', placeholder: '0.5 (leave empty for global default)' },
+                { name: 'initialPromptTemplate', label: 'Initial Prompt Template', type: 'textarea', placeholder: 'Goal: ${goal}\\n\\nPlease help me...' },
+                { name: 'followUpTemplate', label: 'Follow-Up Template', type: 'textarea', placeholder: 'Previous exchanges:\\n${history}\\n\\nGenerate next prompt...', help: `Use <code>\${goal}</code>, <code>\${turn}</code>, <code>\${maxTurns}</code>, <code>\${history}</code> placeholders.<br><br>${PLACEHOLDER_HELP}` }
             ]
         }, async (values) => {
             if (!values.name) {
@@ -1663,7 +1679,9 @@ class ConversationNotepadProvider implements vscode.WebviewViewProvider {
                     label: values.label || values.name, 
                     description: values.description || '', 
                     maxTurns,
-                    initialPromptTemplate: values.initialPromptTemplate || null
+                    temperature: values.temperature ? parseFloat(values.temperature) : undefined,
+                    initialPromptTemplate: values.initialPromptTemplate || null,
+                    followUpTemplate: values.followUpTemplate || null
                 };
                 if (saveSendToChatConfig(config)) {
                     this._loadProfiles();
@@ -1688,39 +1706,35 @@ class ConversationNotepadProvider implements vscode.WebviewViewProvider {
             type: 'conversation',
             title: `Edit Profile: ${profile.label}`,
             fields: [
-                { name: 'name', label: 'Profile Key', type: 'text', placeholder: 'my_conversation', value: this._selectedProfile },
+                { name: 'name', label: 'Profile Key (read-only)', type: 'text', placeholder: 'my_conversation', value: this._selectedProfile, readonly: true },
                 { name: 'label', label: 'Display Label', type: 'text', placeholder: 'My Conversation', value: profile.label },
                 { name: 'description', label: 'Description', type: 'text', placeholder: 'What this conversation does...', value: profile.description || '' },
                 { name: 'maxTurns', label: 'Max Turns', type: 'text', placeholder: '10', value: String(profile.maxTurns || 10) },
-                { name: 'initialPromptTemplate', label: 'Initial Prompt Template', type: 'textarea', placeholder: 'Goal: ${goal}\\n\\nPlease help me...', value: fullProfile?.initialPromptTemplate || '', help: `Use <code>\${goal}</code> to insert the user\'s prompt.<br><br>${PLACEHOLDER_HELP}` }
+                { name: 'temperature', label: 'Temperature', type: 'text', placeholder: '0.5 (leave empty for global default)', value: fullProfile?.temperature != null ? String(fullProfile.temperature) : '' },
+                { name: 'initialPromptTemplate', label: 'Initial Prompt Template', type: 'textarea', placeholder: 'Goal: ${goal}\\n\\nPlease help me...', value: fullProfile?.initialPromptTemplate || '' },
+                { name: 'followUpTemplate', label: 'Follow-Up Template', type: 'textarea', placeholder: 'Previous exchanges:\\n${history}\\n\\nGenerate next prompt...', value: fullProfile?.followUpTemplate || '', help: `Use <code>\${goal}</code>, <code>\${turn}</code>, <code>\${maxTurns}</code>, <code>\${history}</code> placeholders.<br><br>${PLACEHOLDER_HELP}` }
             ]
         }, async (values) => {
-            if (!values.name) {
-                vscode.window.showWarningMessage('Profile key is required');
-                return;
-            }
             const maxTurns = values.maxTurns ? parseInt(values.maxTurns, 10) : 10;
             const cfg = loadSendToChatConfig();
             if (cfg) {
                 if (!cfg.botConversation) {
                     cfg.botConversation = { profiles: {} };
                 }
-                // If name changed, delete old
-                if (values.name !== this._selectedProfile && cfg.botConversation.profiles[this._selectedProfile]) {
-                    delete cfg.botConversation.profiles[this._selectedProfile];
-                }
-                cfg.botConversation.profiles[values.name] = { 
-                    label: values.label || values.name, 
+                // Key is now read-only, always use this._selectedProfile
+                cfg.botConversation.profiles[this._selectedProfile] = { 
+                    label: values.label || this._selectedProfile, 
                     description: values.description || '', 
                     maxTurns,
-                    initialPromptTemplate: values.initialPromptTemplate || null
+                    temperature: values.temperature ? parseFloat(values.temperature) : undefined,
+                    initialPromptTemplate: values.initialPromptTemplate || null,
+                    followUpTemplate: values.followUpTemplate || null
                 };
                 if (saveSendToChatConfig(cfg)) {
                     this._loadProfiles();
-                    this._selectedProfile = values.name;
                     await this._saveDraft();
                     this._sendState();
-                    vscode.window.showInformationMessage(`Profile "${values.label || values.name}" updated`);
+                    vscode.window.showInformationMessage(`Profile "${values.label || this._selectedProfile}" updated`);
                 }
             }
         });
