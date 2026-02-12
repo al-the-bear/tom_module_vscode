@@ -55,6 +55,8 @@ import {
     registerChordMenuCommands,
     registerCommandlineCommands,
     registerCombinedCommands,
+    registerStateMachineCommands,
+    registerDsNotesViews,
     telegramTestHandler,
     telegramToggleHandler,
     telegramConfigureHandler,
@@ -98,6 +100,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register combined commands (configurable multi-command shortcuts)
     registerCombinedCommands(context);
+
+    // Register state machine commands (stateful multi-command shortcuts)
+    registerStateMachineCommands(context);
+
+    // Register DS Notes panel views
+    registerDsNotesViews(context);
 
     // Check for test reinstall marker and send reload prompt to Copilot Chat
     checkTestReinstallMarker();

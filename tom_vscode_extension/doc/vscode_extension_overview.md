@@ -49,7 +49,9 @@ Example: key `x` executes both `workbench.action.toggleSidebarVisibility` and `w
 
 ## 3. Combined Commands
 
-Direct keybindings that execute configurable sequences of VS Code commands for quick layout management.
+Direct keybindings that execute configurable sequences of VS Code commands for quick layout management. Supports both simple command sequences and state machine commands.
+
+### Simple Command Sequences
 
 | Keybinding | Command ID | Default Action |
 |------------|------------|----------------|
@@ -58,7 +60,25 @@ Direct keybindings that execute configurable sequences of VS Code commands for q
 | `Ctrl+Shift+3` | `dartscript.maximizeEditor` | Hide both sidebars and panel |
 | `Ctrl+Shift+4` | `dartscript.maximizeChat` | Hide explorer and panel, show aux bar |
 
-Each command corresponds to a `combinedCommands` entry in the config file (e.g., `maximizeToggle`, `maximizeExplorer`). Entries contain an array of VS Code command IDs to execute in sequence. Users can customize actions by editing the config.
+Each command corresponds to a `combinedCommands` entry in the config file. Entries contain an array of VS Code command IDs to execute in sequence. Commands can include JavaScript fragments wrapped in `{ }` for inline evaluation.
+
+### State Machine Commands
+
+State machine commands execute different action sets based on current state, enabling cyclic workflows with a single keybinding.
+
+| Keybinding | Command ID | Description |
+|------------|------------|-------------|
+| `Ctrl+Shift+Y` | `dartscript.vsWindowStateFlow` | Cycle through panel visibility states |
+| — | `dartscript.resetMultiCommandState` | Reset all state machines to initial state |
+
+**Features:**
+- **Init Actions** — Run once on first invocation to establish known initial state
+- **State Actions** — Define transitions: `startState` → execute commands → `endState`
+- **Reset Actions** — Run when state is reset, then clear all state
+- **Per-window state** — Each VS Code window maintains independent state (memory only, not persisted)
+- **Validation** — Duplicate start states trigger an error message
+
+See [multi_command_commands.md](multi_command_commands.md) for detailed configuration reference.
 
 ## 4. Send to Copilot Chat
 

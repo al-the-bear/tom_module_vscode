@@ -15,6 +15,15 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "dartscript-panel",
+          "title": "DS Notes",
+          "icon": "$(notebook)"
+        }
+      ]
+    },
     "submenus": [
       {
         "id": "dartscript.sendToChatSubmenu",
@@ -330,8 +339,52 @@
         "command": "dartscript.combined.maximizeToggle",
         "title": "DS: Maximize Toggle",
         "category": "DartScript"
+      },
+      {
+        "command": "dartscript.stateMachine.vsWindowStateFlow",
+        "title": "DS: Window Panel State Flow",
+        "category": "DartScript"
+      },
+      {
+        "command": "dartscript.resetMultiCommandState",
+        "title": "DS: Reset All State Machine States",
+        "category": "DartScript"
       }
     ],
+    "views": {
+      "dartscript-panel": [
+        {
+          "type": "webview",
+          "id": "dartscript.guidelinesNotepad",
+          "name": "Guidelines",
+          "icon": "$(law)"
+        },
+        {
+          "type": "webview",
+          "id": "dartscript.notesNotepad",
+          "name": "Notes",
+          "icon": "$(note)"
+        },
+        {
+          "type": "webview",
+          "id": "dartscript.localLlmNotepad",
+          "name": "Local LLM",
+          "icon": "$(hubot)"
+        },
+        {
+          "type": "webview",
+          "id": "dartscript.conversationNotepad",
+          "name": "AI Conversation",
+          "icon": "$(comment-discussion)"
+        },
+        {
+          "type": "webview",
+          "id": "dartscript.copilotNotepad",
+          "name": "Copilot",
+          "icon": "$(sparkle)"
+        }
+      ]
+    },
     "keybindings": [
       {
         "command": "-workbench.action.terminal.openNativeConsole",
@@ -386,6 +439,10 @@
       {
         "command": "dartscript.combined.maximizeChat",
         "key": "ctrl+shift+4"
+      },
+      {
+        "command": "dartscript.stateMachine.vsWindowStateFlow",
+        "key": "ctrl+shift+y"
       }
     ],
     "menus": {

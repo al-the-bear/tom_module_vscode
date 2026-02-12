@@ -62,4 +62,6 @@ export {
 export { registerChordMenuCommands } from './chordMenu-handler';
 export { registerCommandlineCommands } from './commandline-handler';
 export { registerCombinedCommands } from './combinedCommand-handler';
+export { registerStateMachineCommands } from './stateMachine-handler';
 export { telegramTestHandler, telegramToggleHandler, telegramConfigureHandler, disposeTelegramStandalone } from './telegram-commands';
+export { registerDsNotesViews } from './dsNotes-handler';
