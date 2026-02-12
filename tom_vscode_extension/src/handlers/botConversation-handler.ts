@@ -26,6 +26,10 @@ import { bridgeLog, getCopilotModel, sendCopilotRequest, getWorkspaceRoot, getCo
 import { getPromptExpanderManager } from './expandPrompt-handler';
 import type { OllamaStats } from './expandPrompt-handler';
 import { TelegramNotifier, TelegramConfig, TelegramCommand, parseTelegramConfig, TELEGRAM_DEFAULTS } from './telegram-notifier';
+import {
+    clearTrail, logPrompt, logResponse, logCopilotAnswer,
+    isTrailEnabled, loadTrailConfig,
+} from './trailLogger-handler';
 
 // ============================================================================
 // Output Channel
@@ -1001,6 +1005,10 @@ export class BotConversationManager {
     ): Promise<void> {
         const { config } = state;
 
+        // Load trail config and clear trail for new conversation session
+        loadTrailConfig();
+        clearTrail('conversation');
+
         // Branch: self-talk mode runs an entirely different loop
         if (config.conversationMode === 'ollama-ollama') {
             return this.runSelfTalkLoop(state, manager);
@@ -1161,6 +1169,15 @@ export class BotConversationManager {
             // Delete old answer file
             this.deleteAnswerFile();
 
+            // Trail: Log prompt being sent to Copilot
+            logPrompt('conversation', 'copilot', fullCopilotPrompt, undefined, {
+                turn,
+                maxTurns: config.maxTurns,
+                requestId,
+                conversationId: state.conversationId,
+                goal: state.goal,
+            });
+
             // Send to Copilot via LM API
             const copilotResponseText = await vscode.window.withProgress(
                 {
@@ -1183,9 +1200,17 @@ export class BotConversationManager {
 
             if (fileResponse) {
                 copilotResponse = fileResponse;
+                // Trail: Log Copilot answer file response
+                logCopilotAnswer(answerFilePath, fileResponse);
             } else {
                 // Fallback: try to parse the streamed response as JSON
                 copilotResponse = this.parseInlineResponse(copilotResponseText, requestId);
+                // Trail: Log Copilot streamed response
+                logResponse('conversation', 'copilot', copilotResponseText, true, {
+                    source: 'streamed',
+                    requestId,
+                    turn,
+                });
             }
 
             // ------- Step 4: Record exchange -------

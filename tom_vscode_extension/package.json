@@ -19,7 +19,7 @@
       "panel": [
         {
           "id": "dartscript-panel",
-          "title": "DS Notes",
+          "title": "Tom AI",
           "icon": "$(notebook)"
         }
       ]
@@ -349,6 +349,11 @@
         "command": "dartscript.resetMultiCommandState",
         "title": "DS: Reset All State Machine States",
         "category": "DartScript"
+      },
+      {
+        "command": "dartscript.focusTomAI",
+        "title": "DS: Focus Tom AI Panel",
+        "category": "DartScript"
       }
     ],
     "views": {
@@ -382,6 +387,26 @@
           "id": "dartscript.copilotNotepad",
           "name": "Copilot",
           "icon": "$(sparkle)"
+        },
+        {
+          "type": "webview",
+          "id": "dartscript.tomAiChatNotepad",
+          "name": "Tom AI Chat",
+          "icon": "$(comment)"
+        }
+      ],
+      "explorer": [
+        {
+          "type": "webview",
+          "id": "dartscript.tomNotepad",
+          "name": "VS CODE NOTES",
+          "icon": "$(note)"
+        },
+        {
+          "type": "webview",
+          "id": "dartscript.workspaceNotepad",
+          "name": "WORKSPACE NOTES",
+          "icon": "$(file-text)"
         }
       ]
     },
@@ -439,6 +464,10 @@
       {
         "command": "dartscript.combined.maximizeChat",
         "key": "ctrl+shift+4"
+      },
+      {
+        "command": "dartscript.focusTomAI",
+        "key": "ctrl+shift+0"
       },
       {
         "command": "dartscript.stateMachine.vsWindowStateFlow",

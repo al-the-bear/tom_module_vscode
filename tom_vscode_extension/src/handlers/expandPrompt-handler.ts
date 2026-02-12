@@ -25,6 +25,10 @@ import {
     executeToolCall, toOllamaTools,
 } from '../tools/shared-tool-registry';
 import { READ_ONLY_TOOLS } from '../tools/tool-executors';
+import {
+    clearTrail, logPrompt, logResponse, logToolRequest, logToolResult,
+    logContinuationPrompt, isTrailEnabled, loadTrailConfig,
+} from './trailLogger-handler';
 
 // ============================================================================
 // Interfaces
@@ -704,6 +708,15 @@ export class PromptExpanderManager {
                 }
                 budgetNote += ']';
                 messages.push({ role: 'system', content: budgetNote });
+
+                // Trail: Log continuation prompt with turn budget
+                logContinuationPrompt('local', 'ollama', [{
+                    role: 'system',
+                    content: budgetNote,
+                    round: round + 1,
+                    remaining: remaining - 1,
+                    totalToolCallsSoFar: totalToolCalls,
+                }]);
             }
 
             // On the very last round, don't offer tools — force a text-only response
@@ -722,6 +735,13 @@ export class PromptExpanderManager {
                 return { text: result.text, stats: result.stats, toolCallCount: totalToolCalls, turnsUsed: round + 1 };
             }
 
+            // Trail: Log intermediate response with tool calls
+            logResponse('local', 'ollama', result.text || '', false, {
+                round: round + 1,
+                toolCallsInRound: result.toolCalls.length,
+                toolNames: result.toolCalls.map(tc => tc.function.name),
+            });
+
             // Append assistant message with tool_calls
             messages.push({
                 role: 'assistant',
@@ -733,8 +753,15 @@ export class PromptExpanderManager {
             // Execute each tool and append results
             for (const tc of result.toolCalls) {
                 totalToolCalls++;
+
+                // Trail: Log tool request
+                logToolRequest('local', tc.function.name, tc.function.arguments);
+
                 const toolResult = await executeToolCall(tools, tc);
                 onToolCall?.(tc.function.name, tc.function.arguments, toolResult);
+
+                // Trail: Log tool result
+                logToolResult('local', tc.function.name, toolResult);
 
                 // Log tool call to log channel
                 this.logChannel.appendLine(`[Round ${round + 1}] Tool #${totalToolCalls}: ${tc.function.name}`);
@@ -853,6 +880,10 @@ export class PromptExpanderManager {
     ): Promise<ExpanderProcessResult> {
         const config = this.loadConfig();
 
+        // Load trail config and clear trail for new session
+        loadTrailConfig();
+        clearTrail('local');
+
         // Resolve profile
         const effectiveProfileKey = profileKey ?? this.getDefaultProfileKey(config) ?? '_default';
         const profile = config.profiles[effectiveProfileKey];
@@ -904,6 +935,17 @@ export class PromptExpanderManager {
             // The model can choose to use tools or just produce a direct answer.
             const effectiveMaxRounds = profile?.maxRounds ?? 20;
 
+            // Trail: Log full prompt with system prompt and metadata
+            logPrompt('local', 'ollama', prompt, resolvedSystemPrompt, {
+                model: mc.model,
+                modelConfig: resolvedModelKey,
+                profile: effectiveProfileKey,
+                temperature: effectiveTemperature,
+                maxRounds: effectiveMaxRounds,
+                instructionsLength: instructionsContent.length,
+                registeredTools: READ_ONLY_TOOLS.map(t => t.name),
+            });
+
             const result = await this.ollamaGenerateWithTools({
                 baseUrl: mc.ollamaUrl,
                 model: mc.model,
@@ -936,6 +978,16 @@ export class PromptExpanderManager {
 
             // Process think tags
             const { cleaned, thinkContent } = this.processThinkTags(rawResponse, mc.stripThinkingTags);
+
+            // Trail: Log final response
+            logResponse('local', 'ollama', rawResponse, true, {
+                cleanedResponse: cleaned,
+                thinkTagContent: thinkContent,
+                toolCallCount,
+                turnsUsed,
+                maxTurns: effectiveMaxRounds,
+                stats,
+            });
 
             // Apply result template (with turn info)
             const postValues = this.buildPlaceholderValues(

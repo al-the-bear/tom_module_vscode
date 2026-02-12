@@ -13,6 +13,10 @@ import {
 } from './tomAiChat-utils';
 import { TodoManager, TodoOperationResult } from '../managers/todoManager';
 import { setActiveTodoManager } from '../tools/tomAiChat-tools';
+import {
+    clearTrail, logPrompt, logResponse, logToolRequest, logToolResult,
+    isTrailEnabled, loadTrailConfig, writeTrailFile,
+} from './trailLogger-handler';
 
 const logChannel = vscode.window.createOutputChannel('Tom AI Chat Log');
 const toolLogChannel = vscode.window.createOutputChannel('Tom Tool Log');
@@ -797,6 +801,19 @@ export async function sendToTomAiChatHandler(): Promise<void> {
     // maxIterations is now read from chat file or config (default 100)
     const systemPrompt = buildSystemPrompt();
     
+    // Trail: Clear and log initial prompt
+    loadTrailConfig();
+    clearTrail('tomai');
+    logPrompt('tomai', modelId, fullPromptTemplate, systemPrompt, {
+        chatId,
+        modelId,
+        tokenModelId,
+        maxIterations,
+        preProcessingEnabled: enablePromptOptimization,
+        contextFile: contextFilePath || null,
+        registeredTools: tools.map(t => t.name),
+    });
+    
     // Track tool calls to detect loops
     const toolCallHistory: string[] = [];
     const MAX_DUPLICATE_TOOL_CALLS = 3;
@@ -999,6 +1016,9 @@ Use the available tools to gather context, then respond with a summary of what y
 
         const toolResults: string[] = [];
         for (const call of toolCalls) {
+            // Trail: Log tool request
+            logToolRequest('tomai', call.name, call.input as Record<string, unknown>);
+            
             const headerToken = parsed.toolInvocationTokenText?.trim();
             const resolvedToolInvocationToken = (call as { toolInvocationToken?: vscode.ChatParticipantToolToken })
                 .toolInvocationToken
@@ -1020,6 +1040,8 @@ Use the available tools to gather context, then respond with a summary of what y
                 toolResults.push(`Tool ${call.name} result:\n${toolText.text}`);
                 // Log tool result to chat log (size only)
                 chatLog.logToolResult(call.name, toolTextRaw.length, true);
+                // Trail: Log tool result
+                logToolResult('tomai', call.name, toolText.text);
             } catch (error) {
                 toolLogChannel.appendLine(`[Tool Error] ${call.name}: ${String(error)}`);
                 logChannel.appendLine(`[Tom AI] Tool ${call.name} failed. Retrying without token...`);
@@ -1037,12 +1059,16 @@ Use the available tools to gather context, then respond with a summary of what y
                     toolResults.push(`Tool ${call.name} result (retry):\n${retryText.text}`);
                     // Log tool result to chat log (size only)
                     chatLog.logToolResult(call.name, retryTextRaw.length, true);
+                    // Trail: Log tool result (retry)
+                    logToolResult('tomai', call.name, retryText.text);
                 } catch (retryError) {
                     const errorMessage = `Tool ${call.name} failed: ${retryError}`;
                     toolResults.push(errorMessage);
                     toolLogChannel.appendLine(errorMessage);
                     // Log tool error to chat log
                     chatLog.logToolResult(call.name, 0, false, String(retryError));
+                    // Trail: Log tool error
+                    logToolResult('tomai', call.name, '', String(retryError));
                 }
             }
         }
@@ -1099,6 +1125,13 @@ Use the available tools to gather context, then respond with a summary of what y
     
     // Log final response to chat log file
     chatLog.logFinalResponse(responseText);
+    
+    // Trail: Log final response
+    logResponse('tomai', modelId, responseText, true, {
+        chatId,
+        iterations: maxIterations,
+        responseLength: responseText.length,
+    });
     
     // Switch to Tom AI Chat Responses output when logging the response
     responseChannel.show(true);

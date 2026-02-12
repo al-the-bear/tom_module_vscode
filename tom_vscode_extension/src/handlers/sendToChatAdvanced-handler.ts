@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigPath } from './handler_shared';
+import { logCopilotAnswer, isTrailEnabled, loadTrailConfig } from './trailLogger-handler';
 
 /**
  * Configuration entry for a send-to-chat template
@@ -616,6 +617,11 @@ export class SendToChatAdvancedManager {
                 if (typeof jsonData === 'object' && jsonData !== null) {
                     Object.assign(SendToChatAdvancedManager.chatAnswerData, jsonData);
                     this.log(`Loaded chat answer data from ${answerFilePath}`);
+                    
+                    // Trail: Log Copilot answer file
+                    loadTrailConfig();
+                    logCopilotAnswer(answerFilePath, jsonData);
+                    
                     return;
                 }
             } catch {
@@ -627,6 +633,10 @@ export class SendToChatAdvancedManager {
             if (Object.keys(parsed.data).length > 0) {
                 Object.assign(SendToChatAdvancedManager.chatAnswerData, parsed.data);
                 this.log(`Loaded chat answer data from ${answerFilePath}`);
+                
+                // Trail: Log Copilot answer file (YAML format)
+                loadTrailConfig();
+                logCopilotAnswer(answerFilePath, parsed.data);
             }
 
         } catch (error: any) {
