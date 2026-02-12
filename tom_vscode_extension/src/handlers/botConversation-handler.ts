@@ -745,6 +745,7 @@ export class BotConversationManager {
                 modelConfigKey: config.modelConfig ?? undefined,
                 temperature: 0.3,
                 stripThinkingTags: config.stripThinkingTags,
+                trailType: 'conversation',
             });
             return result.text;
         } catch (err: any) {
@@ -1071,6 +1072,7 @@ export class BotConversationManager {
                             temperature: config.temperature,
                             stripThinkingTags: config.stripThinkingTags,
                             cancellationToken: cancelToken,
+                            trailType: 'conversation',
                         });
                     },
                 );
@@ -1115,6 +1117,7 @@ export class BotConversationManager {
                             temperature: config.temperature,
                             stripThinkingTags: config.stripThinkingTags,
                             cancellationToken: cancelToken,
+                            trailType: 'conversation',
                         });
                     },
                 );
@@ -1314,6 +1317,7 @@ export class BotConversationManager {
                         temperature: personA.temperature ?? config.temperature,
                         stripThinkingTags: config.stripThinkingTags,
                         cancellationToken: cancelToken,
+                        trailType: 'conversation',
                     });
                 },
             );
@@ -1363,6 +1367,7 @@ export class BotConversationManager {
                         temperature: personB.temperature ?? config.temperature,
                         stripThinkingTags: config.stripThinkingTags,
                         cancellationToken: cancelToken,
+                        trailType: 'conversation',
                     });
                 },
             );
@@ -1797,6 +1802,7 @@ export class BotConversationManager {
             modelConfigKey: typeof params.modelConfig === 'string' ? params.modelConfig : config.modelConfig ?? undefined,
             temperature: typeof params.temperature === 'number' ? params.temperature : config.temperature,
             stripThinkingTags: config.stripThinkingTags,
+            trailType: 'conversation',
         });
 
         const localOutput = genResult.text.trim();

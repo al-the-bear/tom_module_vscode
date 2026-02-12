@@ -28,6 +28,7 @@ import { READ_ONLY_TOOLS } from '../tools/tool-executors';
 import {
     clearTrail, logPrompt, logResponse, logToolRequest, logToolResult,
     logContinuationPrompt, isTrailEnabled, loadTrailConfig,
+    type TrailType,
 } from './trailLogger-handler';
 
 // ============================================================================
@@ -658,12 +659,15 @@ export class PromptExpanderManager {
         cancellationToken?: vscode.CancellationToken;
         keepAlive?: string;
         maxRounds?: number;
+        /** Trail type for logging (defaults to 'local'). */
+        trailType?: TrailType;
     }): Promise<{ text: string; stats?: OllamaStats; toolCallCount: number; turnsUsed: number }> {
         const {
             baseUrl, model, systemPrompt, userPrompt, temperature,
             tools, onToken, onToolCall, cancellationToken, keepAlive,
         } = options;
         const maxRounds = options.maxRounds ?? 20;
+        const trailType = options.trailType ?? 'local';
         const ollamaTools = toOllamaTools(tools, () => true); // send all provided tools
 
         // Log tool registrations and prompts
@@ -710,7 +714,7 @@ export class PromptExpanderManager {
                 messages.push({ role: 'system', content: budgetNote });
 
                 // Trail: Log continuation prompt with turn budget
-                logContinuationPrompt('local', 'ollama', [{
+                logContinuationPrompt(trailType, 'ollama', [{
                     role: 'system',
                     content: budgetNote,
                     round: round + 1,
@@ -736,7 +740,7 @@ export class PromptExpanderManager {
             }
 
             // Trail: Log intermediate response with tool calls
-            logResponse('local', 'ollama', result.text || '', false, {
+            logResponse(trailType, 'ollama', result.text || '', false, {
                 round: round + 1,
                 toolCallsInRound: result.toolCalls.length,
                 toolNames: result.toolCalls.map(tc => tc.function.name),
@@ -755,13 +759,13 @@ export class PromptExpanderManager {
                 totalToolCalls++;
 
                 // Trail: Log tool request
-                logToolRequest('local', tc.function.name, tc.function.arguments);
+                logToolRequest(trailType, tc.function.name, tc.function.arguments);
 
                 const toolResult = await executeToolCall(tools, tc);
                 onToolCall?.(tc.function.name, tc.function.arguments, toolResult);
 
                 // Trail: Log tool result
-                logToolResult('local', tc.function.name, toolResult);
+                logToolResult(trailType, tc.function.name, toolResult);
 
                 // Log tool call to log channel
                 this.logChannel.appendLine(`[Round ${round + 1}] Tool #${totalToolCalls}: ${tc.function.name}`);
@@ -811,17 +815,29 @@ export class PromptExpanderManager {
         cancellationToken?: vscode.CancellationToken;
         maxRounds?: number;
         onToolCall?: (toolName: string, args: Record<string, unknown>, result: string) => void;
+        /** Trail type for logging (defaults to 'local'). Pass 'conversation' for bot conversations. */
+        trailType?: TrailType;
     }): Promise<{ text: string; rawText: string; thinkContent: string; stats?: OllamaStats; toolCallCount?: number; turnsUsed?: number }> {
         const config = this.loadConfig();
         const { mc } = this.resolveModelConfig(config, undefined, options.modelConfigKey);
         const temp = options.temperature ?? mc.temperature;
         const strip = options.stripThinkingTags ?? mc.stripThinkingTags;
+        const trailType = options.trailType ?? 'local';
 
         // Check Ollama is running
         const running = await this.isOllamaRunning(mc.ollamaUrl);
         if (!running) {
             throw new Error(`Ollama is not running at ${mc.ollamaUrl}`);
         }
+
+        // Trail: Log prompt before sending to Ollama
+        logPrompt(trailType, 'ollama', options.userPrompt, options.systemPrompt, {
+            model: mc.model,
+            modelConfig: options.modelConfigKey,
+            temperature: temp,
+            maxRounds: options.maxRounds ?? 20,
+            source: 'chatWithOllama',
+        });
 
         // Always use tool-call loop — model decides whether to use tools
         const result = await this.ollamaGenerateWithTools({
@@ -835,9 +851,20 @@ export class PromptExpanderManager {
             cancellationToken: options.cancellationToken,
             keepAlive: mc.keepAlive,
             maxRounds: options.maxRounds ?? 20,
+            trailType,
         });
 
         const { cleaned, thinkContent } = this.processThinkTags(result.text, strip);
+
+        // Trail: Log final response from Ollama
+        logResponse(trailType, 'ollama', result.text, true, {
+            cleanedResponse: cleaned,
+            thinkTagContent: thinkContent,
+            toolCallCount: result.toolCallCount,
+            turnsUsed: result.turnsUsed,
+            stats: result.stats,
+            source: 'chatWithOllama',
+        });
 
         return { text: cleaned, rawText: result.text, thinkContent, stats: result.stats, toolCallCount: result.toolCallCount, turnsUsed: result.turnsUsed };
     }
