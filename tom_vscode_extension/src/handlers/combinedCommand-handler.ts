@@ -150,6 +150,7 @@ export function registerCombinedCommands(
         'maximizeExplorer',
         'maximizeEditor',
         'maximizeChat',
+        'showSideNotes',
     ];
 
     for (const name of registeredNames) {

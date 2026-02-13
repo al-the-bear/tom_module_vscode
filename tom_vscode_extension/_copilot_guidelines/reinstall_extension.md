@@ -31,7 +31,7 @@ Use the VS Code command palette or the `run_vscode_command` tool with `commandId
 
 ### Step 3: Wait for Confirmation
 
-**Important:** Wait for the user or VS Code Bridge to confirm the reload is complete with `!reload finished` before continuing with any testing or further work.
+**Important:** Wait for the user or VS Code Bridge to confirm the reload is complete with `!!!reload finished` before continuing with any testing or further work.
 
 ## Notes
 
