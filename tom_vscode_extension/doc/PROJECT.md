@@ -1,492 +1,403 @@
-# Tom VS Code Integration System
+# Tom VS Code Extension — Project Overview
 
-The tom_vscode_extension is a VS Code extension that provides the TypeScript side of the bridge system, spawning and managing the Dart bridge process for Dart-based VS Code extension development.
+Project overview for the `dartscript-vscode` VS Code extension (publisher: `tom`, version 0.1.0).
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Quick Start](#quick-start)
-- [Core Features](#core-features)
+- [Feature Areas](#feature-areas)
 - [Extension Commands](#extension-commands)
-- [Copilot Integration](#copilot-integration)
-- [Bridge Communication](#bridge-communication)
 - [Configuration](#configuration)
-- [Best Practices](#best-practices)
+- [Project Structure](#project-structure)
+- [Development](#development)
 
 ---
 
 ## Overview
 
-The Tom VS Code Integration System provides:
+The Tom VS Code Extension (`dartscript-vscode`) is a comprehensive AI development platform built as a VS Code extension. It bridges TypeScript and Dart through a JSON-RPC child process, providing 15 feature areas with 57+ registered commands.
 
-1. **Extension Host**: VS Code extension managing the Dart bridge as a child process
-2. **Bridge Client**: JSON-RPC client for bidirectional communication with Dart
-3. **Copilot Integration**: Full access to GitHub Copilot Language Model API
-4. **Command System**: User commands for executing Dart scripts and analyzing workspaces
+### What It Does
 
-### Why Use This Extension?
+- **AI-assisted development** — Send to Chat, Tom AI Chat (agentic `.chat.md`), local LLM (Ollama), automated bot conversations
+- **Keyboard productivity** — Chord menus, combined commands, state machines, commandlines, favorites
+- **Dart bridge** — Execute Dart/D4rt scripts with full VS Code API access from Dart
+- **Remote control** — Telegram bot with 14 CLI-like commands, TCP CLI server for Tom CLI
+- **Dashboard & panels** — TOM AI bottom panel, Status Page, VS Code Notes, Workspace Notes
 
-- **Dart Extension Development**: Write VS Code extensions in Dart
-- **Copilot Integration**: AI-powered documentation generation and analysis
-- **Dynamic Execution**: Run Dart and JavaScript scripts dynamically
-- **Workspace Analysis**: Analyze project structure with Copilot assistance
-- **Context Menu Integration**: Execute Dart scripts directly from file explorer
+### Technology
+
+| Component | Technology |
+|-----------|-----------|
+| Extension host | TypeScript, VS Code Extension API 1.96+ |
+| Bridge server | Dart, JSON-RPC 2.0 over stdin/stdout |
+| Dynamic execution | D4rt interpreter with VS Code API bridges |
+| LLM integration | VS Code Language Model API (Copilot), Ollama HTTP API |
+| Bot framework | Telegram Bot API via HTTP |
+| Package dependencies | `@vscode/codicons`, `telegramify-markdown` |
 
 ---
 
 ## Quick Start
 
-### 1. Installation
+### 1. Install and Activate
 
-```bash
-# Install from VSIX
-code --install-extension tom-ai-build-vscode-0.1.0.vsix
+The extension activates automatically on `onStartupFinished`. No manual activation needed.
 
-# Or build from source
-npm install
-npm run compile
-```
+### 2. Open Key Panels
 
-### 2. Configure Workspace
+| Action | How |
+|--------|-----|
+| Show chord menus | Keybinding (see Quick Reference) |
+| Open Status Page | `DartScript: Show Status Page` |
+| Open TOM AI panel | Click TOM AI tab in bottom panel |
+| Open Notes | VS CODE NOTES / WORKSPACE NOTES in Explorer sidebar |
 
-Ensure you have a workspace with `tom_vscode_bridge` project:
+### 3. Try Core Features
 
-```
-workspace/
-├── tom_vscode_bridge/
-│   ├── bin/
-│   │   └── tom_vscode_bridge.dart
-│   ├── lib/
-│   └── pubspec.yaml
-└── your_project/
-```
+**Send to Chat** — Select text, use chord menu or command palette → `DartScript: Send to Chat`.
 
-### 3. Start Using
+**Tom AI Chat** — `DartScript: Start Tom AI Chat`, opens/creates `.chat.md` file with agentic loop using 14 workspace tools.
 
-Open Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`) and run:
-- `DartScript: Hello World` - Test extension
-- `DartScript: Analyze Workspace with Copilot` - AI-powered analysis
-- `DartScript: Ask Copilot to Generate Docs` - Generate documentation
+**Execute Script** — Open a `.d4rt.dart` file → `DartScript: Execute File in DartScript`.
 
-Right-click on `.dart` files:
-- `Execute in DartScript` - Run Dart file via bridge
-- `Execute as Script in DartScript` - Run as inline script
+**Chord Menu** — Press the chord key sequence → pick a command group → execute. Six groups: Chat, LLM, Execute, Conversation, Tom AI Chat, Favorites.
+
+### 4. Configure
+
+Open `~/.tom/vscode/tom_vscode_extension.json` directly or via `DartScript: Open Config`. Use `DartScript: Show Status Page` for a visual dashboard.
 
 ---
 
-## Core Features
+## Feature Areas
 
-### Extension Lifecycle
+The extension has 15 feature areas. Each is briefly described below with links to detailed documentation.
 
-The extension activates when:
-- Workspace opens
-- First command is executed
-- Context menu action is triggered
+### 1. Chord Menus
 
-```typescript
-export function activate(context: vscode.ExtensionContext) {
-    console.log('DartScript extension is now active!');
-    
-    // Initialize bridge client (not started yet)
-    bridgeClient = new DartBridgeClient(context);
-    
-    // Register commands
-    registerCommands(context);
-}
-```
+Quick-pick menus triggered by keyboard chords. Six menu groups (chat, llm, execute, conversation, tomAiChat, favorites) with configurable entries.
 
-### Bridge Management
+→ [keybindings_and_commands.md](../_copilot_guidelines/keybindings_and_commands.md)
 
-```typescript
-// Start bridge
-await bridgeClient.start(workspaceRoot);
+### 2. Favorites
 
-// Send request to Dart
-const result = await bridgeClient.sendRequest('getWorkspaceInfo', {
-    workspaceRoot: workspaceRoot
-});
+User-defined command shortcuts stored in external config. Accessible via `chordMenu.favorites`.
 
-// Stop bridge
-bridgeClient.stop();
-```
+→ [keybindings_and_commands.md](../_copilot_guidelines/keybindings_and_commands.md)
 
-### Script Execution
+### 3. Combined Commands
 
-Execute JavaScript with VS Code API access:
+Execute multiple VS Code commands in sequence from a single keybinding. Configurable with delays between commands.
 
-```typescript
-const result = await bridgeClient.sendRequest('executeScript', {
-    script: `
-        const files = await context.vscode.workspace.findFiles('**/*.ts');
-        return { fileCount: files.length };
-    `,
-    params: {}
-});
-```
+→ [keybindings_and_commands.md](../_copilot_guidelines/keybindings_and_commands.md)
+
+### 4. Send to Chat
+
+Send selected text or file content to Copilot Chat using configurable templates with `${variable}` expansion. Supports `${dartscript.*}` variables (workspace state, bridge data), trail reminders, and answer value store.
+
+→ [copilot_answers.md](../_copilot_guidelines/copilot_answers.md)
+
+### 5. Tom AI Chat
+
+Agentic AI workflow using `.chat.md` files. The extension reads the file, sends it to VS Code LM API with 14 workspace tools, and appends the response. Supports multi-turn iteration, tool calling, and prompt optimization mode.
+
+→ [tom_ai_chat.md](../_copilot_guidelines/tom_ai_chat.md)
+
+### 6. Bot Conversation
+
+Automated multi-turn dialogue between Ollama (local) and Copilot (VS Code LM API). Configurable turn count with tool calling, halt/resume control, and conversation injection.
+
+→ [ai_conversation.md](../_copilot_guidelines/ai_conversation.md)
+
+### 7. Local LLM (Prompt Expander)
+
+Send prompts to a local Ollama model for expansion, rewriting, or annotation. Supports tool calling with the same 14 shared tools. Multiple output modes (expand, rewrite, detailed, annotated).
+
+→ [local_llm.md](../_copilot_guidelines/local_llm.md)
+
+### 8. Script Execution & Bridge
+
+Execute Dart/D4rt scripts via the bridge child process. Supports file execution, inline script execution, and D4rt REPL. Bridge profiles allow switching between project configurations.
+
+→ [dartscript_extension_bridge.md](../_copilot_guidelines/dartscript_extension_bridge.md), [bridge_scripting_guide.md](../_copilot_guidelines/bridge_scripting_guide.md)
+
+### 9. VS Code API from Dart
+
+Full VS Code API access from Dart code through typed wrapper classes. 80+ D4rt helper functions for common operations. Bidirectional JSON-RPC communication.
+
+→ [ARCHITECTURE.md](ARCHITECTURE.md) (Bridge Server Architecture section)
+
+### 10. Telegram Bot Integration
+
+Telegram bot with 14 CLI-like commands for remote workspace control: notifications, file operations, command execution, AI queries, bridge management.
+
+→ [vscode_extension_overview.md](../_copilot_guidelines/vscode_extension_overview.md)
+
+### 11. CLI Integration
+
+TCP server allowing Tom CLI to interact with VS Code. Start/stop via commands or Status Page. Configurable port.
+
+→ [vscode_extension_overview.md](../_copilot_guidelines/vscode_extension_overview.md)
+
+### 12. Commandline Manager
+
+Named command sequences stored in external config. Define, delete, and execute commandlines via command palette.
+
+→ [keybindings_and_commands.md](../_copilot_guidelines/keybindings_and_commands.md)
+
+### 13. TOM AI Bottom Panel
+
+Webview-based accordion panel with 6 collapsible sections: Chat Quick Access, Prompt Templates, Workspace Info, AI Configuration, Tools Reference, Quick Actions.
+
+→ [tom_ai_bottom_panel.md](../_copilot_guidelines/tom_ai_bottom_panel.md)
+
+### 14. Status Page
+
+Full-tab webview dashboard for configuring 8 service areas: Bridge, CLI Server, Telegram, Trail, Local LLM, Bot Conversation, Tom AI Chat, Prompt Expander.
+
+→ [tom_status_page.md](../_copilot_guidelines/tom_status_page.md)
+
+### 15. Developer Utilities
+
+API info viewer, configuration printer, help system, debug logging toggle, process monitor, quick reference card.
+
+→ [IMPLEMENTATION.md](IMPLEMENTATION.md)
 
 ---
 
 ## Extension Commands
 
-### DartScript: Hello World
+57+ commands registered under the `dartscript.*` namespace. Organized by feature area:
 
-Simple test command showing the extension is working.
+### Send to Chat Commands
 
-```typescript
-vscode.commands.registerCommand(
-    'dartScript.helloWorld',
-    () => {
-        vscode.window.showInformationMessage('Hello from DartScript!');
-    }
-);
-```
+| Command | Purpose |
+|---------|---------|
+| `dartscript.sendToChat` | Send to Copilot Chat (with template selection) |
+| `dartscript.sendToChatAdvanced` | Send with advanced options |
+| `dartscript.sendToChatStandard` | Send via standard template |
+| `dartscript.sendToChatTodoExecution` | TODO execution template |
+| `dartscript.sendToChatCodeReview` | Code review template |
+| `dartscript.sendToChatExplain` | Explain code template |
+| `dartscript.sendToChatAddToTodo` | Add to TODO template |
+| `dartscript.sendToChatFixMarkdown` | Fix markdown template |
+| `dartscript.sendToChatTrailReminder` | Toggle trail reminder warnings |
+| `dartscript.reloadSendToChatConfig` | Reload template config |
+| `dartscript.showChatAnswerValues` | Show stored answer values |
+| `dartscript.clearChatAnswerValues` | Clear stored answer values |
 
-### DartScript: Analyze Workspace with Copilot
+### Tom AI Chat Commands
 
-Analyzes workspace structure using GitHub Copilot.
+| Command | Purpose |
+|---------|---------|
+| `dartscript.startTomAIChat` | Start agentic chat from `.chat.md` file |
+| `dartscript.sendToTomAIChat` | Send message to active chat |
+| `dartscript.interruptTomAIChat` | Interrupt running chat |
 
-**Process**:
-1. Scans workspace directory structure
-2. Sends structure to Copilot with analysis prompt
-3. Receives AI-generated insights
-4. Displays results in markdown document
+### Local LLM Commands
 
-**Example Output**:
-```markdown
-## Workspace Analysis
+| Command | Purpose |
+|---------|---------|
+| `dartscript.expandPrompt` | Expand prompt via Ollama |
+| `dartscript.switchLocalModel` | Switch Ollama model |
+| `dartscript.sendToLocalLlm` | Send to local LLM (with mode selection) |
+| `dartscript.sendToLocalLlmAdvanced` | Send with advanced options |
+| `dartscript.sendToLocalLlmStandard` | Send via standard mode |
+| `dartscript.sendToLocalLlm.expand` | Expand mode |
+| `dartscript.sendToLocalLlm.rewrite` | Rewrite mode |
+| `dartscript.sendToLocalLlm.detailed` | Detailed mode |
+| `dartscript.sendToLocalLlm.annotated` | Annotated mode |
 
-### Overview
-This appears to be a multi-project Dart workspace with a bridge system for VS Code extension development...
+### Bot Conversation Commands
 
-### Project Structure
-- tom_vscode_bridge: Dart bridge server
-- tom_vscode_extension: TypeScript extension
-...
-```
+| Command | Purpose |
+|---------|---------|
+| `dartscript.startBotConversation` | Start Ollama↔Copilot conversation |
+| `dartscript.stopBotConversation` | Stop conversation |
+| `dartscript.haltBotConversation` | Pause conversation |
+| `dartscript.continueBotConversation` | Resume paused conversation |
+| `dartscript.addToBotConversation` | Inject message into conversation |
 
-### DartScript: Ask Copilot to Generate Docs
+### Chord Menu Commands
 
-Generates documentation for Dart files using Copilot.
+| Command | Purpose |
+|---------|---------|
+| `dartscript.chordMenu.chat` | Open Chat chord menu |
+| `dartscript.chordMenu.llm` | Open LLM chord menu |
+| `dartscript.chordMenu.execute` | Open Execute chord menu |
+| `dartscript.chordMenu.conversation` | Open Conversation chord menu |
+| `dartscript.chordMenu.tomAiChat` | Open Tom AI Chat chord menu |
+| `dartscript.chordMenu.favorites` | Open Favorites chord menu |
 
-**Usage**:
-1. Right-click on a `.dart` file
-2. Select "DartScript: Ask Copilot to Generate Docs"
-3. Wait for generation (shows progress)
-4. Review generated markdown documentation
+### Combined & State Machine Commands
 
-**Features**:
-- Analyzes code structure
-- Documents classes and functions
-- Provides usage examples
-- Lists dependencies
-- Suggests improvements
+| Command | Purpose |
+|---------|---------|
+| `dartscript.combined.maximizeExplorer` | Maximize explorer pane |
+| `dartscript.combined.maximizeEditor` | Maximize editor pane |
+| `dartscript.combined.maximizeChat` | Maximize chat pane |
+| `dartscript.combined.maximizeToggle` | Toggle maximize state |
+| `dartscript.stateMachine.vsWindowStateFlow` | VS window state flow |
+| `dartscript.resetMultiCommandState` | Reset all state machines |
 
-### Execute in DartScript
+### Commandline & Config Commands
 
-Executes a Dart file via the bridge using the `executeFile` method.
+| Command | Purpose |
+|---------|---------|
+| `dartscript.defineCommandline` | Define a new commandline |
+| `dartscript.deleteCommandline` | Delete a commandline |
+| `dartscript.executeCommandline` | Execute a commandline |
+| `dartscript.openConfig` | Open external config file |
+| `dartscript.openExtensionSettings` | Open VS Code extension settings |
 
-**Requirements**:
-- File must have an `execute()` function
-- Function signature: `Future<Map<String, dynamic>> execute(Map<String, dynamic> params, dynamic context)`
+### Bridge & Execution Commands
 
-**Example File**:
-```dart
-Future<Map<String, dynamic>> execute(
-  Map<String, dynamic> params,
-  dynamic context,
-) async {
-  final vscode = context['vscode'];
-  
-  await vscode.window.showInformationMessage('Hello from Dart file!');
-  
-  return {
-    'success': true,
-    'message': 'Execution complete'
-  };
-}
-```
+| Command | Purpose |
+|---------|---------|
+| `dartscript.executeFile` | Execute current file via bridge |
+| `dartscript.executeScript` | Execute inline script |
+| `dartscript.restartBridge` | Restart bridge process |
+| `dartscript.switchBridgeProfile` | Switch bridge profile |
+| `dartscript.runTests` | Run tests via bridge |
 
-### Execute as Script in DartScript
+### Infrastructure Commands
 
-Executes Dart file content as inline script using `executeScript`.
+| Command | Purpose |
+|---------|---------|
+| `dartscript.startCliServer` | Start CLI TCP server |
+| `dartscript.startCliServerCustomPort` | Start CLI server on custom port |
+| `dartscript.stopCliServer` | Stop CLI server |
+| `dartscript.startProcessMonitor` | Start process monitor |
+| `dartscript.telegramTest` | Test Telegram connection |
+| `dartscript.telegramToggle` | Toggle Telegram bot |
+| `dartscript.telegramConfigure` | Configure Telegram bot |
+| `dartscript.toggleTrail` | Toggle trail logging |
 
-**Difference from executeFile**:
-- `executeFile`: Runs as subprocess with `dart run`
-- `executeScript`: Runs via D4rt interpreter (dynamic execution)
+### Utility Commands
 
----
----
-
-## Copilot Integration
-
-### Language Model Selection
-
-```typescript
-async function getCopilotModel(): Promise<vscode.LanguageModelChat | undefined> {
-    // Get configuration
-    const config = vscode.workspace.getConfiguration('dartScript');
-    const preferredModel = config.get<string>('copilotModel', 'gpt-4o');
-
-    // Select model
-    let models = await vscode.lm.selectChatModels({
-        vendor: 'copilot',
-        family: preferredModel
-    });
-
-    // Fallback to any Copilot model
-    if (models.length === 0) {
-        models = await vscode.lm.selectChatModels({
-            vendor: 'copilot'
-        });
-    }
-
-    return models[0];
-}
-```
-
-### Sending Requests
-
-```typescript
-async function sendCopilotRequest(
-    model: vscode.LanguageModelChat,
-    prompt: string,
-    token: vscode.CancellationToken
-): Promise<string> {
-    const messages = [
-        vscode.LanguageModelChatMessage.User(prompt)
-    ];
-
-    const response = await model.sendRequest(messages, {}, token);
-
-    let fullResponse = '';
-    for await (const chunk of response.text) {
-        if (token.isCancellationRequested) {
-            throw new Error('Request cancelled');
-        }
-        fullResponse += chunk;
-    }
-
-    return fullResponse;
-}
-```
-
-### Error Handling
-
-```typescript
-try {
-    const result = await sendCopilotRequest(model, prompt, token);
-} catch (error) {
-    if (error instanceof vscode.LanguageModelError) {
-        if (error.cause?.message.includes('off_topic')) {
-            throw new Error('Request rejected as off-topic');
-        }
-        if (error.cause?.message.includes('quota')) {
-            throw new Error('Copilot quota limit exceeded');
-        }
-    }
-    throw error;
-}
-```
-
----
-
-## Bridge Communication
-
-### JSON-RPC Protocol
-
-Communication uses JSON-RPC 2.0 over stdin/stdout pipes.
-
-#### Sending Requests to Dart
-
-```typescript
-const result = await bridgeClient.sendRequest<WorkspaceInfo>(
-    'getWorkspaceInfo',
-    { workspaceRoot: '/path/to/workspace' }
-);
-```
-
-#### Handling Dart Requests
-
-```typescript
-private async handleDartRequest(
-    method: string,
-    params: any,
-    id?: number
-): Promise<void> {
-    let result: any;
-
-    switch (method) {
-        case 'showInfo':
-            vscode.window.showInformationMessage(params.message);
-            result = { success: true };
-            break;
-
-        case 'readFile':
-            result = await this.readFile(params.path);
-            break;
-
-        // ... more handlers
-    }
-
-    if (id !== undefined) {
-        this.sendResponse(id, result);
-    }
-}
-```
-
-### Available Methods
-
-**TypeScript → Dart**:
-- `getWorkspaceInfo`: Get workspace information
-- `analyzeProject`: Analyze Dart project
-- `executeFile`: Execute Dart file as subprocess
-- `executeScript`: Execute Dart code via D4rt
-
-**Dart → TypeScript**:
-- `log`: Write to output channel
-- `showInfo/showWarning/showError`: Show messages
-- `askCopilot`: Query Copilot
-- `readFile/writeFile`: File I/O
-- `openFile`: Open file in editor
-- `executeScript`: Execute JavaScript dynamically
+| Command | Purpose |
+|---------|---------|
+| `dartscript.showStatusPage` | Open Status Page dashboard |
+| `dartscript.showHelp` | Show extension help |
+| `dartscript.showApiInfo` | Show API information |
+| `dartscript.showQuickReference` | Show quick reference |
+| `dartscript.printConfiguration` | Print current config to output |
+| `dartscript.toggleBridgeDebugLogging` | Toggle debug logging |
+| `dartscript.reloadWindow` | Reload VS Code window |
+| `dartscript.focusTomAI` | Focus TOM AI bottom panel |
 
 ---
 
 ## Configuration
 
-### Settings
+### VS Code Settings
 
-Configure in VS Code settings (`settings.json` or UI):
+Settings under the `dartscript.*` namespace in VS Code:
 
-```json
-{
-  "dartScript.copilotModel": "gpt-4o",
-  "dartScript.autoStart": false,
-  "dartScript.maxContextSize": 100000
-}
-```
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `dartscript.contextApproach` | `accumulation` | Context persistence approach (`accumulation` or `persistent`) |
+| `dartscript.maxContextSize` | `50000` | Maximum context size in tokens |
+| `dartscript.autoRunOnSave` | `false` | Auto-run scripts on save |
+| `dartscript.copilotModel` | `gpt-4o` | Preferred Copilot model family |
+| `dartscript.configPath` | `~/.tom/vscode/tom_vscode_extension.json` | External config file path |
+| `dartscript.sendToChat.showNotifications` | `true` | Show Send to Chat notifications |
+| `dartscript.sendToChat.chatAnswerFolder` | `_ai/chat_replies` | Folder for chat answer files |
+| `dartscript.tomAiChat.modelId` | `gpt-5.2` | Model for Tom AI Chat |
+| `dartscript.tomAiChat.tokenModelId` | `gpt-4o` | Model for token counting |
+| `dartscript.tomAiChat.responsesTokenLimit` | `50000` | Token limit for responses file |
+| `dartscript.tomAiChat.responseSummaryTokenLimit` | `8000` | Token limit for response summary |
+| `dartscript.tomAiChat.preProcessingModelId` | `gpt-5-mini` | Model for pre-processing step |
+| `dartscript.tomAiChat.enablePromptOptimization` | `false` | Enable pre-processing with cheap model |
+| `dartscript.ollama.url` | `http://localhost:11434` | Ollama server URL |
+| `dartscript.ollama.model` | `qwen3:8b` | Ollama model name |
 
-#### dartScript.copilotModel
+### External Configuration
 
-Preferred Copilot model family.
+Complex configuration lives in `~/.tom/vscode/tom_vscode_extension.json` (path configurable via `dartscript.configPath`). Open via `DartScript: Open Config` or edit through the Status Page.
 
-- **Type**: `string`
-- **Default**: `"gpt-4o"`
-- **Options**: `"gpt-4o"`, `"gpt-4"`, `"gpt-3.5-turbo"`
+**External config sections:**
 
-#### dartScript.autoStart
-
-Automatically start Dart bridge on extension activation.
-
-- **Type**: `boolean`
-- **Default**: `false`
-
-#### dartScript.maxContextSize
-
-Maximum context size for Copilot requests (in tokens).
-
-- **Type**: `number`
-- **Default**: `100000`
-
-### Reading Configuration
-
-```typescript
-const config = vscode.workspace.getConfiguration('dartScript');
-const model = config.get<string>('copilotModel', 'gpt-4o');
-const autoStart = config.get<boolean>('autoStart', false);
-```
+| Section | Purpose |
+|---------|---------|
+| `sendToChat` | Template definitions, default template, variable mappings |
+| `promptExpander` | Ollama URL, model, system prompts, tool configuration |
+| `botConversation` | Turn count, auto-halt, Ollama/Copilot settings |
+| `tomAiChat` | Tool config, system prompts, file conventions |
+| `dartscriptBridge` | Bridge profiles (path, args, env per profile) |
+| `chordMenus` | Chord menu entries and keybinding mappings |
+| `combinedCommands` | Multi-command sequences with delays |
+| `commandlines` | Named command sequences |
+| `favorites` | User-defined command shortcuts |
+| `stateMachines` | State transitions for window management |
+| `telegram` | Bot token, chat ID, allowed users, notification config |
+| `trail` | Trail logging file path and toggle state |
 
 ---
 
-## Best Practices
+## Project Structure
 
-### 1. Check Bridge Status
-
-```typescript
-if (!bridgeClient || !bridgeClient.isRunning()) {
-    await bridgeClient.start(workspaceRoot);
-}
+```
+tom_vscode_extension/
+├── package.json                  # Extension manifest (commands, settings, views)
+├── tsconfig.json                 # TypeScript configuration
+├── src/
+│   ├── extension.ts              # Entry point (activate/deactivate)
+│   ├── vscode-bridge.ts          # DartBridgeClient + Vce handlers
+│   ├── handler_shared.ts         # Shared state, utilities, logging
+│   ├── handlers/                 # ~35 handler files (one per feature)
+│   ├── tools/                    # LM tool registry, executors, escalation
+│   └── managers/                 # todoManager and other state managers
+├── doc/                          # Technical documentation
+│   ├── ARCHITECTURE.md           # System architecture
+│   ├── IMPLEMENTATION.md         # Implementation reference
+│   ├── PROJECT.md                # This file
+│   ├── USER_GUIDE.md             # End-user guide
+│   └── QUICK_REFERENCE.md        # Command quick reference
+├── _copilot_guidelines/          # 16 development guidelines
+└── out/                          # Compiled JavaScript output
 ```
 
-### 2. Use Progress Indicators
+See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full handler file listing and handler architecture pattern.
 
-```typescript
-await vscode.window.withProgress(
-    {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Processing...',
-        cancellable: true
-    },
-    async (progress, token) => {
-        progress.report({ message: 'Step 1...', increment: 33 });
-        await step1();
-        
-        progress.report({ message: 'Step 2...', increment: 66 });
-        await step2();
-        
-        progress.report({ message: 'Complete!', increment: 100 });
-    }
-);
+---
+
+## Development
+
+### Prerequisites
+
+- Node.js 18+
+- TypeScript 5.3+
+- VS Code 1.96+
+- Dart SDK (for bridge development)
+
+### Build
+
+```bash
+cd tom_vscode_extension
+npm install
+npm run compile     # One-time build
+npm run watch       # Watch mode for development
 ```
 
-### 3. Handle Cancellation
+### Install & Test
 
-```typescript
-async function longOperation(token: vscode.CancellationToken) {
-    for (const item of items) {
-        if (token.isCancellationRequested) {
-            throw new Error('Operation cancelled');
-        }
-        await processItem(item);
-    }
-}
-```
+After compilation, install via VSIX or run in Extension Development Host (F5 in VS Code).
 
-### 4. Clean Up Resources
+See [reinstall_extension.md](../_copilot_guidelines/reinstall_extension.md) for the reinstall workflow.
 
-```typescript
-export function deactivate() {
-    if (bridgeClient) {
-        bridgeClient.stop();
-        bridgeClient = null;
-    }
-    // Clean up other resources...
-}
-```
+### Debug Logging
 
-### 5. Use Output Channel for Logging
-
-```typescript
-const outputChannel = vscode.window.createOutputChannel('My Extension');
-outputChannel.appendLine('[INFO] Starting operation...');
-outputChannel.appendLine('[ERROR] Something went wrong');
-outputChannel.show(); // Show channel to user
-```
-
-### 6. Show User-Friendly Errors
-
-```typescript
-try {
-    await operation();
-} catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    vscode.window.showErrorMessage(`Operation failed: ${errorMessage}`);
-    console.error('Detailed error:', error);
-}
-```
-
-### 7. Test in Extension Development Host
-
-- Press `F5` to launch Extension Development Host
-- Test all commands and features
-- Check console and output channel for errors
-- Use debugger for step-through debugging
+Toggle bridge debug logging: `DartScript: Toggle Bridge Debug Logging` or enable via Status Page. Two levels: request handling and raw JSON output.
 
 ---
 
 ## See Also
 
-- [Architecture Documentation](./ARCHITECTURE.md) - System architecture
-- [Implementation Guide](./IMPLEMENTATION.md) - Implementation details
-- [VS Code Bridge Project](../tom_vscode_bridge/PROJECT.md) - Dart bridge side
-- [API Reference](../tom_vscode_bridge/API_REFERENCE.md) - Dart API documentation
+- [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture (bridge, protocol, Dart wrappers)
+- [IMPLEMENTATION.md](IMPLEMENTATION.md) — Technical implementation reference
+- [USER_GUIDE.md](USER_GUIDE.md) — End-user guide
+- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) — Command quick reference
+- [vscode_extension_overview.md](../_copilot_guidelines/vscode_extension_overview.md) — Feature overview with full documentation index
+- [dartscript_extension_bridge.md](../_copilot_guidelines/dartscript_extension_bridge.md) — Complete command and bridge method reference
