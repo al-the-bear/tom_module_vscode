@@ -402,6 +402,12 @@
           "id": "dartscript.githubIssues",
           "name": "GitHub Issues",
           "icon": "$(issues)"
+        },
+        {
+          "type": "webview",
+          "id": "dartscript.githubTests",
+          "name": "GitHub Tests",
+          "icon": "$(beaker)"
         }
       ],
       "explorer": [

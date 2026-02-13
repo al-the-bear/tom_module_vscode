@@ -2702,8 +2702,12 @@ export function registerDsNotesViews(context: vscode.ExtensionContext): void {
     workspaceNotepadProvider = new WorkspaceNotepadProvider(context);
 
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(VIEW_IDS.tomNotepad, tomNotepadProvider),
-        vscode.window.registerWebviewViewProvider(VIEW_IDS.workspaceNotepad, workspaceNotepadProvider),
+        vscode.window.registerWebviewViewProvider(VIEW_IDS.tomNotepad, tomNotepadProvider, {
+            webviewOptions: { retainContextWhenHidden: true },
+        }),
+        vscode.window.registerWebviewViewProvider(VIEW_IDS.workspaceNotepad, workspaceNotepadProvider, {
+            webviewOptions: { retainContextWhenHidden: true },
+        }),
         vscode.commands.registerCommand('dartscript.focusTomAI', async () => {
             // Focus the unified TOM AI panel
             await vscode.commands.executeCommand('dartscript.unifiedNotepad.focus');

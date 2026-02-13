@@ -23,32 +23,46 @@ import {
 } from './githubApi';
 import { getConfigPath } from './handler_shared';
 
-const VIEW_ID = 'dartscript.githubIssues';
-
 // ============================================================================
-// Configuration
+// Types & Configuration
 // ============================================================================
 
-interface GitHubIssuesConfig {
-    additionalRepos: string[];       // "owner/repo" strings
-    statuses: string[];              // e.g. ["open", "in_triage", "assigned", "closed"]
+type PanelMode = 'issues' | 'tests';
+
+interface GitHubPanelOptions {
+    mode: PanelMode;
+    viewId: string;
+    configSection: string;
+    panelTitle: string;
+    includeWorkspaceRepos: boolean;
 }
 
-function loadGitHubIssuesConfig(): GitHubIssuesConfig {
-    const defaults: GitHubIssuesConfig = {
+interface GitHubPanelConfig {
+    repos: string[];                 // explicit repos (tests mode)
+    additionalRepos: string[];       // extra repos beyond workspace (issues mode)
+    statuses: string[];              // e.g. ["open", "in_triage", "assigned", "closed"]
+    labels: string[];                // quick-apply labels (tests mode)
+}
+
+function loadPanelConfig(section: string): GitHubPanelConfig {
+    const defaults: GitHubPanelConfig = {
+        repos: [],
         additionalRepos: [],
         statuses: ['open', 'in_triage', 'assigned', 'closed'],
+        labels: ['flaky', 'regression', 'blocked', 'wont-fix'],
     };
 
     try {
         const configPath = getConfigPath();
         if (!configPath || !fs.existsSync(configPath)) { return defaults; }
         const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        const cfg = raw.githubIssues;
+        const cfg = raw[section];
         if (!cfg) { return defaults; }
         return {
+            repos: Array.isArray(cfg.repos) ? cfg.repos : [],
             additionalRepos: Array.isArray(cfg.additionalRepos) ? cfg.additionalRepos : [],
             statuses: Array.isArray(cfg.statuses) && cfg.statuses.length > 0 ? cfg.statuses : defaults.statuses,
+            labels: Array.isArray(cfg.labels) && cfg.labels.length > 0 ? cfg.labels : defaults.labels,
         };
     } catch {
         return defaults;
@@ -60,12 +74,13 @@ function loadGitHubIssuesConfig(): GitHubIssuesConfig {
 // ============================================================================
 
 export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
-    public static readonly viewType = VIEW_ID;
     private _view?: vscode.WebviewView;
     private _extensionUri: vscode.Uri;
+    private _options: GitHubPanelOptions;
 
-    constructor(extensionUri: vscode.Uri) {
+    constructor(extensionUri: vscode.Uri, options: GitHubPanelOptions) {
         this._extensionUri = extensionUri;
+        this._options = options;
     }
 
     public resolveWebviewView(
@@ -178,6 +193,24 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
                 break;
             }
 
+            case 'toggleLabel': {
+                const { owner, repo, issueNumber, label } = msg;
+                try {
+                    const currentIssue = await getIssue(owner, repo, issueNumber);
+                    const currentLabels = (currentIssue.labels || []).map((l: any) => l.name);
+                    const hasLabel = currentLabels.includes(label);
+                    const newLabels = hasLabel
+                        ? currentLabels.filter((l: string) => l !== label)
+                        : [...currentLabels, label];
+                    const issue = await updateIssue(owner, repo, issueNumber, { labels: newLabels });
+                    webview.postMessage({ type: 'issueUpdated', issue });
+                    vscode.window.showInformationMessage(`Issue #${issueNumber}: ${hasLabel ? 'removed' : 'added'} label "${label}"`);
+                } catch (e: any) {
+                    webview.postMessage({ type: 'error', message: e.message });
+                }
+                break;
+            }
+
             case 'openExternal': {
                 if (msg.url) {
                     vscode.env.openExternal(vscode.Uri.parse(msg.url));
@@ -203,34 +236,48 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
     }
 
     private async _sendInitialData(webview: vscode.Webview): Promise<void> {
-        // Gather repos
-        const workspaceRepos = discoverWorkspaceRepos();
-        const config = loadGitHubIssuesConfig();
+        const config = loadPanelConfig(this._options.configSection);
+        let repos: RepoInfo[];
 
-        // Add configured additional repos
-        const additionalRepos: RepoInfo[] = config.additionalRepos
-            .map(r => {
-                const parts = r.split('/');
-                if (parts.length === 2) {
-                    return { owner: parts[0], repo: parts[1], displayName: r };
+        if (this._options.includeWorkspaceRepos) {
+            // Issues mode: workspace repos + additional configured repos
+            repos = discoverWorkspaceRepos();
+            const additionalRepos: RepoInfo[] = config.additionalRepos
+                .map((r: string) => {
+                    const parts = r.split('/');
+                    if (parts.length === 2) {
+                        return { owner: parts[0], repo: parts[1], displayName: r };
+                    }
+                    return undefined;
+                })
+                .filter((r: RepoInfo | undefined): r is RepoInfo => r !== undefined);
+
+            const seen = new Set(repos.map(r => r.displayName));
+            for (const r of additionalRepos) {
+                if (!seen.has(r.displayName)) {
+                    repos.push(r);
+                    seen.add(r.displayName);
                 }
-                return undefined;
-            })
-            .filter((r): r is RepoInfo => r !== undefined);
-
-        // Deduplicate
-        const seen = new Set(workspaceRepos.map(r => r.displayName));
-        for (const r of additionalRepos) {
-            if (!seen.has(r.displayName)) {
-                workspaceRepos.push(r);
-                seen.add(r.displayName);
             }
+        } else {
+            // Tests mode: only explicitly configured repos
+            repos = config.repos
+                .map((r: string) => {
+                    const parts = r.split('/');
+                    if (parts.length === 2) {
+                        return { owner: parts[0], repo: parts[1], displayName: r };
+                    }
+                    return undefined;
+                })
+                .filter((r: RepoInfo | undefined): r is RepoInfo => r !== undefined);
         }
 
         webview.postMessage({
             type: 'init',
-            repos: workspaceRepos,
+            repos: repos,
             statuses: config.statuses,
+            mode: this._options.mode,
+            labels: config.labels,
         });
     }
 
@@ -242,6 +289,13 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
         const codiconsUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
         );
+        const mode = this._options.mode;
+        const labelsButtonHtml = mode === 'tests'
+            ? '<button id="labelsBtn" class="icon-btn" title="Quick Labels" style="display:none;"><span class="codicon codicon-tag"></span></button>'
+            : '';
+        const labelsPickerHtml = mode === 'tests'
+            ? '<div id="labelsPicker" class="labels-picker" style="display:none;"></div>'
+            : '';
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -253,7 +307,7 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
 ${getStyles()}
 </style>
 </head>
-<body>
+<body data-mode="${mode}">
 <div id="root">
   <!-- LEFT: Issue Browser -->
   <div id="browser">
@@ -279,7 +333,9 @@ ${getStyles()}
     <div class="editor-toolbar">
       <span id="issueTitle" class="issue-title-bar">No issue selected</span>
       <div class="toolbar-icons">
-        <button id="statusBtn" class="icon-btn" title="Change Status"><span class="codicon codicon-circle-slash"></span></button>
+        <span id="statusBadge" class="status-badge" style="display:none;" title="Click to change status"></span>
+        <button id="openBrowserBtn" class="icon-btn" title="Open in Browser" style="display:none;"><span class="codicon codicon-link-external"></span></button>
+        ${labelsButtonHtml}
         <button id="addBtn" class="icon-btn" title="New Issue"><span class="codicon codicon-add"></span></button>
       </div>
     </div>
@@ -306,6 +362,8 @@ ${getStyles()}
 
     <!-- Status picker overlay -->
     <div id="statusPicker" class="status-picker" style="display:none;"></div>
+    <!-- Labels picker overlay (tests mode) -->
+    ${labelsPickerHtml}
   </div>
 </div>
 <script>
@@ -740,6 +798,75 @@ body {
 }
 .status-option .codicon { font-size: 14px; }
 
+/* Status badge in toolbar */
+.status-badge {
+    padding: 1px 8px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+}
+.status-badge:hover { opacity: 0.85; }
+.status-badge.open {
+    background: rgba(63, 185, 80, 0.15);
+    color: #3fb950;
+    border: 1px solid rgba(63, 185, 80, 0.3);
+}
+.status-badge.closed {
+    background: rgba(248, 81, 73, 0.15);
+    color: #f85149;
+    border: 1px solid rgba(248, 81, 73, 0.3);
+}
+.status-badge.in_triage {
+    background: rgba(210, 153, 34, 0.15);
+    color: #d29922;
+    border: 1px solid rgba(210, 153, 34, 0.3);
+}
+.status-badge.assigned {
+    background: rgba(88, 166, 255, 0.15);
+    color: #58a6ff;
+    border: 1px solid rgba(88, 166, 255, 0.3);
+}
+
+/* Labels picker (tests mode) */
+.labels-picker {
+    position: absolute;
+    right: 8px;
+    top: 34px;
+    background: var(--vscode-menu-background);
+    border: 1px solid var(--vscode-menu-border);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    z-index: 100;
+    padding: 4px 0;
+    min-width: 160px;
+}
+.label-option {
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.label-option:hover {
+    background: var(--vscode-menu-selectionBackground);
+    color: var(--vscode-menu-selectionForeground);
+}
+.label-option .check-box {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.label-option .check-box .codicon { font-size: 14px; }
+
 /* Empty / loading states */
 .empty-state {
     padding: 20px;
@@ -772,6 +899,8 @@ function getScript(): string {
     // State
     var repos = [];
     var configStatuses = ['open', 'in_triage', 'assigned', 'closed'];
+    var configLabels = [];
+    var panelMode = document.body.dataset.mode || 'issues';
     var currentRepo = null;
     var allIssues = [];         // All issues from API, unfiltered
     var issues = [];            // Filtered+sorted for display
@@ -802,7 +931,9 @@ function getScript(): string {
     var refreshBtn = document.getElementById('refreshBtn');
     var issueListEl = document.getElementById('issueList');
     var addBtn = document.getElementById('addBtn');
-    var statusBtn = document.getElementById('statusBtn');
+    var statusBadge = document.getElementById('statusBadge');
+    var openBrowserBtn = document.getElementById('openBrowserBtn');
+    var labelsBtn = document.getElementById('labelsBtn');
     var sendBtn = document.getElementById('sendBtn');
     var attachBtn = document.getElementById('attachBtn');
     var inputText = document.getElementById('inputText');
@@ -810,6 +941,7 @@ function getScript(): string {
     var attachmentArea = document.getElementById('attachmentArea');
     var attachmentListEl = document.getElementById('attachmentList');
     var statusPicker = document.getElementById('statusPicker');
+    var labelsPicker = document.getElementById('labelsPicker');
     var issueTitleBar = document.getElementById('issueTitle');
     var splitHandle = document.getElementById('splitHandle');
     var vSplitHandle = document.getElementById('vSplitHandle');
@@ -829,6 +961,8 @@ function getScript(): string {
             case 'init':
                 repos = msg.repos || [];
                 configStatuses = msg.statuses || ['open', 'in_triage', 'assigned', 'closed'];
+                configLabels = msg.labels || [];
+                if (msg.mode) panelMode = msg.mode;
                 renderRepoDropdown();
                 break;
 
@@ -1178,7 +1312,9 @@ function getScript(): string {
             inputArea.classList.add('expanded');
             inputArea.style.flex = '';
             inputText.placeholder = 'First line = title, rest = body…';
-            statusBtn.style.display = 'none';
+            statusBadge.style.display = 'none';
+            openBrowserBtn.style.display = 'none';
+            if (labelsBtn) labelsBtn.style.display = 'none';
         } else {
             commentHistory.classList.remove('hidden');
             vSplitHandle.classList.remove('hidden');
@@ -1188,13 +1324,21 @@ function getScript(): string {
             if (selectedIssue) {
                 issueTitleBar.textContent = '#' + selectedIssue.number + ' ' + selectedIssue.title;
                 inputText.placeholder = 'Write a comment…';
-                statusBtn.style.display = '';
+                // Update status badge
+                var effStatus = getEffectiveStatus(selectedIssue);
+                statusBadge.textContent = formatStatusLabel(effStatus);
+                statusBadge.className = 'status-badge ' + effStatus;
+                statusBadge.style.display = '';
+                openBrowserBtn.style.display = '';
+                if (labelsBtn) labelsBtn.style.display = '';
                 renderComments();
             } else {
                 issueTitleBar.textContent = 'No issue selected';
                 commentHistory.innerHTML = '<div class="empty-state">Select an issue from the list</div>';
                 inputText.placeholder = 'Write a comment…';
-                statusBtn.style.display = 'none';
+                statusBadge.style.display = 'none';
+                openBrowserBtn.style.display = 'none';
+                if (labelsBtn) labelsBtn.style.display = 'none';
             }
         }
     }
@@ -1241,9 +1385,9 @@ function getScript(): string {
     });
 
     // ================================================================
-    // Status button (change issue status)
+    // Status badge (change issue status)
     // ================================================================
-    statusBtn.addEventListener('click', function(e) {
+    statusBadge.addEventListener('click', function(e) {
         e.stopPropagation();
         if (statusPicker.style.display === 'none') {
             showStatusPicker();
@@ -1288,11 +1432,70 @@ function getScript(): string {
         });
     }
 
+    // ================================================================
+    // Open in Browser button
+    // ================================================================
+    openBrowserBtn.addEventListener('click', function() {
+        if (selectedIssue && selectedIssue.html_url) {
+            vscode.postMessage({ type: 'openExternal', url: selectedIssue.html_url });
+        }
+    });
+
+    // ================================================================
+    // Labels picker (tests mode)
+    // ================================================================
+    if (labelsBtn && labelsPicker) {
+        labelsBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (labelsPicker.style.display !== 'none') {
+                labelsPicker.style.display = 'none';
+                return;
+            }
+            statusPicker.style.display = 'none';
+            showLabelsPicker();
+        });
+    }
+
+    function showLabelsPicker() {
+        if (!selectedIssue || !labelsPicker) return;
+        var currentLabels = (selectedIssue.labels || []).map(function(l) { return l.name; });
+        var html = '';
+        for (var i = 0; i < configLabels.length; i++) {
+            var label = configLabels[i];
+            var hasLabel = currentLabels.indexOf(label) >= 0;
+            html += '<div class="label-option" data-label="' + escapeHtml(label) + '">';
+            html += '<span class="check-box">';
+            html += hasLabel ? '<span class="codicon codicon-check"></span>' : '';
+            html += '</span>';
+            html += '<span>' + escapeHtml(formatStatusLabel(label)) + '</span>';
+            html += '</div>';
+        }
+        labelsPicker.innerHTML = html;
+        labelsPicker.style.display = '';
+
+        labelsPicker.querySelectorAll('.label-option').forEach(function(el) {
+            el.addEventListener('click', function() {
+                if (!selectedIssue || !currentRepo) return;
+                var owner = selectedIssue._owner || currentRepo.owner;
+                var repo = selectedIssue._repo || currentRepo.repo;
+                vscode.postMessage({
+                    type: 'toggleLabel',
+                    owner: owner,
+                    repo: repo,
+                    issueNumber: selectedIssue.number,
+                    label: el.dataset.label,
+                });
+                labelsPicker.style.display = 'none';
+            });
+        });
+    }
+
     // Close pickers on outside click
     document.addEventListener('click', function() {
         statusPicker.style.display = 'none';
         filterPicker.style.display = 'none';
         sortPicker.style.display = 'none';
+        if (labelsPicker) labelsPicker.style.display = 'none';
     });
 
     // ================================================================
@@ -1488,13 +1691,31 @@ function getScript(): string {
 // Registration
 // ============================================================================
 
-let _provider: GitHubIssuesPanelHandler | undefined;
+let _issuesProvider: GitHubIssuesPanelHandler | undefined;
+let _testsProvider: GitHubIssuesPanelHandler | undefined;
 
 export function registerGitHubIssuesPanel(context: vscode.ExtensionContext): void {
-    _provider = new GitHubIssuesPanelHandler(context.extensionUri);
+    _issuesProvider = new GitHubIssuesPanelHandler(context.extensionUri, {
+        mode: 'issues',
+        viewId: 'dartscript.githubIssues',
+        configSection: 'githubIssues',
+        panelTitle: 'GitHub Issues',
+        includeWorkspaceRepos: true,
+    });
+
+    _testsProvider = new GitHubIssuesPanelHandler(context.extensionUri, {
+        mode: 'tests',
+        viewId: 'dartscript.githubTests',
+        configSection: 'githubTests',
+        panelTitle: 'GitHub Tests',
+        includeWorkspaceRepos: false,
+    });
 
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(VIEW_ID, _provider, {
+        vscode.window.registerWebviewViewProvider('dartscript.githubIssues', _issuesProvider, {
+            webviewOptions: { retainContextWhenHidden: true },
+        }),
+        vscode.window.registerWebviewViewProvider('dartscript.githubTests', _testsProvider, {
             webviewOptions: { retainContextWhenHidden: true },
         }),
     );
