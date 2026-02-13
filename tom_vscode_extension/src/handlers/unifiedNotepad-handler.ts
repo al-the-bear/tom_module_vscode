@@ -17,7 +17,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { getConfigPath, SendToChatConfig, loadSendToChatConfig, saveSendToChatConfig, showTemplateEditorPanel, PLACEHOLDER_HELP, expandPlaceholders, showPreviewPanel, getWorkspaceRoot } from './handler_shared';
+import { getConfigPath, SendToChatConfig, loadSendToChatConfig, saveSendToChatConfig, showTemplateEditorPanel, PLACEHOLDER_HELP, expandPlaceholders, showPreviewPanel, getWorkspaceRoot, updateChatResponseValues } from './handler_shared';
 import { getPromptExpanderManager } from './expandPrompt-handler';
 import { getAccordionStyles } from './accordionPanel';
 
@@ -189,10 +189,17 @@ class UnifiedNotepadViewProvider implements vscode.WebviewViewProvider {
 
     private _notifyAnswerFileStatus(): void {
         const exists = answerFileExists();
+        const answer = exists ? readAnswerFile() : undefined;
+        
+        // Propagate responseValues to shared store for ${dartscript.chat.KEY} access
+        if (answer?.responseValues && typeof answer.responseValues === 'object') {
+            updateChatResponseValues(answer.responseValues);
+        }
+        
         this._view?.webview.postMessage({
             type: 'answerFileStatus',
             exists,
-            hasAnswer: exists ? !!readAnswerFile()?.generatedMarkdown : false
+            hasAnswer: !!answer?.generatedMarkdown
         });
     }
 

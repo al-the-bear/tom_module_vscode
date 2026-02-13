@@ -38,60 +38,127 @@ The `windowId` is a unique identifier combining the VS Code session ID and machi
 | `comments` | No | Additional notes or metadata about the response |
 | `references` | No | Array of file paths that were referenced while forming the response |
 | `requestedAttachments` | No | Array of file paths the user explicitly requested |
-| `responseValues` | No | Key-value pairs accessible via `${dartscript.chat.KEY}` in subsequent prompts |
+| `responseValues` | No | Key-value pairs saved for reuse in subsequent prompts via `${dartscript.chat.<key>}` |
 
-## Built-in Answer File Template
+## Response Values Reuse
 
-When selecting **Answer File** from the Copilot section template dropdown, the extension appends instructions for Copilot to write its response to the answer file. The template includes:
+Response values from the copilot answer file are **automatically saved** to a shared store when the answer file is detected. They become available immediately in all template contexts:
 
-- The answer file path
-- Required JSON structure
-- A unique request ID for matching prompts to responses
-- Field descriptions for Copilot to follow
+- **Copilot templates** (prefix/suffix in TOM AI Panel)
+- **Send to Chat templates** (context menu / command palette)
+- **Freeform prompts** in any panel textarea
+- **Tom AI Chat** context instructions
 
-## Using Answer Values in Templates
+### How it works
 
-After Copilot writes an answer file, the values become available as template variables using the `${dartscript.chat.KEY}` notation.
+1. Copilot writes an answer file with `responseValues`
+2. The extension detects the new file via the file system watcher
+3. All key-value pairs from `responseValues` are stored in the shared chat answer store
+4. Values persist for the entire session (until cleared or overwritten)
+5. Subsequent prompts can reference them via `${dartscript.chat.<key>}`
 
-### Available Template Variables
+### Clearing values
 
-| Variable | Description |
-|----------|-------------|
-| `${dartscript.datetime}` | Current timestamp (YYYYMMDD_HHMMSS) |
-| `${dartscript.windowId}` | Unique window identifier |
-| `${dartscript.machineId}` | VS Code machine ID |
-| `${dartscript.chatAnswerFolder}` | Configured answer folder path |
-| `${dartscript.chat.requestId}` | Request ID from last answer |
-| `${dartscript.chat.generatedMarkdown}` | Main response from last answer |
-| `${dartscript.chat.KEY}` | Custom value from responseValues (replace KEY with actual key) |
-| `${dartscript.chat.comments}` | Comments from last answer |
+Use the command **"Clear Chat Answer Values"** from the command palette to reset all stored values.
 
-### Example Template Usage
+## Placeholder Systems
 
-```
-Based on your previous response:
-${dartscript.chat.generatedMarkdown}
+There are two placeholder systems, both expanded when a prompt is sent:
 
-Custom value from last response: ${dartscript.chat.myKey}
+### 1. Double-Brace Placeholders (`{{...}}`)
 
-Please now proceed with the implementation.
-```
-
-## Placeholders
-
-### Standard Placeholders (`{{...}}` format)
-
-These are expanded when the prompt is sent:
+Expanded in all prompts (Copilot, Local LLM, Tom AI Chat):
 
 | Placeholder | Description |
 |-------------|-------------|
 | `{{selection}}` | Current editor selection |
-| `{{file}}` | Current file path (relative) |
+| `{{file}}` | Current file path (relative to workspace) |
+| `{{filename}}` | Current file name only |
+| `{{filecontent}}` | Full content of the current file |
 | `{{clipboard}}` | Clipboard contents |
-| `{{date}}` | Current date |
-| `{{requestId}}` | Unique timestamp ID (YYYYMMDD_HHMMSS) |
+| `{{date}}` | Current date (locale format) |
+| `{{time}}` | Current time (locale format) |
+| `{{datetime}}` | Current date and time (locale format) |
+| `{{requestId}}` | Timestamp-based ID (YYYYMMDD_HHMMSS) |
+| `{{workspace}}` | Workspace folder name |
+| `{{workspacepath}}` | Full workspace folder path |
+| `{{language}}` | File language ID (e.g., typescript, dart) |
+| `{{line}}` | Current cursor line number |
+| `{{column}}` | Current cursor column number |
 
-The `{{requestId}}` placeholder is useful for correlating prompts with responses - use the same ID in your prompt that appears in the answer file template.
+### 2. Template Variables (`${...}`)
+
+Expanded in all prompts. These provide system values and access to stored response data:
+
+| Variable | Description |
+|----------|-------------|
+| `${dartscript.datetime}` | Timestamp (YYYYMMDD_HHMMSS format) |
+| `${dartscript.windowId}` | VS Code session ID (unique per window) |
+| `${dartscript.machineId}` | VS Code machine ID (unique per machine) |
+| `${dartscript.chatAnswerFolder}` | Configured chat answer folder path |
+| `${dartscript.chat.<key>}` | Value from copilot answer `responseValues` |
+| `${dartscript.chat.requestId}` | Request ID from last answer |
+| `${dartscript.chat.generatedMarkdown}` | Main response from last answer |
+| `${dartscript.chat.comments}` | Comments from last answer |
+
+### Where placeholders can be used
+
+| Context | `{{...}}` | `${dartscript.*}` |
+|---------|-----------|-------------------|
+| Copilot template prefix | Yes | Yes |
+| Copilot template suffix | Yes | Yes |
+| Answer File template suffix | Yes | Yes |
+| Tom AI Chat context instructions | Yes | Yes |
+| Local LLM prompt textarea | Yes | Yes |
+| Send to Chat templates | No* | Yes |
+| Local LLM system prompt | No | `${...}` (own format) |
+| Local LLM result template | No | `${...}` (own format) |
+
+*Send to Chat uses its own `${path}` expansion with parsed content data.
+
+## Sample Configuration
+
+### Basic Answer File template (in `tom_vscode_extension.json`)
+
+```json
+{
+  "templates": {
+    "__answer_file__": {
+      "prefix": "Data requested by the user will be marked with data[key] to be inserted in responseValues.",
+      "suffix": "---\nIMPORTANT: Write your answer to:\n${dartscript.chatAnswerFolder}/${dartscript.windowId}_${dartscript.machineId}_answer.json\n\nJSON structure:\n{\n  \"requestId\": \"{{requestId}}\",\n  \"generatedMarkdown\": \"<response>\",\n  \"responseValues\": { \"key\": \"value\" }\n}\n\nRequest ID: {{requestId}}\n",
+      "showInMenu": true
+    }
+  }
+}
+```
+
+### Template using response values from a previous answer
+
+```json
+{
+  "templates": {
+    "Follow Up": {
+      "prefix": "Quest: ${dartscript.chat.quest}\n\nContinuing from your previous response:\n",
+      "suffix": "\n\nPrevious request ID: ${dartscript.chat.requestId}",
+      "showInMenu": true
+    }
+  }
+}
+```
+
+### Template with data collection
+
+```json
+{
+  "templates": {
+    "Trail Reminder": {
+      "prefix": "Quest: ${dartscript.chat.quest}\n\nREMINDER: Create trail file with timestamp ${dartscript.datetime}.\n",
+      "suffix": "\n\nWrite data to \"${dartscript.chatAnswerFolder}/${dartscript.windowId}_${dartscript.machineId}_answer.yaml\"",
+      "showInMenu": true
+    }
+  }
+}
+```
 
 ## Answer File Workflow
 
@@ -139,7 +206,7 @@ Create a custom `__answer_file__` template in your `send_to_chat.json`:
   "templates": {
     "__answer_file__": {
       "prefix": "Custom prefix here...",
-      "suffix": "Custom answer instructions..."
+      "suffix": "Custom answer instructions with {{requestId}} placeholder..."
     }
   }
 }
@@ -147,7 +214,10 @@ Create a custom `__answer_file__` template in your `send_to_chat.json`:
 
 ## Implementation Notes
 
-- Answer files are watched via file system watcher - the UI updates automatically when Copilot writes a response
-- Multiple answer values accumulate in the `chatAnswerData` static object during a session
-- Clearing answer values does not delete the answer file itself
+- Answer files are watched via file system watcher — the UI updates automatically when Copilot writes a response
+- When an answer file with `responseValues` is detected, values are automatically propagated to the shared chat answer store
+- Values are accessible via `${dartscript.chat.<key>}` in **all** template contexts (Copilot, Send to Chat, Tom AI Chat, Local LLM)
+- Multiple answer values accumulate across the session (until cleared or overwritten by a new answer)
+- Clearing answer values (via command palette) resets both the shared store and the Send to Chat data
 - The request ID helps match prompts to responses when debugging
+- The `{{requestId}}` placeholder is expanded at send time; use it instead of hardcoded values

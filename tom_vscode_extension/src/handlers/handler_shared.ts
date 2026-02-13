@@ -605,6 +605,50 @@ export async function showTemplateEditorPanel(
 }
 
 // ============================================================================
+// Shared Chat Response Values Store
+// ============================================================================
+
+/**
+ * Shared store for chat answer data (responseValues from copilot answers).
+ * Both the TOM AI Panel and Send to Chat systems read/write this store,
+ * making `${dartscript.chat.KEY}` available everywhere.
+ */
+const _chatResponseValues: { [key: string]: any } = {};
+
+/** Merge new response values into the shared store. */
+export function updateChatResponseValues(data: Record<string, any>): void {
+    Object.assign(_chatResponseValues, data);
+}
+
+/** Get a copy of all chat response values. */
+export function getChatResponseValues(): { [key: string]: any } {
+    return { ..._chatResponseValues };
+}
+
+/** Clear all chat response values. */
+export function clearChatResponseValues(): void {
+    for (const key of Object.keys(_chatResponseValues)) {
+        delete _chatResponseValues[key];
+    }
+}
+
+/** Resolve a `${path.to.value}` expression against a data object. */
+function resolveDotPath(data: { [key: string]: any }, dotPath: string): string | undefined {
+    const parts = dotPath.split('.');
+    let value: any = data;
+    for (const part of parts) {
+        if (value && typeof value === 'object' && part in value) {
+            value = value[part];
+        } else {
+            return undefined; // path not found
+        }
+    }
+    if (typeof value === 'string') { return value; }
+    if (value !== null && value !== undefined) { return JSON.stringify(value); }
+    return undefined;
+}
+
+// ============================================================================
 // Placeholder Expansion
 // ============================================================================
 
@@ -693,7 +737,29 @@ export async function expandPlaceholders(template: string): Promise<string> {
         result = result.replace(/\{\{column\}\}/gi, '(no editor)');
     }
     
+    // ${dartscript.*} template variable expansion
+    // Build the dartscript object with system values + chat response values
+    const dartscriptData: { [key: string]: any } = {
+        datetime: requestId, // same YYYYMMDD_HHMMSS format
+        windowId: vscode.env.sessionId,
+        machineId: vscode.env.machineId,
+        chatAnswerFolder: getChatAnswerFolder(),
+        chat: { ...getChatResponseValues() },
+    };
+    
+    // Replace ${dartscript.path.to.value} patterns
+    result = result.replace(/\$\{dartscript\.([^}]+)\}/g, (match, dotPath) => {
+        const resolved = resolveDotPath(dartscriptData, dotPath);
+        return resolved !== undefined ? resolved : match; // keep unresolved placeholders
+    });
+    
     return result;
+}
+
+/** Get the chat answer folder from VS Code settings. */
+function getChatAnswerFolder(): string {
+    const setting = vscode.workspace.getConfiguration('dartscript.sendToChat').get<string>('chatAnswerFolder');
+    return setting || '_ai/chat_replies';
 }
 
 // ============================================================================
@@ -774,4 +840,10 @@ export const PLACEHOLDER_HELP = `<strong>Available Placeholders:</strong><br>
 <code>{{requestId}}</code> - Timestamp-based ID (YYYYMMDD_HHMMSS)<br>
 <code>{{workspace}}</code> - Workspace name<br>
 <code>{{language}}</code> - File language ID<br>
-<code>{{line}}</code> - Current line number`;
+<code>{{line}}</code> - Current line number<br>
+<br><strong>Template Variables:</strong><br>
+<code>\${dartscript.datetime}</code> - Timestamp (YYYYMMDD_HHMMSS)<br>
+<code>\${dartscript.windowId}</code> - VS Code session ID<br>
+<code>\${dartscript.machineId}</code> - VS Code machine ID<br>
+<code>\${dartscript.chatAnswerFolder}</code> - Answer folder path<br>
+<code>\${dartscript.chat.KEY}</code> - Value from copilot responseValues`;

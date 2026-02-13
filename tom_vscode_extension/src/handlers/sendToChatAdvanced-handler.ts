@@ -8,7 +8,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getConfigPath } from './handler_shared';
+import { getConfigPath, updateChatResponseValues, clearChatResponseValues } from './handler_shared';
 import { logCopilotAnswer, isTrailEnabled, loadTrailConfig } from './trailLogger-handler';
 
 /**
@@ -342,6 +342,7 @@ export class SendToChatAdvancedManager {
         const clearChatAnswerCmd = vscode.commands.registerCommand('dartscript.clearChatAnswerValues', () => {
             const keyCount = Object.keys(SendToChatAdvancedManager.chatAnswerData).length;
             SendToChatAdvancedManager.chatAnswerData = {};
+            clearChatResponseValues();
             
             if (this.outputChannel) {
                 this.outputChannel.appendLine(`Cleared ${keyCount} chat answer value(s)`);
@@ -623,6 +624,9 @@ export class SendToChatAdvancedManager {
                         Object.assign(SendToChatAdvancedManager.chatAnswerData, jsonData.responseValues);
                     }
                     
+                    // Sync to shared store so all handlers can access via ${dartscript.chat.KEY}
+                    updateChatResponseValues(SendToChatAdvancedManager.chatAnswerData);
+                    
                     this.log(`Loaded chat answer data from ${answerFilePath}`);
                     
                     // Trail: Log Copilot answer file
@@ -639,6 +643,10 @@ export class SendToChatAdvancedManager {
             const parsed = this.parseYamlLike(content);
             if (Object.keys(parsed.data).length > 0) {
                 Object.assign(SendToChatAdvancedManager.chatAnswerData, parsed.data);
+                
+                // Sync to shared store
+                updateChatResponseValues(SendToChatAdvancedManager.chatAnswerData);
+                
                 this.log(`Loaded chat answer data from ${answerFilePath}`);
                 
                 // Trail: Log Copilot answer file (YAML format)
