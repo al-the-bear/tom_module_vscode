@@ -68,6 +68,89 @@ These scripts have full access to the VS Code API through the `context.vscode` o
 
 ---
 
+## Bridge Configuration
+
+The Dart bridge process is configured via the `dartscriptBridge` section in `tom_vscode_extension.json`. This controls which Dart executable runs, with what arguments, and from which working directory.
+
+### Configuration Schema
+
+```json
+{
+  "dartscriptBridge": {
+    "current": "<profile-key>",
+    "profiles": {
+      "<profile-key>": {
+        "label": "Display Name",
+        "command": "executable",
+        "args": ["arg1", "arg2"],
+        "cwd": "/path/to/working/directory",
+        "runPubGet": false
+      }
+    }
+  }
+}
+```
+
+### Profile Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `label` | string | Yes | Human-readable name shown in the profile picker |
+| `command` | string | Yes | Executable to run (e.g., `dart`, `tom_bs`, `d4rt`) |
+| `args` | string[] | Yes | Command-line arguments passed to the executable |
+| `cwd` | string | Yes | Working directory. Supports `${workspaceFolder}` placeholder |
+| `runPubGet` | boolean | Yes | Whether to run `dart pub get` before starting the bridge |
+
+### Root Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `current` | string | Key of the active profile. Persisted when switching profiles |
+| `profiles` | object | Map of profile keys to profile configurations |
+
+### Example Configuration
+
+```json
+{
+  "dartscriptBridge": {
+    "current": "production",
+    "profiles": {
+      "development": {
+        "label": "Development",
+        "command": "dart",
+        "args": ["run", "bin/tom_bs.dart"],
+        "cwd": "${workspaceFolder}/xternal/tom_module_vscode/tom_vscode_bridge",
+        "runPubGet": true
+      },
+      "production": {
+        "label": "Production",
+        "command": "tom_bs",
+        "args": [],
+        "cwd": "${workspaceFolder}",
+        "runPubGet": false
+      }
+    }
+  }
+}
+```
+
+### Profile Management Commands
+
+| Command | Description |
+|---------|-------------|
+| `DS: Restart/Start Dart Bridge` | Start or restart the bridge with the current profile |
+| `DS: Switch Bridge Profile` | Quick-pick to select a different profile; persists and restarts |
+| `DS: Toggle Bridge Debug Logging` | Enable/disable verbose bridge debug output |
+
+### Profile Selection
+
+When switching profiles:
+1. All available profiles are shown in a quick-pick menu
+2. The selected profile key is written back to `tom_vscode_extension.json` (`dartscriptBridge.current`)
+3. The bridge process is automatically restarted with the new profile
+
+---
+
 ## Script Execution Methods
 
 ### From Dart: Execute Inline Script
