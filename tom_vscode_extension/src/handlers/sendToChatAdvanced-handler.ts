@@ -10,13 +10,28 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigPath, updateChatResponseValues, clearChatResponseValues } from './handler_shared';
 import { logCopilotAnswer, isTrailEnabled, loadTrailConfig } from './trailLogger-handler';
+import {
+    resolveTemplate,
+    formatDateTime,
+    getChatAnswerFolder,
+} from './promptTemplate';
 
 /**
- * Configuration entry for a send-to-chat template
+ * Configuration entry for a send-to-chat template.
+ *
+ * Preferred format: a single `template` string containing `${originalPrompt}`
+ * where the user's content will be inserted.
+ *
+ * Legacy format: separate `prefix` and `suffix` strings that are concatenated
+ * around the content (automatically converted to a template internally).
  */
 export interface SendToChatTemplate {
-    prefix: string;
-    suffix: string;
+    /** Single template with ${originalPrompt} placeholder (preferred). */
+    template?: string;
+    /** @deprecated Use `template` with ${originalPrompt} instead. */
+    prefix?: string;
+    /** @deprecated Use `template` with ${originalPrompt} instead. */
+    suffix?: string;
     /** If true, this template gets its own static menu entry (requires extension reload) */
     showInMenu?: boolean;
 }
@@ -145,7 +160,8 @@ export class SendToChatAdvancedManager {
     }
 
     /**
-     * Validate templates structure
+     * Validate templates structure.
+     * Accepts both new format (template) and legacy format (prefix/suffix).
      */
     private validateTemplates(templates: any): templates is { [key: string]: SendToChatTemplate } {
         if (typeof templates !== 'object' || templates === null) {
@@ -162,7 +178,10 @@ export class SendToChatAdvancedManager {
             if (typeof entry !== 'object' || entry === null) {
                 return false;
             }
-            if (typeof entry.prefix !== 'string' || typeof entry.suffix !== 'string') {
+            // Must have either 'template' or both 'prefix' and 'suffix'
+            const hasTemplate = typeof entry.template === 'string';
+            const hasLegacy = typeof entry.prefix === 'string' && typeof entry.suffix === 'string';
+            if (!hasTemplate && !hasLegacy) {
                 return false;
             }
             // showInMenu is optional boolean
@@ -392,10 +411,11 @@ export class SendToChatAdvancedManager {
             return;
         }
 
-        const items: vscode.QuickPickItem[] = templateEntries.map(([label, template]) => ({
-            label,
-            description: (template as SendToChatTemplate).prefix.substring(0, 50).replace(/\n/g, ' ') + '...'
-        }));
+        const items: vscode.QuickPickItem[] = templateEntries.map(([label, template]) => {
+            const tmpl = template as SendToChatTemplate;
+            const preview = (tmpl.template || tmpl.prefix || '').substring(0, 50).replace(/\n/g, ' ') + '...';
+            return { label, description: preview };
+        });
 
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Select a template to send to Copilot Chat',
@@ -440,8 +460,8 @@ export class SendToChatAdvancedManager {
             content = editor.document.getText(selection);
         }
 
-        // Concatenate with template
-        const fullPrompt = this.concatenatePrompt(template.prefix, content, template.suffix);
+        // Build the full prompt using the unified template system
+        const fullPrompt = this.buildPrompt(template, content);
 
         try {
             // Send to Copilot Chat
@@ -459,60 +479,97 @@ export class SendToChatAdvancedManager {
     }
 
     /**
-     * Concatenate prefix, content, and suffix with proper formatting
-     * Supports placeholder substitution using ${path} notation
-     * Placeholders are replaced recursively (up to 10 levels) in the entire result
+     * Normalise a SendToChatTemplate to its effective template string.
+     * If the template has a `template` field, use it directly.
+     * Otherwise, convert legacy prefix/suffix to a template with ${originalPrompt}.
      */
-    private concatenatePrompt(prefix: string, content: string, suffix: string): string {
-        // Try to parse content as structured data for placeholder substitution
-        const parsed = this.parseContent(content);
-        
-        // First, concatenate everything
+    private getEffectiveTemplate(template: SendToChatTemplate): string {
+        if (template.template) {
+            return template.template;
+        }
+        // Legacy prefix/suffix → single template
+        const prefix = template.prefix || '';
+        const suffix = template.suffix || '';
         let result = '';
-
         if (prefix) {
             result += prefix;
-            if (!prefix.endsWith('\n')) {
-                result += '\n';
-            }
+            if (!prefix.endsWith('\n')) { result += '\n'; }
         }
-
-        result += content;
-
+        result += '${originalPrompt}';
         if (suffix) {
-            if (!content.endsWith('\n')) {
-                result += '\n';
-            }
-            result += suffix;
+            result += '\n' + suffix;
         }
-
-        // Then, recursively replace placeholders in the entire result (up to 10 levels)
-        result = this.replacePlaceholdersRecursive(result, parsed, 10);
-
         return result;
     }
 
     /**
-     * Recursively replace placeholders until no more replacements occur or max depth reached
-     * Does not fail after max depth - just leaves remaining placeholders for user to see
+     * Build the full prompt by merging the template with content and resolving
+     * all placeholders (content-derived values + built-in values).
      */
-    private replacePlaceholdersRecursive(text: string, parsed: ParsedContent, maxDepth: number): string {
-        let result = text;
-        let previousResult = '';
-        let depth = 0;
+    private buildPrompt(template: SendToChatTemplate, content: string): string {
+        // Parse content for structured data placeholders
+        const parsed = this.parseContent(content);
 
-        while (result !== previousResult && depth < maxDepth) {
-            previousResult = result;
-            result = this.replacePlaceholders(result, parsed);
-            depth++;
+        // Build values map: content-parsed data (flattened) + built-in values
+        const values: Record<string, string> = {};
+
+        // Flatten parsed data into values map
+        this.flattenData(parsed.data, values, '');
+
+        // Add preamble if present
+        if (parsed.preamble) {
+            values['preamble'] = parsed.preamble;
         }
 
-        return result;
+        // Add the original prompt content
+        values['originalPrompt'] = content;
+
+        // Add built-in system values (datetime, windowId, machineId, etc.)
+        const now = new Date();
+        values['datetime'] = formatDateTime(now);
+        values['requestId'] = values['datetime'];
+        values['windowId'] = vscode.env.sessionId;
+        values['machineId'] = vscode.env.machineId;
+        values['chatAnswerFolder'] = getChatAnswerFolder();
+
+        // Load chat answer file data
+        this.loadChatAnswerFile();
+        for (const [k, v] of Object.entries(SendToChatAdvancedManager.chatAnswerData)) {
+            const str = typeof v === 'string' ? v : (v !== null && v !== undefined ? JSON.stringify(v) : '');
+            values[`chat.${k}`] = str;
+        }
+
+        // Also keep dartscript.* aliases for backward compatibility
+        values['dartscript.datetime'] = values['datetime'];
+        values['dartscript.windowId'] = values['windowId'];
+        values['dartscript.machineId'] = values['machineId'];
+        values['dartscript.chatAnswerFolder'] = values['chatAnswerFolder'];
+
+        // Get the effective template string
+        const tmpl = this.getEffectiveTemplate(template);
+
+        // Resolve placeholders recursively (up to 10 levels)
+        return resolveTemplate(tmpl, values, 10);
+    }
+
+    /**
+     * Flatten a nested data object into dot-path keys in a flat record.
+     */
+    private flattenData(data: Record<string, any>, target: Record<string, string>, prefix: string): void {
+        for (const [key, value] of Object.entries(data)) {
+            const fullKey = prefix ? `${prefix}.${key}` : key;
+            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                this.flattenData(value, target, fullKey);
+            } else if (typeof value === 'string') {
+                target[fullKey] = value;
+            } else if (value !== null && value !== undefined) {
+                target[fullKey] = JSON.stringify(value);
+            }
+        }
     }
 
     /**
      * Parse content as JSON, YAML, or colon-delimited format
-     * Always includes default values: datetime, windowId
      */
     private parseContent(content: string): ParsedContent {
         let parsed: ParsedContent;
@@ -541,49 +598,7 @@ export class SendToChatAdvancedManager {
             }
         }
 
-        // Add default values (don't override existing keys)
-        this.addDefaultValues(parsed);
-
         return parsed;
-    }
-
-    /**
-     * Get the chat answer folder from settings
-     */
-    private getChatAnswerFolder(): string {
-        const setting = vscode.workspace.getConfiguration('dartscript.sendToChat').get<string>('chatAnswerFolder');
-        return setting || '_ai/chat_replies';
-    }
-
-    /**
-     * Add default values to parsed content in the 'dartscript' sub-object
-     * The dartscript object CANNOT be overwritten by user values
-     * - dartscript.datetime: Current date/time in yyyymmdd_hhmmss format
-     * - dartscript.windowId: Unique VS Code session ID (unique per window)
-     * - dartscript.machineId: VS Code machine ID (unique per machine)
-     * - dartscript.chatAnswerFolder: Path to chat answer folder from settings
-     * - dartscript.chat: Accumulated data from chat answer files
-     */
-    private addDefaultValues(parsed: ParsedContent): void {
-        // Load chat answer file and accumulate data
-        this.loadChatAnswerFile();
-
-        // Create dartscript object - ALWAYS overwrite to prevent user manipulation
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-
-        parsed.data['dartscript'] = {
-            datetime: `${year}${month}${day}_${hours}${minutes}${seconds}`,
-            windowId: vscode.env.sessionId,
-            machineId: vscode.env.machineId,
-            chatAnswerFolder: this.getChatAnswerFolder(),
-            chat: { ...SendToChatAdvancedManager.chatAnswerData }
-        };
     }
 
     /**
@@ -595,7 +610,7 @@ export class SendToChatAdvancedManager {
             return;
         }
 
-        const chatAnswerFolder = this.getChatAnswerFolder();
+        const chatAnswerFolder = getChatAnswerFolder();
         const answerFilePath = path.join(
             workspaceFolders[0].uri.fsPath,
             chatAnswerFolder,
@@ -754,40 +769,6 @@ export class SendToChatAdvancedManager {
     }
 
     /**
-     * Replace ${path} placeholders with values from parsed content
-     */
-    private replacePlaceholders(text: string, parsed: ParsedContent): string {
-        return text.replace(/\$\{([^}]+)\}/g, (match, path) => {
-            // Handle special 'preamble' placeholder
-            if (path === 'preamble') {
-                return parsed.preamble || '';
-            }
-            
-            // Navigate the path (e.g., "user.name" or just "name")
-            const parts = path.split('.');
-            let value: any = parsed.data;
-            
-            for (const part of parts) {
-                if (value && typeof value === 'object' && part in value) {
-                    value = value[part];
-                } else {
-                    // Path not found, keep original placeholder
-                    return match;
-                }
-            }
-            
-            // Convert value to string
-            if (typeof value === 'string') {
-                return value;
-            } else if (value !== null && value !== undefined) {
-                return JSON.stringify(value);
-            }
-            
-            return match;
-        });
-    }
-
-    /**
      * Get available templates for menu generation
      */
     getTemplates(): Map<string, SendToChatTemplate> {
@@ -808,24 +789,19 @@ export class SendToChatAdvancedManager {
         
         // Use bracket notation to avoid lint errors for property names with spaces
         defaultConfig["Explain Code"] = {
-            prefix: "Please explain the following code in detail:\n",
-            suffix: "\n\nInclude:\n- What it does\n- Key algorithms or patterns\n- Potential issues or improvements"
+            template: "Please explain the following code in detail:\n\n${originalPrompt}\n\nInclude:\n- What it does\n- Key algorithms or patterns\n- Potential issues or improvements"
         };
         defaultConfig["Review for Bugs"] = {
-            prefix: "Review this code for bugs and security issues:\n",
-            suffix: "\n\nFocus on:\n- Security vulnerabilities\n- Edge cases\n- Error handling\n- Performance issues"
+            template: "Review this code for bugs and security issues:\n\n${originalPrompt}\n\nFocus on:\n- Security vulnerabilities\n- Edge cases\n- Error handling\n- Performance issues"
         };
         defaultConfig["Add Unit Tests"] = {
-            prefix: "Generate comprehensive unit tests for:\n",
-            suffix: "\n\nRequirements:\n- High coverage\n- Test edge cases\n- Test error conditions\n- Use appropriate testing framework"
+            template: "Generate comprehensive unit tests for:\n\n${originalPrompt}\n\nRequirements:\n- High coverage\n- Test edge cases\n- Test error conditions\n- Use appropriate testing framework"
         };
         defaultConfig["Add Documentation"] = {
-            prefix: "Add complete documentation for:\n",
-            suffix: "\n\nInclude:\n- API documentation\n- Usage examples\n- Parameter descriptions\n- Return value descriptions"
+            template: "Add complete documentation for:\n\n${originalPrompt}\n\nInclude:\n- API documentation\n- Usage examples\n- Parameter descriptions\n- Return value descriptions"
         };
         defaultConfig["Refactor"] = {
-            prefix: "Refactor this code for better quality:\n",
-            suffix: "\n\nFocus on:\n- Readability\n- Maintainability\n- Performance\n- Best practices"
+            template: "Refactor this code for better quality:\n\n${originalPrompt}\n\nFocus on:\n- Readability\n- Maintainability\n- Performance\n- Best practices"
         };
 
         try {

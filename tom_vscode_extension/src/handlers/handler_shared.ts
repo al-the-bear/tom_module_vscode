@@ -10,6 +10,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { DartBridgeClient } from '../vscode-bridge';
+import {
+    expandTemplate,
+    PLACEHOLDER_HELP as SHARED_PLACEHOLDER_HELP,
+} from './promptTemplate';
 
 // ============================================================================
 // Global State
@@ -632,134 +636,17 @@ export function clearChatResponseValues(): void {
     }
 }
 
-/** Resolve a `${path.to.value}` expression against a data object. */
-function resolveDotPath(data: { [key: string]: any }, dotPath: string): string | undefined {
-    const parts = dotPath.split('.');
-    let value: any = data;
-    for (const part of parts) {
-        if (value && typeof value === 'object' && part in value) {
-            value = value[part];
-        } else {
-            return undefined; // path not found
-        }
-    }
-    if (typeof value === 'string') { return value; }
-    if (value !== null && value !== undefined) { return JSON.stringify(value); }
-    return undefined;
-}
-
 // ============================================================================
-// Placeholder Expansion
+// Placeholder Expansion (delegates to promptTemplate.ts)
 // ============================================================================
 
 /**
- * Expand placeholders like {{selection}}, {{file}}, {{clipboard}} in a template string
+ * Expand placeholders in a template string.
+ * Delegates to the unified promptTemplate module.
+ * @deprecated Import `expandTemplate` from `./promptTemplate` directly.
  */
 export async function expandPlaceholders(template: string): Promise<string> {
-    let result = template;
-    const editor = vscode.window.activeTextEditor;
-    
-    // {{selection}} - Current editor selection
-    if (editor) {
-        const selection = editor.document.getText(editor.selection);
-        result = result.replace(/\{\{selection\}\}/gi, selection || '(no selection)');
-    } else {
-        result = result.replace(/\{\{selection\}\}/gi, '(no editor)');
-    }
-    
-    // {{file}} - Current file path (relative)
-    if (editor) {
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        const relativePath = workspaceFolder 
-            ? path.relative(workspaceFolder.uri.fsPath, editor.document.uri.fsPath)
-            : editor.document.uri.fsPath;
-        result = result.replace(/\{\{file\}\}/gi, relativePath);
-    } else {
-        result = result.replace(/\{\{file\}\}/gi, '(no file)');
-    }
-    
-    // {{filename}} - Current file name only
-    if (editor) {
-        result = result.replace(/\{\{filename\}\}/gi, path.basename(editor.document.uri.fsPath));
-    } else {
-        result = result.replace(/\{\{filename\}\}/gi, '(no file)');
-    }
-    
-    // {{filecontent}} - Current file content
-    if (editor) {
-        result = result.replace(/\{\{filecontent\}\}/gi, editor.document.getText());
-    } else {
-        result = result.replace(/\{\{filecontent\}\}/gi, '(no file)');
-    }
-    
-    // {{date}}, {{time}}, {{datetime}}
-    const now = new Date();
-    result = result.replace(/\{\{date\}\}/gi, now.toLocaleDateString());
-    result = result.replace(/\{\{time\}\}/gi, now.toLocaleTimeString());
-    result = result.replace(/\{\{datetime\}\}/gi, now.toLocaleString());
-    
-    // {{requestId}} - Timestamp-based request ID (YYYYMMDD_HHMMSS)
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const requestId = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-    result = result.replace(/\{\{requestId\}\}/gi, requestId);
-    
-    // {{clipboard}}
-    try {
-        const clipboard = await vscode.env.clipboard.readText();
-        result = result.replace(/\{\{clipboard\}\}/gi, clipboard || '(empty clipboard)');
-    } catch {
-        result = result.replace(/\{\{clipboard\}\}/gi, '(clipboard error)');
-    }
-    
-    // {{workspace}}, {{workspacepath}}
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    result = result.replace(/\{\{workspace\}\}/gi, workspaceFolder?.name || '(no workspace)');
-    result = result.replace(/\{\{workspacepath\}\}/gi, workspaceFolder?.uri.fsPath || '(no workspace)');
-    
-    // {{language}}
-    if (editor) {
-        result = result.replace(/\{\{language\}\}/gi, editor.document.languageId);
-    } else {
-        result = result.replace(/\{\{language\}\}/gi, '(no file)');
-    }
-    
-    // {{line}}, {{column}}
-    if (editor) {
-        result = result.replace(/\{\{line\}\}/gi, String(editor.selection.active.line + 1));
-        result = result.replace(/\{\{column\}\}/gi, String(editor.selection.active.character + 1));
-    } else {
-        result = result.replace(/\{\{line\}\}/gi, '(no editor)');
-        result = result.replace(/\{\{column\}\}/gi, '(no editor)');
-    }
-    
-    // ${dartscript.*} template variable expansion
-    // Build the dartscript object with system values + chat response values
-    const dartscriptData: { [key: string]: any } = {
-        datetime: requestId, // same YYYYMMDD_HHMMSS format
-        windowId: vscode.env.sessionId,
-        machineId: vscode.env.machineId,
-        chatAnswerFolder: getChatAnswerFolder(),
-        chat: { ...getChatResponseValues() },
-    };
-    
-    // Replace ${dartscript.path.to.value} patterns
-    result = result.replace(/\$\{dartscript\.([^}]+)\}/g, (match, dotPath) => {
-        const resolved = resolveDotPath(dartscriptData, dotPath);
-        return resolved !== undefined ? resolved : match; // keep unresolved placeholders
-    });
-    
-    return result;
-}
-
-/** Get the chat answer folder from VS Code settings. */
-function getChatAnswerFolder(): string {
-    const setting = vscode.workspace.getConfiguration('dartscript.sendToChat').get<string>('chatAnswerFolder');
-    return setting || '_ai/chat_replies';
+    return expandTemplate(template);
 }
 
 // ============================================================================
@@ -830,20 +717,7 @@ function send() { vscode.postMessage({ type: 'send' }); }
 }
 
 /** Placeholder help text for template editors */
-export const PLACEHOLDER_HELP = `<strong>Available Placeholders:</strong><br>
-<code>{{selection}}</code> - Current text selection<br>
-<code>{{file}}</code> - Current file path (relative)<br>
-<code>{{filename}}</code> - Current file name<br>
-<code>{{filecontent}}</code> - Full file content<br>
-<code>{{clipboard}}</code> - Clipboard contents<br>
-<code>{{date}}</code> / <code>{{time}}</code> / <code>{{datetime}}</code> - Current date/time<br>
-<code>{{requestId}}</code> - Timestamp-based ID (YYYYMMDD_HHMMSS)<br>
-<code>{{workspace}}</code> - Workspace name<br>
-<code>{{language}}</code> - File language ID<br>
-<code>{{line}}</code> - Current line number<br>
-<br><strong>Template Variables:</strong><br>
-<code>\${dartscript.datetime}</code> - Timestamp (YYYYMMDD_HHMMSS)<br>
-<code>\${dartscript.windowId}</code> - VS Code session ID<br>
-<code>\${dartscript.machineId}</code> - VS Code machine ID<br>
-<code>\${dartscript.chatAnswerFolder}</code> - Answer folder path<br>
-<code>\${dartscript.chat.KEY}</code> - Value from copilot responseValues`;
+/**
+ * @deprecated Import PLACEHOLDER_HELP from './promptTemplate' directly.
+ */
+export const PLACEHOLDER_HELP = SHARED_PLACEHOLDER_HELP;

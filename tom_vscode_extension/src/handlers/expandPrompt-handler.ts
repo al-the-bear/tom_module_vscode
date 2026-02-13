@@ -21,6 +21,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { handleError, bridgeLog, getBridgeClient, getConfigPath } from './handler_shared';
 import {
+    resolveTemplate,
+    formatDateTime,
+} from './promptTemplate';
+import {
     OllamaTool, OllamaToolCall, SharedToolDefinition,
     executeToolCall, toOllamaTools,
 } from '../tools/shared-tool-registry';
@@ -443,7 +447,7 @@ export class PromptExpanderManager {
     }
 
     // -----------------------------------------------------------------------
-    // Placeholder resolution
+    // Placeholder resolution (delegates to promptTemplate module)
     // -----------------------------------------------------------------------
 
     /**
@@ -468,11 +472,7 @@ export class PromptExpanderManager {
      *   ${instructions}   - Content from .tom/local-instructions/local-instructions[.modelid].md
      */
     private resolvePlaceholders(template: string, values: { [key: string]: string }): string {
-        let result = template;
-        for (const [key, value] of Object.entries(values)) {
-            result = result.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), value);
-        }
-        return result;
+        return resolveTemplate(template, values);
     }
 
     private buildPlaceholderValues(
@@ -503,7 +503,7 @@ export class PromptExpanderManager {
             filePath: doc?.fileName ?? '',
             languageId: doc?.languageId ?? '',
             workspaceName: wf?.[0]?.name ?? '',
-            datetime: this.formatDateTime(now),
+            datetime: formatDateTime(now),
             model: modelName,
             modelConfig: modelConfigKey,
             profile: profileName,
@@ -542,16 +542,6 @@ export class PromptExpanderManager {
         }
 
         return '';
-    }
-
-    private formatDateTime(now: Date): string {
-        const y = now.getFullYear();
-        const mo = String(now.getMonth() + 1).padStart(2, '0');
-        const d = String(now.getDate()).padStart(2, '0');
-        const h = String(now.getHours()).padStart(2, '0');
-        const mi = String(now.getMinutes()).padStart(2, '0');
-        const s = String(now.getSeconds()).padStart(2, '0');
-        return `${y}${mo}${d}_${h}${mi}${s}`;
     }
 
     // -----------------------------------------------------------------------

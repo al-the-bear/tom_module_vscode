@@ -28,8 +28,11 @@ import {
     escapeHtml,
     TemplateEditorConfig,
     showTemplateEditorPanel,
-    PLACEHOLDER_HELP,
 } from './handler_shared';
+import {
+    expandTemplate as expandPlaceholders,
+    PLACEHOLDER_HELP,
+} from './promptTemplate';
 import {
     clearTrail, logPrompt, isTrailEnabled, loadTrailConfig,
 } from './trailLogger-handler';
@@ -59,78 +62,6 @@ const STORAGE_KEYS = {
     notes: 'dartscript.dsNotes.notes',
     tomNotepad: 'dartscript.dsNotes.tomNotepad'
 };
-
-// ============================================================================
-// Placeholder Expansion
-// ============================================================================
-
-async function expandPlaceholders(template: string): Promise<string> {
-    let result = template;
-    const editor = vscode.window.activeTextEditor;
-    
-    // {{selection}} - Current editor selection
-    if (editor) {
-        const selection = editor.document.getText(editor.selection);
-        result = result.replace(/\{\{selection\}\}/gi, selection || '(no selection)');
-    } else {
-        result = result.replace(/\{\{selection\}\}/gi, '(no editor)');
-    }
-    
-    // {{file}} - Current file path (relative)
-    if (editor) {
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        const relativePath = workspaceFolder 
-            ? path.relative(workspaceFolder.uri.fsPath, editor.document.uri.fsPath)
-            : editor.document.uri.fsPath;
-        result = result.replace(/\{\{file\}\}/gi, relativePath);
-    } else {
-        result = result.replace(/\{\{file\}\}/gi, '(no file)');
-    }
-    
-    // {{filename}} - Current file name only
-    if (editor) {
-        result = result.replace(/\{\{filename\}\}/gi, path.basename(editor.document.uri.fsPath));
-    } else {
-        result = result.replace(/\{\{filename\}\}/gi, '(no file)');
-    }
-    
-    // {{filecontent}} - Current file content
-    if (editor) {
-        result = result.replace(/\{\{filecontent\}\}/gi, editor.document.getText());
-    } else {
-        result = result.replace(/\{\{filecontent\}\}/gi, '(no file)');
-    }
-    
-    // {{date}}, {{time}}, {{datetime}}
-    const now = new Date();
-    result = result.replace(/\{\{date\}\}/gi, now.toLocaleDateString());
-    result = result.replace(/\{\{time\}\}/gi, now.toLocaleTimeString());
-    result = result.replace(/\{\{datetime\}\}/gi, now.toLocaleString());
-    
-    // {{clipboard}}
-    try {
-        const clipboard = await vscode.env.clipboard.readText();
-        result = result.replace(/\{\{clipboard\}\}/gi, clipboard || '(empty clipboard)');
-    } catch {
-        result = result.replace(/\{\{clipboard\}\}/gi, '(clipboard error)');
-    }
-    
-    // {{workspace}}, {{workspacepath}}
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    result = result.replace(/\{\{workspace\}\}/gi, workspaceFolder?.name || '(no workspace)');
-    result = result.replace(/\{\{workspacepath\}\}/gi, workspaceFolder?.uri.fsPath || '(no workspace)');
-    
-    // {{language}}, {{line}}
-    if (editor) {
-        result = result.replace(/\{\{language\}\}/gi, editor.document.languageId);
-        result = result.replace(/\{\{line\}\}/gi, String(editor.selection.active.line + 1));
-    } else {
-        result = result.replace(/\{\{language\}\}/gi, '(no file)');
-        result = result.replace(/\{\{line\}\}/gi, '(no editor)');
-    }
-    
-    return result;
-}
 
 // ============================================================================
 // Shared Styles

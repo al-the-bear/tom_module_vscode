@@ -23,6 +23,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { bridgeLog, getCopilotModel, sendCopilotRequest, getWorkspaceRoot, getConfigPath } from './handler_shared';
+import { resolveTemplate } from './promptTemplate';
 import { getPromptExpanderManager } from './expandPrompt-handler';
 import type { OllamaStats } from './expandPrompt-handler';
 import { TelegramNotifier, TelegramConfig, TelegramCommand, parseTelegramConfig, TELEGRAM_DEFAULTS } from './telegram-notifier';
@@ -759,9 +760,10 @@ export class BotConversationManager {
         const manager = getPromptExpanderManager();
         if (!manager) { return fullHistory; } // fallback to full if no manager
 
-        const prompt = config.summaryTemplate
-            .replace(/\$\{maxTokens\}/g, String(config.maxHistoryTokens))
-            .replace(/\$\{history\}/g, fullHistory);
+        const prompt = this.resolvePlaceholders(config.summaryTemplate, {
+            maxTokens: String(config.maxHistoryTokens),
+            history: fullHistory,
+        });
 
         try {
             const result = await manager.chatWithOllama({
@@ -812,11 +814,7 @@ export class BotConversationManager {
     // -----------------------------------------------------------------------
 
     private resolvePlaceholders(template: string, values: { [key: string]: string }): string {
-        let result = template;
-        for (const [key, value] of Object.entries(values)) {
-            result = result.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), value);
-        }
-        return result;
+        return resolveTemplate(template, values);
     }
 
     // -----------------------------------------------------------------------
