@@ -78,7 +78,7 @@ State machine commands execute different action sets based on current state, ena
 - **Per-window state** — Each VS Code window maintains independent state (memory only, not persisted)
 - **Validation** — Duplicate start states trigger an error message
 
-See [multi_command_commands.md](multi_command_commands.md) for detailed configuration reference.
+See [keybindings_and_commands.md](../_copilot_guidelines/keybindings_and_commands.md) for detailed configuration reference.
 
 ## 4. Send to Copilot Chat
 
