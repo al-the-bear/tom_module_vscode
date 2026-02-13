@@ -71,7 +71,12 @@ export interface ExpanderProfile {
     toolsEnabled?: boolean;
     /** Maximum tool-call rounds for this profile (default: 20). */
     maxRounds?: number;
+    /** Override history mode (null → inherit top-level). */
+    historyMode?: LocalLlmHistoryMode | null;
 }
+
+/** History mode for Local LLM. */
+export type LocalLlmHistoryMode = 'none' | 'full' | 'last' | 'summary' | 'trim_and_summary';
 
 /** Full promptExpander section from send_to_chat.json. */
 export interface PromptExpanderConfig {
@@ -88,6 +93,20 @@ export interface PromptExpanderConfig {
     models: { [key: string]: ModelConfig };
     /** Named profiles. */
     profiles: { [key: string]: ExpanderProfile };
+    /** Global setting: enable tools by default. */
+    toolsEnabled: boolean;
+    /** Default expansion profile key. */
+    expansionProfile: string | null;
+    /** Maximum tokens for trail/history. */
+    trailMaximumTokens: number;
+    /** Temperature for trail summarization. */
+    trailSummarizationTemperature: number;
+    /** Remove prompt template from trail log. */
+    removePromptTemplateFromTrail: boolean;
+    /** How much history to pass to the local model. */
+    historyMode: LocalLlmHistoryMode;
+    /** Maximum token count for history passed to local model. */
+    maxHistoryTokens: number;
 }
 
 /** Result returned by the process() bridge API. */
@@ -155,6 +174,13 @@ const DEFAULTS: PromptExpanderConfig = {
     resultTemplate: '${response}',
     models: {},
     profiles: {},
+    toolsEnabled: true,
+    expansionProfile: null,
+    trailMaximumTokens: 8000,
+    trailSummarizationTemperature: 0.3,
+    removePromptTemplateFromTrail: true,
+    historyMode: 'none',
+    maxHistoryTokens: 4000,
 };
 
 // ============================================================================
@@ -179,11 +205,22 @@ function logLocalAi(message: string, level: 'INFO' | 'WARN' | 'ERROR' = 'INFO'):
 // PromptExpanderManager — singleton, created in extension.ts
 // ============================================================================
 
+/** A single conversation message for Local LLM history. */
+export interface LocalLlmMessage {
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    timestamp?: Date;
+}
+
 export class PromptExpanderManager {
     private context: vscode.ExtensionContext;
     private registeredCommands: vscode.Disposable[] = [];
     private outputChannel: vscode.OutputChannel;
     private logChannel: vscode.OutputChannel;
+    /** Conversation history for Local LLM sessions. */
+    private conversationHistory: LocalLlmMessage[] = [];
+    /** Whether history mode is enabled. */
+    private historyEnabled: boolean = false;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -202,6 +239,49 @@ export class PromptExpanderManager {
     /** Append a line to the Tom AI Local Log output channel (used by module-level helpers). */
     appendToLog(line: string): void {
         this.logChannel.appendLine(line);
+    }
+
+    // -----------------------------------------------------------------------
+    // History Management
+    // -----------------------------------------------------------------------
+
+    /** Enable or disable history mode. */
+    setHistoryEnabled(enabled: boolean): void {
+        this.historyEnabled = enabled;
+        this.logChannel.appendLine(`[History] Mode ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    /** Check if history mode is enabled. */
+    isHistoryEnabled(): boolean {
+        return this.historyEnabled;
+    }
+
+    /** Clear conversation history. */
+    clearHistory(): void {
+        this.conversationHistory = [];
+        this.logChannel.appendLine('[History] Cleared');
+    }
+
+    /** Get current conversation history. */
+    getHistory(): LocalLlmMessage[] {
+        return [...this.conversationHistory];
+    }
+
+    /** Get history as Ollama-compatible messages. */
+    private getHistoryAsMessages(): Array<{ role: string; content: string }> {
+        return this.conversationHistory.map(m => ({
+            role: m.role,
+            content: m.content,
+        }));
+    }
+
+    /** Add a message to conversation history. */
+    private addToHistory(role: 'user' | 'assistant', content: string): void {
+        this.conversationHistory.push({
+            role,
+            content,
+            timestamp: new Date(),
+        });
     }
 
     // -----------------------------------------------------------------------
@@ -239,6 +319,13 @@ export class PromptExpanderManager {
             if (typeof sec.stripThinkingTags === 'boolean') { config.stripThinkingTags = sec.stripThinkingTags; }
             if (typeof sec.systemPrompt === 'string') { config.systemPrompt = sec.systemPrompt; }
             if (typeof sec.resultTemplate === 'string') { config.resultTemplate = sec.resultTemplate; }
+            if (typeof sec.toolsEnabled === 'boolean') { config.toolsEnabled = sec.toolsEnabled; }
+            if (typeof sec.expansionProfile === 'string') { config.expansionProfile = sec.expansionProfile; }
+            if (typeof sec.trailMaximumTokens === 'number') { config.trailMaximumTokens = sec.trailMaximumTokens; }
+            if (typeof sec.trailSummarizationTemperature === 'number') { config.trailSummarizationTemperature = sec.trailSummarizationTemperature; }
+            if (typeof sec.removePromptTemplateFromTrail === 'boolean') { config.removePromptTemplateFromTrail = sec.removePromptTemplateFromTrail; }
+            if (typeof sec.historyMode === 'string') { config.historyMode = sec.historyMode as LocalLlmHistoryMode; }
+            if (typeof sec.maxHistoryTokens === 'number') { config.maxHistoryTokens = sec.maxHistoryTokens; }
 
             // Model configurations
             if (sec.models && typeof sec.models === 'object') {
@@ -270,6 +357,9 @@ export class PromptExpanderManager {
                             temperature: typeof p.temperature === 'number' ? p.temperature : null,
                             modelConfig: typeof p.modelConfig === 'string' ? p.modelConfig : null,
                             isDefault: p.isDefault === true,
+                            toolsEnabled: typeof p.toolsEnabled === 'boolean' ? p.toolsEnabled : undefined,
+                            maxRounds: typeof p.maxRounds === 'number' ? p.maxRounds : undefined,
+                            historyMode: typeof p.historyMode === 'string' ? p.historyMode as LocalLlmHistoryMode : undefined,
                         };
                     }
                 }
@@ -661,6 +751,8 @@ export class PromptExpanderManager {
         maxRounds?: number;
         /** Trail type for logging (defaults to 'local'). */
         trailType?: TrailType;
+        /** Optional conversation history to prepend. */
+        history?: Array<{ role: string; content: string }>;
     }): Promise<{ text: string; stats?: OllamaStats; toolCallCount: number; turnsUsed: number }> {
         const {
             baseUrl, model, systemPrompt, userPrompt, temperature,
@@ -668,6 +760,7 @@ export class PromptExpanderManager {
         } = options;
         const maxRounds = options.maxRounds ?? 20;
         const trailType = options.trailType ?? 'local';
+        const history = options.history ?? [];
         const ollamaTools = toOllamaTools(tools, () => true); // send all provided tools
 
         // Log tool registrations and prompts
@@ -676,6 +769,7 @@ export class PromptExpanderManager {
         this.logChannel.appendLine(`  Model: ${model} | URL: ${baseUrl}`);
         this.logChannel.appendLine(`  Max rounds: ${maxRounds} | Temperature: ${temperature}`);
         this.logChannel.appendLine(`  Keep alive: ${keepAlive ?? 'default'}`);
+        this.logChannel.appendLine(`  History messages: ${history.length}`);
         this.logChannel.appendLine('───────────────────────────────────────────────────');
         this.logChannel.appendLine(`Registered tools (${ollamaTools.length}):`);
         for (const t of ollamaTools) {
@@ -693,8 +787,18 @@ export class PromptExpanderManager {
         // eslint-disable-next-line @typescript-eslint/naming-convention
         const messages: Array<{ role: string; content?: string; tool_calls?: OllamaToolCall[] }> = [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
         ];
+
+        // Include conversation history if provided
+        if (history.length > 0) {
+            this.logChannel.appendLine(`Including ${history.length} history message(s)`);
+            for (const h of history) {
+                messages.push({ role: h.role, content: h.content });
+            }
+        }
+
+        // Current user prompt
+        messages.push({ role: 'user', content: userPrompt });
 
         let totalToolCalls = 0;
 
@@ -941,6 +1045,10 @@ export class PromptExpanderManager {
         this.logChannel.appendLine(`[process] Temperature: ${effectiveTemperature} | Instructions: ${instructionsContent.length} chars`);
         this.logChannel.appendLine(`[process] Prompt: ${prompt.length} chars | System prompt: ${resolvedSystemPrompt.length} chars`);
 
+        // Resolve history mode
+        const effectiveHistoryMode = profile?.historyMode ?? config.historyMode;
+        this.logChannel.appendLine(`[process] History mode: ${effectiveHistoryMode} | History enabled: ${this.historyEnabled} | History length: ${this.conversationHistory.length}`);
+
         try {
             // Check Ollama
             const running = await this.isOllamaRunning(mc.ollamaUrl);
@@ -962,6 +1070,10 @@ export class PromptExpanderManager {
             // The model can choose to use tools or just produce a direct answer.
             const effectiveMaxRounds = profile?.maxRounds ?? 20;
 
+            // Resolve toolsEnabled from profile or config
+            const effectiveToolsEnabled = profile?.toolsEnabled ?? config.toolsEnabled;
+            const toolsToUse = effectiveToolsEnabled ? READ_ONLY_TOOLS : [];
+
             // Trail: Log full prompt with system prompt and metadata
             logPrompt('local', 'ollama', prompt, resolvedSystemPrompt, {
                 model: mc.model,
@@ -970,8 +1082,32 @@ export class PromptExpanderManager {
                 temperature: effectiveTemperature,
                 maxRounds: effectiveMaxRounds,
                 instructionsLength: instructionsContent.length,
-                registeredTools: READ_ONLY_TOOLS.map(t => t.name),
+                registeredTools: toolsToUse.map(t => t.name),
+                historyMode: effectiveHistoryMode,
+                historyEnabled: this.historyEnabled,
             });
+
+            // Build history for Ollama based on mode
+            let historyForOllama: Array<{ role: string; content: string }> = [];
+            if (this.historyEnabled && effectiveHistoryMode !== 'none' && this.conversationHistory.length > 0) {
+                if (effectiveHistoryMode === 'full') {
+                    // Include all history
+                    historyForOllama = this.getHistoryAsMessages();
+                } else if (effectiveHistoryMode === 'last') {
+                    // Only include the last exchange (user + assistant)
+                    const hist = this.conversationHistory;
+                    const lastUser = hist.slice().reverse().find(m => m.role === 'user');
+                    const lastAssistant = hist.slice().reverse().find(m => m.role === 'assistant');
+                    if (lastUser) { historyForOllama.push({ role: 'user', content: lastUser.content }); }
+                    if (lastAssistant) { historyForOllama.push({ role: 'assistant', content: lastAssistant.content }); }
+                } else {
+                    // 'summary' or 'trim_and_summary' - for now, use full history (summary implementation TBD)
+                    historyForOllama = this.getHistoryAsMessages();
+                }
+                this.logChannel.appendLine(`[process] Passing ${historyForOllama.length} history message(s) to Ollama`);
+            }
+
+            this.logChannel.appendLine(`[process] Tools enabled: ${effectiveToolsEnabled} | Tools count: ${toolsToUse.length}`);
 
             const result = await this.ollamaGenerateWithTools({
                 baseUrl: mc.ollamaUrl,
@@ -979,11 +1115,12 @@ export class PromptExpanderManager {
                 systemPrompt: resolvedSystemPrompt,
                 userPrompt: prompt,
                 temperature: effectiveTemperature,
-                tools: READ_ONLY_TOOLS,
+                tools: toolsToUse,
                 cancellationToken,
                 keepAlive: mc.keepAlive,
                 maxRounds: effectiveMaxRounds,
                 onToolCall,
+                history: historyForOllama,
             });
             const rawResponse = result.text;
             const stats = result.stats;
@@ -1024,6 +1161,13 @@ export class PromptExpanderManager {
                 instructionsExtra,
             );
             const finalText = this.resolvePlaceholders(effectiveResultTemplate, postValues);
+
+            // Update conversation history if history mode is enabled
+            if (this.historyEnabled && effectiveHistoryMode !== 'none') {
+                this.addToHistory('user', prompt);
+                this.addToHistory('assistant', cleaned);
+                this.logChannel.appendLine(`[process] Added exchange to history. Total: ${this.conversationHistory.length} messages`);
+            }
 
             return {
                 success: true,

@@ -20,7 +20,16 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { getPromptExpanderManager } from './expandPrompt-handler';
 import * as fs from 'fs';
-import { getConfigPath } from './handler_shared';
+import {
+    getConfigPath,
+    SendToChatConfig,
+    loadSendToChatConfig,
+    saveSendToChatConfig,
+    escapeHtml,
+    TemplateEditorConfig,
+    showTemplateEditorPanel,
+    PLACEHOLDER_HELP,
+} from './handler_shared';
 import {
     clearTrail, logPrompt, isTrailEnabled, loadTrailConfig,
 } from './trailLogger-handler';
@@ -50,72 +59,6 @@ const STORAGE_KEYS = {
     notes: 'dartscript.dsNotes.notes',
     tomNotepad: 'dartscript.dsNotes.tomNotepad'
 };
-
-// ============================================================================
-// Config Loading
-// ============================================================================
-
-interface SendToChatConfig {
-    templates: { [key: string]: { prefix: string; suffix: string; showInMenu?: boolean } };
-    promptExpander: {
-        profiles: { [key: string]: {
-            label: string;
-            systemPrompt?: string | null;
-            resultTemplate?: string | null;
-            temperature?: number | null;
-            modelConfig?: string | null;
-            toolsEnabled?: boolean;
-            stripThinkingTags?: boolean | null;
-            isDefault?: boolean;
-        } };
-    };
-    botConversation: {
-        profiles: { [key: string]: {
-            label: string;
-            description?: string;
-            goal?: string;
-            maxTurns?: number;
-            initialPromptTemplate?: string | null;
-            followUpTemplate?: string | null;
-            temperature?: number | null;
-        } };
-    };
-    tomAiChat?: {
-        defaultTemplate?: string;
-        templates?: { [key: string]: {
-            label: string;
-            description?: string;
-            contextInstructions?: string;
-            systemPromptOverride?: string | null;
-        } };
-    };
-}
-
-function loadSendToChatConfig(): SendToChatConfig | null {
-    const configPath = getConfigPath();
-    if (!configPath || !fs.existsSync(configPath)) {
-        return null;
-    }
-    try {
-        const content = fs.readFileSync(configPath, 'utf-8');
-        return JSON.parse(content);
-    } catch {
-        return null;
-    }
-}
-
-function saveSendToChatConfig(config: SendToChatConfig): boolean {
-    const configPath = getConfigPath();
-    if (!configPath) {
-        return false;
-    }
-    try {
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
-        return true;
-    } catch {
-        return false;
-    }
-}
 
 // ============================================================================
 // Placeholder Expansion
@@ -406,187 +349,6 @@ async function showPreviewPanel(title: string, content: string, onSend: (text: s
         previewPanel = undefined;
     });
 }
-
-function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
-
-// ============================================================================
-// Template Editor Panel - For creating/editing templates
-// ============================================================================
-
-interface TemplateEditorConfig {
-    type: 'copilot' | 'conversation' | 'tomAiChat' | 'localLlm';
-    title: string;
-    fields: {
-        name: string;
-        label: string;
-        type: 'text' | 'textarea';
-        placeholder?: string;
-        value?: string;
-        help?: string;
-        readonly?: boolean;
-    }[];
-}
-
-let templateEditorPanel: vscode.WebviewPanel | undefined;
-
-async function showTemplateEditorPanel(
-    config: TemplateEditorConfig, 
-    onSave: (values: { [key: string]: string }) => Promise<void>
-): Promise<void> {
-    if (templateEditorPanel) {
-        templateEditorPanel.dispose();
-    }
-    
-    templateEditorPanel = vscode.window.createWebviewPanel(
-        'dsNotesTemplateEditor',
-        `${config.title}`,
-        vscode.ViewColumn.Active,
-        { enableScripts: true }
-    );
-    
-    const fieldsHtml = config.fields.map(f => {
-        const readonlyAttr = f.readonly ? 'readonly disabled style="opacity: 0.7; cursor: not-allowed;"' : '';
-        const inputHtml = f.type === 'textarea' 
-            ? `<textarea id="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}" rows="6" ${readonlyAttr}>${escapeHtml(f.value || '')}</textarea>`
-            : `<input type="text" id="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(f.value || '')}" ${readonlyAttr}>`;
-        const helpHtml = f.help ? `<div class="help">${f.help}</div>` : '';
-        return `<div class="field">
-            <label for="${f.name}">${f.label}</label>
-            ${inputHtml}
-            ${helpHtml}
-        </div>`;
-    }).join('');
-    
-    templateEditorPanel.webview.html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-        padding: 24px;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-        font-family: var(--vscode-font-family);
-        background-color: var(--vscode-editor-background);
-        color: var(--vscode-foreground);
-    }
-    h2 { margin-bottom: 20px; }
-    .fields { flex: 1; overflow-y: auto; }
-    .field { margin-bottom: 20px; }
-    .field label {
-        display: block;
-        margin-bottom: 6px;
-        font-weight: 500;
-    }
-    .field input, .field textarea {
-        width: 100%;
-        border: 1px solid var(--vscode-input-border);
-        background-color: var(--vscode-input-background);
-        color: var(--vscode-input-foreground);
-        padding: 8px 12px;
-        font-family: var(--vscode-editor-font-family, monospace);
-        font-size: var(--vscode-editor-font-size, 13px);
-        border-radius: 4px;
-    }
-    .field textarea { min-height: 100px; resize: vertical; line-height: 1.5; }
-    .field input:focus, .field textarea:focus { border-color: var(--vscode-focusBorder); outline: none; }
-    .help {
-        margin-top: 8px;
-        font-size: 12px;
-        color: var(--vscode-descriptionForeground);
-        background: var(--vscode-textBlockQuote-background);
-        padding: 10px;
-        border-radius: 4px;
-        line-height: 1.5;
-    }
-    .help code {
-        background: var(--vscode-textCodeBlock-background);
-        padding: 2px 5px;
-        border-radius: 3px;
-        font-family: var(--vscode-editor-font-family, monospace);
-    }
-    .buttons {
-        display: flex;
-        gap: 12px;
-        margin-top: 24px;
-        justify-content: flex-end;
-        flex-shrink: 0;
-    }
-    button {
-        padding: 8px 20px;
-        border: 1px solid var(--vscode-input-border);
-        background-color: var(--vscode-button-secondaryBackground);
-        color: var(--vscode-button-secondaryForeground);
-        cursor: pointer;
-        border-radius: 4px;
-        font-size: 13px;
-    }
-    button:hover { background-color: var(--vscode-button-secondaryHoverBackground); }
-    button.primary {
-        background-color: var(--vscode-button-background);
-        color: var(--vscode-button-foreground);
-    }
-    button.primary:hover { background-color: var(--vscode-button-hoverBackground); }
-</style>
-</head>
-<body>
-    <h2>${escapeHtml(config.title)}</h2>
-    <div class="fields">
-        ${fieldsHtml}
-    </div>
-    <div class="buttons">
-        <button onclick="cancel()">Cancel</button>
-        <button class="primary" onclick="save()">Save</button>
-    </div>
-    <script>
-        const vscode = acquireVsCodeApi();
-        const fieldNames = ${JSON.stringify(config.fields.map(f => f.name))};
-        
-        function cancel() { vscode.postMessage({ type: 'cancel' }); }
-        
-        function save() {
-            const values = {};
-            fieldNames.forEach(name => {
-                const el = document.getElementById(name);
-                values[name] = el ? el.value : '';
-            });
-            vscode.postMessage({ type: 'save', values });
-        }
-    </script>
-</body></html>`;
-    
-    templateEditorPanel.webview.onDidReceiveMessage(async (msg) => {
-        if (msg.type === 'cancel') {
-            templateEditorPanel?.dispose();
-        } else if (msg.type === 'save') {
-            await onSave(msg.values);
-            templateEditorPanel?.dispose();
-        }
-    });
-    
-    templateEditorPanel.onDidDispose(() => {
-        templateEditorPanel = undefined;
-    });
-}
-
-// Placeholder help text for templates
-const PLACEHOLDER_HELP = `<strong>Available Placeholders:</strong><br>
-<code>{{selection}}</code> - Current text selection<br>
-<code>{{file}}</code> - Current file path (relative)<br>
-<code>{{filename}}</code> - Current file name<br>
-<code>{{filecontent}}</code> - Full file content<br>
-<code>{{clipboard}}</code> - Clipboard contents<br>
-<code>{{date}}</code> / <code>{{time}}</code> / <code>{{datetime}}</code> - Current date/time<br>
-<code>{{workspace}}</code> - Workspace name<br>
-<code>{{language}}</code> - File language ID<br>
-<code>{{line}}</code> - Current line number`;
 
 // ============================================================================
 // TOM NOTEPAD (Simple explorer notepad with send to copilot)
@@ -963,7 +725,7 @@ class CopilotNotepadProvider implements vscode.WebviewViewProvider {
 
         await showTemplateEditorPanel({
             type: 'copilot',
-            title: `Edit Template: ${this._selectedTemplate}`,
+            title: `Edit Copilot Template: ${this._selectedTemplate}`,
             fields: [
                 { name: 'name', label: 'Template Name', type: 'text', placeholder: 'my_template', value: this._selectedTemplate },
                 { name: 'prefix', label: 'Prefix (added before your prompt)', type: 'textarea', placeholder: 'Please help me with the following:\\n\\n', value: template.prefix },
@@ -1362,7 +1124,7 @@ class LocalLlmNotepadProvider implements vscode.WebviewViewProvider {
 
         await showTemplateEditorPanel({
             type: 'localLlm',
-            title: `Edit Profile: ${profile.label}`,
+            title: `Edit Local LLM Profile: ${profile.label}`,
             fields: [
                 { name: 'name', label: 'Profile Key (read-only)', type: 'text', placeholder: 'my_profile', value: this._selectedProfile, readonly: true },
                 { name: 'label', label: 'Display Label', type: 'text', placeholder: 'My Profile', value: profile.label },
@@ -1654,7 +1416,7 @@ class ConversationNotepadProvider implements vscode.WebviewViewProvider {
     private async _addProfile(): Promise<void> {
         await showTemplateEditorPanel({
             type: 'conversation',
-            title: 'New Conversation Profile',
+            title: 'New AI Conversation Profile',
             fields: [
                 { name: 'name', label: 'Profile Key', type: 'text', placeholder: 'my_conversation' },
                 { name: 'label', label: 'Display Label', type: 'text', placeholder: 'My Conversation' },
@@ -1704,7 +1466,7 @@ class ConversationNotepadProvider implements vscode.WebviewViewProvider {
 
         await showTemplateEditorPanel({
             type: 'conversation',
-            title: `Edit Profile: ${profile.label}`,
+            title: `Edit AI Conversation Profile: ${profile.label}`,
             fields: [
                 { name: 'name', label: 'Profile Key (read-only)', type: 'text', placeholder: 'my_conversation', value: this._selectedProfile, readonly: true },
                 { name: 'label', label: 'Display Label', type: 'text', placeholder: 'My Conversation', value: profile.label },
@@ -2086,7 +1848,7 @@ _________ CHAT chat_${timestamp} ____________
 
         await showTemplateEditorPanel({
             type: 'tomAiChat',
-            title: `Edit Template: ${template.label}`,
+            title: `Edit Tom AI Chat Template: ${template.label}`,
             fields: [
                 { name: 'name', label: 'Template Key', type: 'text', placeholder: 'my_template', value: this._selectedTemplate },
                 { name: 'label', label: 'Display Label', type: 'text', placeholder: 'My Template', value: template.label },

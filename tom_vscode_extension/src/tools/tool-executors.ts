@@ -17,6 +17,12 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { SharedToolDefinition } from './shared-tool-registry';
 import { TodoManager, TodoOperationResult } from '../managers/todoManager';
+import {
+    loadEscalationToolsConfig,
+    buildAskBigBrotherDescription,
+    buildAskCopilotDescription,
+    generateModelList,
+} from './escalation-tools-config';
 
 const execAsync = promisify(exec);
 
@@ -732,6 +738,440 @@ export const MANAGE_TODO_TOOL: SharedToolDefinition<ManageTodoInput> = {
 };
 
 // ============================================================================
+// Ask Big Brother — query VS Code language models from local LLM
+// ============================================================================
+
+export interface AskBigBrotherInput {
+    operation: 'list' | 'query';
+    modelId?: string;
+    prompt?: string;
+    enableTools?: boolean;
+    maxIterations?: number;
+}
+
+/**
+ * Cache for available models (refreshed on each list operation)
+ */
+let cachedModels: Array<{
+    id: string;
+    name: string;
+    vendor: string;
+    family: string;
+    maxInputTokens: number;
+}> = [];
+
+/**
+ * Convert tool result to text (simplified version for Big Brother tool)
+ */
+function toolResultToTextBigBrother(result: vscode.LanguageModelToolResult): string {
+    const config = loadEscalationToolsConfig();
+    const maxChars = config.askBigBrother.maxToolResultChars;
+    
+    const parts: string[] = [];
+    for (const part of result.content) {
+        if (part instanceof vscode.LanguageModelTextPart) {
+            parts.push(part.value);
+        } else if (typeof part === 'object' && part !== null) {
+            if ('value' in part) {
+                parts.push(String(part.value));
+            } else {
+                parts.push(JSON.stringify(part));
+            }
+        }
+    }
+    const text = parts.join('\n');
+    if (text.length > maxChars) {
+        return text.substring(0, maxChars) + '\n... [truncated]';
+    }
+    return text;
+}
+
+async function executeAskBigBrother(input: AskBigBrotherInput): Promise<string> {
+    const config = loadEscalationToolsConfig();
+    
+    // Check if tool is enabled
+    if (!config.askBigBrother.enabled) {
+        return 'Error: Ask Big Brother tool is disabled. Enable it in the status page settings.';
+    }
+    
+    if (input.operation === 'list') {
+        const modelList = await generateModelList();
+        return modelList + '\n\n' + config.askBigBrother.modelRecommendations;
+    }
+
+    if (input.operation === 'query') {
+        if (!input.prompt) {
+            return 'Error: "prompt" is required for query operation.';
+        }
+
+        try {
+            // Select model based on modelId or default from config
+            const targetModel = input.modelId || config.askBigBrother.defaultModel;
+            let models: vscode.LanguageModelChat[];
+            
+            // Try exact ID match first
+            models = await vscode.lm.selectChatModels({ id: targetModel });
+            
+            // Try family match
+            if (models.length === 0) {
+                models = await vscode.lm.selectChatModels({ family: targetModel });
+            }
+            
+            // Try partial name match
+            if (models.length === 0) {
+                const allModels = await vscode.lm.selectChatModels();
+                models = allModels.filter(m => 
+                    m.name.toLowerCase().includes(targetModel.toLowerCase()) ||
+                    m.id.toLowerCase().includes(targetModel.toLowerCase())
+                );
+            }
+
+            if (models.length === 0) {
+                return `No model found matching "${targetModel}". Use operation "list" to see available models.`;
+            }
+
+            const model = models[0];
+            
+            const tokenSource = new vscode.CancellationTokenSource();
+            const enableTools = input.enableTools ?? config.askBigBrother.enableToolsByDefault;
+            const timeoutMs = config.askBigBrother.responseTimeout;
+            const timeoutId = setTimeout(() => tokenSource.cancel(), timeoutMs);
+            
+            try {
+                // Prepare tools if enabled
+                let tools: vscode.LanguageModelChatTool[] = [];
+                if (enableTools) {
+                    tools = Array.from(vscode.lm.tools) as vscode.LanguageModelChatTool[];
+                }
+                
+                const maxIter = enableTools ? (input.maxIterations ?? config.askBigBrother.maxIterations) : 1;
+                let currentPrompt = input.prompt;
+                let finalResponse = '';
+                
+                for (let iteration = 1; iteration <= maxIter; iteration++) {
+                    if (tokenSource.token.isCancellationRequested) {
+                        break;
+                    }
+                    
+                    const messages = [vscode.LanguageModelChatMessage.User(currentPrompt)];
+                    const requestOptions = tools.length > 0 ? { tools } : {};
+                    const response = await model.sendRequest(messages, requestOptions, tokenSource.token);
+                    
+                    let iterationText = '';
+                    const toolCalls: vscode.LanguageModelToolCallPart[] = [];
+                    
+                    for await (const part of response.stream) {
+                        if (part instanceof vscode.LanguageModelTextPart) {
+                            iterationText += part.value;
+                        } else if (part instanceof vscode.LanguageModelToolCallPart) {
+                            toolCalls.push(part);
+                        }
+                    }
+                    
+                    // No tool calls - we're done
+                    if (toolCalls.length === 0) {
+                        finalResponse = iterationText.trim();
+                        break;
+                    }
+                    
+                    // Execute tool calls and build follow-up prompt
+                    const toolResults: string[] = [];
+                    for (const call of toolCalls) {
+                        try {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const toolInvocationOptions: any = {
+                                input: call.input as object,
+                                toolInvocationToken: undefined
+                            };
+                            const toolResult = await vscode.lm.invokeTool(call.name, toolInvocationOptions);
+                            const resultText = toolResultToTextBigBrother(toolResult);
+                            toolResults.push(`Tool ${call.name} result:\n${resultText}`);
+                        } catch (error) {
+                            toolResults.push(`Tool ${call.name} error: ${error}`);
+                        }
+                    }
+                    
+                    currentPrompt = `Previous assistant response:\n${iterationText}\n\nTool results:\n${toolResults.join('\n\n')}\n\nPlease continue and provide your final response based on these results.`;
+                }
+                
+                clearTimeout(timeoutId);
+                
+                // Optionally summarize long responses
+                if (config.askBigBrother.summarizationEnabled && 
+                    finalResponse.length > config.askBigBrother.maxResponseChars) {
+                    try {
+                        finalResponse = await summarizeResponse(finalResponse, config);
+                    } catch {
+                        // Keep original if summarization fails
+                    }
+                }
+                
+                const toolsNote = enableTools ? ' (with tools)' : '';
+                return `**Response from ${model.name}${toolsNote}:**\n\n${finalResponse}`;
+            } catch (error: unknown) {
+                clearTimeout(timeoutId);
+                if (error instanceof vscode.LanguageModelError) {
+                    return `Model error (${error.code}): ${error.message}`;
+                }
+                throw error;
+            }
+        } catch (error) {
+            return `Error querying model: ${error}`;
+        }
+    }
+
+    return `Unknown operation: ${input.operation}. Use "list" or "query".`;
+}
+
+/**
+ * Summarize a long response using the configured summarization model
+ */
+async function summarizeResponse(response: string, config: ReturnType<typeof loadEscalationToolsConfig>): Promise<string> {
+    const summaryConfig = config.askBigBrother;
+    
+    let models = await vscode.lm.selectChatModels({ family: summaryConfig.summarizationModel });
+    if (models.length === 0) {
+        models = await vscode.lm.selectChatModels({ id: summaryConfig.summarizationModel });
+    }
+    if (models.length === 0) {
+        return response; // No summarization model available
+    }
+    
+    const prompt = summaryConfig.summarizationPromptTemplate.replace('${response}', response);
+    const messages = [vscode.LanguageModelChatMessage.User(prompt)];
+    
+    const tokenSource = new vscode.CancellationTokenSource();
+    const timeoutId = setTimeout(() => tokenSource.cancel(), 30000);
+    
+    try {
+        const result = await models[0].sendRequest(messages, {}, tokenSource.token);
+        let summary = '';
+        for await (const chunk of result.text) {
+            summary += chunk;
+        }
+        clearTimeout(timeoutId);
+        return `[Summarized from ${response.length} chars]\n\n${summary.trim()}`;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+export const ASK_BIG_BROTHER_TOOL: SharedToolDefinition<AskBigBrotherInput> = {
+    name: 'tom_askBigBrother',
+    displayName: 'Ask Big Brother',
+    description: `Query VS Code language models (GitHub Copilot, Claude, GPT-4, etc.) from your local LLM. This is your "escalation path" for complex questions.
+
+**Operations:**
+- "list": Get available models with recommendations
+- "query": Send a prompt to a model (specify modelId or use default)
+
+**Tool Support:**
+Set enableTools=true to let the model use VS Code tools to gather information before responding.
+
+**When to use:**
+- Complex reasoning, architecture decisions, code analysis
+- Questions requiring broader knowledge than your training
+- Verification of your answers on critical topics`,
+    tags: ['ai', 'llm', 'escalation', 'local-llm'],
+    readOnly: true,
+    inputSchema: {
+        type: 'object',
+        required: ['operation'],
+        properties: {
+            operation: { 
+                type: 'string', 
+                enum: ['list', 'query'], 
+                description: '"list" to see available models, "query" to ask a model.' 
+            },
+            modelId: { 
+                type: 'string', 
+                description: 'Model ID, family, or name to query. If omitted, uses configured default.' 
+            },
+            prompt: { 
+                type: 'string', 
+                description: 'The question or prompt to send to the model. Required for "query" operation.' 
+            },
+            enableTools: {
+                type: 'boolean',
+                description: 'Enable VS Code tools for the model. Default: from config.'
+            },
+            maxIterations: {
+                type: 'number',
+                description: 'Maximum tool iterations when enableTools=true. Default: from config.'
+            },
+        },
+    },
+    execute: executeAskBigBrother,
+};
+
+// ============================================================================
+// Ask Copilot — send to Copilot Chat window and wait for answer file
+// ============================================================================
+
+export interface AskCopilotInput {
+    prompt: string;
+    waitForAnswer?: boolean;
+    timeoutMs?: number;
+}
+
+async function executeAskCopilot(input: AskCopilotInput): Promise<string> {
+    const config = loadEscalationToolsConfig();
+    
+    // Check if tool is enabled
+    if (!config.askCopilot.enabled) {
+        return 'Error: Ask Copilot tool is disabled. Enable it in the status page settings.';
+    }
+    
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) {
+        return 'Error: No workspace folder open.';
+    }
+    
+    const waitForAnswer = input.waitForAnswer ?? true;
+    const timeoutMs = input.timeoutMs ?? config.askCopilot.answerFileTimeout;
+    
+    // Build full prompt with prefix/suffix
+    let fullPrompt = config.askCopilot.promptPrefix + input.prompt;
+    
+    if (waitForAnswer) {
+        // Add answer file instructions
+        const answerFolder = path.join(workspaceRoot, config.askCopilot.answerFolder);
+        const sessionId = vscode.env.sessionId;
+        const machineId = vscode.env.machineId;
+        const answerFilePath = path.join(answerFolder, `${sessionId}_${machineId}_answer.yaml`);
+        
+        // Ensure folder exists
+        if (!fs.existsSync(answerFolder)) {
+            fs.mkdirSync(answerFolder, { recursive: true });
+        }
+        
+        // Clear any existing answer file
+        if (fs.existsSync(answerFilePath)) {
+            fs.unlinkSync(answerFilePath);
+        }
+        
+        const suffix = config.askCopilot.promptSuffix
+            .replace(/\$\{answerFolder\}/g, config.askCopilot.answerFolder)
+            .replace(/\$\{sessionId\}/g, sessionId)
+            .replace(/\$\{machineId\}/g, machineId);
+        
+        fullPrompt += suffix;
+    }
+    
+    // Send to Copilot Chat
+    try {
+        await vscode.commands.executeCommand('workbench.action.chat.open', {
+            query: fullPrompt
+        });
+    } catch (error) {
+        return `Error opening Copilot Chat: ${error}`;
+    }
+    
+    if (!waitForAnswer) {
+        return 'Prompt sent to Copilot Chat. Not waiting for answer file.';
+    }
+    
+    // Wait for answer file
+    const answerFolder = path.join(workspaceRoot, config.askCopilot.answerFolder);
+    const sessionId = vscode.env.sessionId;
+    const machineId = vscode.env.machineId;
+    const answerFilePath = path.join(answerFolder, `${sessionId}_${machineId}_answer.yaml`);
+    
+    const pollInterval = config.askCopilot.pollInterval;
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < timeoutMs) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+        if (fs.existsSync(answerFilePath)) {
+            try {
+                const content = fs.readFileSync(answerFilePath, 'utf-8').trim();
+                if (content) {
+                    // Try to parse as YAML/JSON
+                    try {
+                        const parsed = JSON.parse(content);
+                        if (parsed.response) {
+                            return `**Copilot Response:**\n\n${parsed.response}`;
+                        }
+                        return `**Copilot Response:**\n\n${JSON.stringify(parsed, null, 2)}`;
+                    } catch {
+                        // Try simple YAML key: value parsing
+                        const responseMatch = content.match(/^response:\s*(.*)$/ms);
+                        if (responseMatch) {
+                            return `**Copilot Response:**\n\n${responseMatch[1].trim()}`;
+                        }
+                        return `**Copilot Response:**\n\n${content}`;
+                    }
+                }
+            } catch (error) {
+                return `Error reading answer file: ${error}`;
+            }
+        }
+    }
+    
+    return `Timeout waiting for Copilot response after ${timeoutMs / 1000}s. The answer file was not created. Copilot may still be processing - check the chat window.`;
+}
+
+export const ASK_COPILOT_TOOL: SharedToolDefinition<AskCopilotInput> = {
+    name: 'tom_askCopilot',
+    displayName: 'Ask Copilot',
+    description: `Send a question to GitHub Copilot via the chat window and wait for a response via answer file.
+
+**How it works:**
+- Opens Copilot Chat with your prompt
+- Watches for an answer file written by Copilot
+- Returns the response content
+
+**When to use:**
+- Questions that benefit from Copilot's full context (open files, workspace)
+- Tasks where Copilot can use its native tools (edit files, run commands)
+- Complex coding tasks requiring iterative refinement`,
+    tags: ['ai', 'copilot', 'escalation', 'local-llm'],
+    readOnly: true,
+    inputSchema: {
+        type: 'object',
+        required: ['prompt'],
+        properties: {
+            prompt: { 
+                type: 'string', 
+                description: 'Your question for Copilot.' 
+            },
+            waitForAnswer: { 
+                type: 'boolean', 
+                description: 'Whether to wait for answer file. Default: true.' 
+            },
+            timeoutMs: { 
+                type: 'number', 
+                description: 'Max time to wait for answer in milliseconds. Default: from config.' 
+            },
+        },
+    },
+    execute: executeAskCopilot,
+};
+
+// ============================================================================
+// Initialize escalation tool descriptions with dynamic model list
+// ============================================================================
+
+/**
+ * Initialize escalation tool descriptions with current model list.
+ * Call this at extension activation.
+ */
+export async function initializeEscalationTools(): Promise<void> {
+    try {
+        // Update Ask Big Brother description with dynamic model list
+        const bigBrotherDesc = await buildAskBigBrotherDescription();
+        ASK_BIG_BROTHER_TOOL.description = bigBrotherDesc;
+        
+        // Update Ask Copilot description from config
+        const copilotDesc = buildAskCopilotDescription();
+        ASK_COPILOT_TOOL.description = copilotDesc;
+    } catch (error) {
+        console.error('Error initializing escalation tools:', error);
+    }
+}
+
+// ============================================================================
 // Master registry — all shared tools in one array
 // ============================================================================
 
@@ -748,6 +1188,8 @@ export const ALL_SHARED_TOOLS: SharedToolDefinition<any>[] = [
     GET_ERRORS_TOOL,
     READ_GUIDELINE_TOOL,        // VS Code LM only — reads from _copilot_tomai/
     READ_LOCAL_GUIDELINE_TOOL,   // Ollama only — reads from _copilot_local/
+    ASK_BIG_BROTHER_TOOL,        // Local LLM only — escalate to VS Code LM API
+    ASK_COPILOT_TOOL,            // Local LLM only — escalate to Copilot Chat window
     // Write tools (VS Code LM only by default)
     CREATE_FILE_TOOL,
     EDIT_FILE_TOOL,

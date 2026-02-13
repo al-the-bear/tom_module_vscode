@@ -19,6 +19,13 @@ import { getCliServerStatus } from './cliServer-handler';
 import { loadBridgeConfig, BridgeConfig } from './restartBridge-handler';
 import { isTrailEnabled, setTrailEnabled, loadTrailConfig, toggleTrail } from './trailLogger-handler';
 import { isTelegramPollingActive } from './telegram-commands';
+import { 
+    loadEscalationToolsConfig, 
+    saveEscalationToolsConfig, 
+    clearConfigCache,
+    AskCopilotConfig,
+    AskBigBrotherConfig,
+} from '../tools/escalation-tools-config';
 
 let statusPanel: vscode.WebviewPanel | undefined;
 
@@ -125,6 +132,24 @@ async function updateTelegramSettings(settings: any): Promise<void> {
     }
 }
 
+async function updateAskCopilotSettings(settings: any): Promise<void> {
+    const config = loadEscalationToolsConfig();
+    config.askCopilot = { ...config.askCopilot, ...settings };
+    if (saveEscalationToolsConfig(config)) {
+        clearConfigCache();
+        vscode.window.showInformationMessage('Ask Copilot settings updated');
+    }
+}
+
+async function updateAskBigBrotherSettings(settings: any): Promise<void> {
+    const config = loadEscalationToolsConfig();
+    config.askBigBrother = { ...config.askBigBrother, ...settings };
+    if (saveEscalationToolsConfig(config)) {
+        clearConfigCache();
+        vscode.window.showInformationMessage('Ask Big Brother settings updated');
+    }
+}
+
 /**
  * Status data for the webview
  */
@@ -174,6 +199,8 @@ interface StatusData {
         toolsEnabled: boolean;
         profiles: string[];
     };
+    askCopilot: AskCopilotConfig;
+    askBigBrother: AskBigBrotherConfig;
 }
 
 /**
@@ -242,6 +269,7 @@ async function gatherStatusData(): Promise<StatusData> {
             toolsEnabled: botConversation.toolsEnabled ?? true,
             profiles: botConversation.profiles ? Object.keys(botConversation.profiles) : [],
         },
+        ...loadEscalationToolsConfig(),
     };
 }
 
@@ -626,6 +654,90 @@ function getStatusPageHtml(status: StatusData): string {
         </div>
     </div>
 
+    <!-- Ask Copilot Settings -->
+    <div class="section">
+        <div class="section-header collapsed" onclick="toggleSection('askCopilot')">Ask Copilot <span class="collapse-icon"></span></div>
+        <div id="askCopilot-content" class="section-content">
+            <div class="setting-row">
+                <label>Enabled:</label>
+                <select id="ac-enabled" onchange="updateAskCopilot()">
+                    <option value="true" ${status.askCopilot.enabled ? 'selected' : ''}>Yes</option>
+                    <option value="false" ${!status.askCopilot.enabled ? 'selected' : ''}>No</option>
+                </select>
+            </div>
+            <div class="setting-row">
+                <label>Answer Timeout (ms):</label>
+                <input type="number" id="ac-answerFileTimeout" value="${status.askCopilot.answerFileTimeout}" onchange="updateAskCopilot()">
+            </div>
+            <div class="setting-row">
+                <label>Poll Interval (ms):</label>
+                <input type="number" id="ac-pollInterval" value="${status.askCopilot.pollInterval}" onchange="updateAskCopilot()">
+            </div>
+            <div class="setting-row">
+                <label>Answer Folder:</label>
+                <input type="text" id="ac-answerFolder" value="${status.askCopilot.answerFolder}" onchange="updateAskCopilot()">
+            </div>
+            <div class="setting-row">
+                <label>Prompt Prefix:</label>
+                <textarea id="ac-promptPrefix" rows="2" onchange="updateAskCopilot()">${status.askCopilot.promptPrefix || ''}</textarea>
+            </div>
+            <div class="setting-row">
+                <label>Prompt Suffix:</label>
+                <textarea id="ac-promptSuffix" rows="3" onchange="updateAskCopilot()">${status.askCopilot.promptSuffix || ''}</textarea>
+            </div>
+            <p class="info-text">Opens Copilot Chat and monitors for answer file responses.</p>
+        </div>
+    </div>
+
+    <!-- Ask Big Brother Settings -->
+    <div class="section">
+        <div class="section-header collapsed" onclick="toggleSection('askBigBrother')">Ask Big Brother <span class="collapse-icon"></span></div>
+        <div id="askBigBrother-content" class="section-content">
+            <div class="setting-row">
+                <label>Enabled:</label>
+                <select id="abb-enabled" onchange="updateAskBigBrother()">
+                    <option value="true" ${status.askBigBrother.enabled ? 'selected' : ''}>Yes</option>
+                    <option value="false" ${!status.askBigBrother.enabled ? 'selected' : ''}>No</option>
+                </select>
+            </div>
+            <div class="setting-row">
+                <label>Default Model:</label>
+                <input type="text" id="abb-defaultModel" value="${status.askBigBrother.defaultModel}" onchange="updateAskBigBrother()">
+            </div>
+            <div class="setting-row">
+                <label>Temperature:</label>
+                <input type="number" id="abb-temperature" value="${status.askBigBrother.temperature}" step="0.1" min="0" max="2" onchange="updateAskBigBrother()">
+            </div>
+            <div class="setting-row">
+                <label>Max Tool Iterations:</label>
+                <input type="number" id="abb-maxIterations" value="${status.askBigBrother.maxIterations}" min="1" max="20" onchange="updateAskBigBrother()">
+            </div>
+            <div class="setting-row">
+                <label>Enable Tools by Default:</label>
+                <select id="abb-enableToolsByDefault" onchange="updateAskBigBrother()">
+                    <option value="true" ${status.askBigBrother.enableToolsByDefault ? 'selected' : ''}>Yes</option>
+                    <option value="false" ${!status.askBigBrother.enableToolsByDefault ? 'selected' : ''}>No</option>
+                </select>
+            </div>
+            <div class="setting-row">
+                <label>Summarization Enabled:</label>
+                <select id="abb-summarizationEnabled" onchange="updateAskBigBrother()">
+                    <option value="true" ${status.askBigBrother.summarizationEnabled ? 'selected' : ''}>Yes</option>
+                    <option value="false" ${!status.askBigBrother.summarizationEnabled ? 'selected' : ''}>No</option>
+                </select>
+            </div>
+            <div class="setting-row">
+                <label>Max Response Chars:</label>
+                <input type="number" id="abb-maxResponseChars" value="${status.askBigBrother.maxResponseChars}" onchange="updateAskBigBrother()">
+            </div>
+            <div class="setting-row">
+                <label>Summarization Model:</label>
+                <input type="text" id="abb-summarizationModel" value="${status.askBigBrother.summarizationModel || ''}" onchange="updateAskBigBrother()">
+            </div>
+            <p class="info-text">Uses VS Code LM API for direct model queries with tool support.</p>
+        </div>
+    </div>
+
     <script>
         const vscode = acquireVsCodeApi();
         
@@ -695,6 +807,36 @@ function getStatusPageHtml(status: StatusData): string {
                 }
             });
         }
+        
+        function updateAskCopilot() {
+            vscode.postMessage({ 
+                type: 'updateAskCopilot',
+                settings: {
+                    enabled: document.getElementById('ac-enabled').value === 'true',
+                    answerFileTimeout: parseInt(document.getElementById('ac-answerFileTimeout').value),
+                    pollInterval: parseInt(document.getElementById('ac-pollInterval').value),
+                    answerFolder: document.getElementById('ac-answerFolder').value,
+                    promptPrefix: document.getElementById('ac-promptPrefix').value,
+                    promptSuffix: document.getElementById('ac-promptSuffix').value
+                }
+            });
+        }
+        
+        function updateAskBigBrother() {
+            vscode.postMessage({ 
+                type: 'updateAskBigBrother',
+                settings: {
+                    enabled: document.getElementById('abb-enabled').value === 'true',
+                    defaultModel: document.getElementById('abb-defaultModel').value,
+                    temperature: parseFloat(document.getElementById('abb-temperature').value),
+                    maxIterations: parseInt(document.getElementById('abb-maxIterations').value),
+                    enableToolsByDefault: document.getElementById('abb-enableToolsByDefault').value === 'true',
+                    summarizationEnabled: document.getElementById('abb-summarizationEnabled').value === 'true',
+                    maxResponseChars: parseInt(document.getElementById('abb-maxResponseChars').value),
+                    summarizationModel: document.getElementById('abb-summarizationModel').value
+                }
+            });
+        }
     </script>
 </body></html>`;
 }
@@ -752,6 +894,12 @@ export async function showStatusPageHandler(): Promise<void> {
                 break;
             case 'updateTelegram':
                 await updateTelegramSettings(msg.settings);
+                break;
+            case 'updateAskCopilot':
+                await updateAskCopilotSettings(msg.settings);
+                break;
+            case 'updateAskBigBrother':
+                await updateAskBigBrotherSettings(msg.settings);
                 break;
         }
         

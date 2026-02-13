@@ -365,3 +365,402 @@ export async function showAnalysisResult(analysis: string): Promise<void> {
 
     await vscode.window.showTextDocument(doc);
 }
+
+// ============================================================================
+// Shared Config Types & Functions (used by dsNotes-handler and unifiedNotepad-handler)
+// ============================================================================
+
+export interface SendToChatConfig {
+    templates: { [key: string]: { prefix: string; suffix: string; showInMenu?: boolean } };
+    promptExpander: {
+        profiles: { [key: string]: {
+            label: string;
+            systemPrompt?: string | null;
+            resultTemplate?: string | null;
+            temperature?: number | null;
+            modelConfig?: string | null;
+            toolsEnabled?: boolean;
+            stripThinkingTags?: boolean | null;
+            isDefault?: boolean;
+        } };
+    };
+    botConversation: {
+        profiles: { [key: string]: {
+            label: string;
+            description?: string;
+            goal?: string;
+            maxTurns?: number;
+            initialPromptTemplate?: string | null;
+            followUpTemplate?: string | null;
+            temperature?: number | null;
+        } };
+    };
+    tomAiChat?: {
+        defaultTemplate?: string;
+        templates?: { [key: string]: {
+            label: string;
+            description?: string;
+            contextInstructions?: string;
+            systemPromptOverride?: string | null;
+        } };
+    };
+    copilotAnswerPath?: string;  // Path for extracting Copilot answers, relative to workspace root
+}
+
+export function loadSendToChatConfig(): SendToChatConfig | null {
+    const configPath = getConfigPath();
+    if (!configPath || !fs.existsSync(configPath)) {
+        return null;
+    }
+    try {
+        const content = fs.readFileSync(configPath, 'utf-8');
+        return JSON.parse(content);
+    } catch {
+        return null;
+    }
+}
+
+export function saveSendToChatConfig(config: SendToChatConfig): boolean {
+    const configPath = getConfigPath();
+    if (!configPath) {
+        return false;
+    }
+    try {
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export function escapeHtml(text: string): string {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ============================================================================
+// Template Editor Panel
+// ============================================================================
+
+export interface TemplateEditorField {
+    name: string;
+    label: string;
+    type: 'text' | 'textarea';
+    placeholder?: string;
+    value?: string;
+    help?: string;
+    readonly?: boolean;
+}
+
+export interface TemplateEditorConfig {
+    type: 'copilot' | 'conversation' | 'tomAiChat' | 'localLlm';
+    title: string;
+    fields: TemplateEditorField[];
+}
+
+let templateEditorPanel: vscode.WebviewPanel | undefined;
+
+export async function showTemplateEditorPanel(
+    config: TemplateEditorConfig,
+    onSave: (values: { [key: string]: string }) => Promise<void>
+): Promise<void> {
+    if (templateEditorPanel) {
+        templateEditorPanel.dispose();
+    }
+
+    templateEditorPanel = vscode.window.createWebviewPanel(
+        'dsNotesTemplateEditor',
+        `${config.title}`,
+        vscode.ViewColumn.Active,
+        { enableScripts: true }
+    );
+
+    const fieldsHtml = config.fields.map(f => {
+        const readonlyAttr = f.readonly ? 'readonly disabled style="opacity: 0.7; cursor: not-allowed;"' : '';
+        const inputHtml = f.type === 'textarea'
+            ? `<textarea id="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}" rows="6" ${readonlyAttr}>${escapeHtml(f.value || '')}</textarea>`
+            : `<input type="text" id="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(f.value || '')}" ${readonlyAttr}>`;
+        const helpHtml = f.help ? `<div class="help">${f.help}</div>` : '';
+        return `<div class="field">
+            <label for="${f.name}">${f.label}</label>
+            ${inputHtml}
+            ${helpHtml}
+        </div>`;
+    }).join('');
+
+    templateEditorPanel.webview.html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        padding: 24px;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        font-family: var(--vscode-font-family);
+        background-color: var(--vscode-editor-background);
+        color: var(--vscode-foreground);
+    }
+    h2 { margin-bottom: 20px; }
+    .fields { flex: 1; overflow-y: auto; }
+    .field { margin-bottom: 20px; }
+    .field label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 500;
+    }
+    .field input, .field textarea {
+        width: 100%;
+        border: 1px solid var(--vscode-input-border);
+        background-color: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        padding: 8px 12px;
+        font-family: var(--vscode-editor-font-family, monospace);
+        font-size: var(--vscode-editor-font-size, 13px);
+        border-radius: 4px;
+    }
+    .field textarea { min-height: 100px; resize: vertical; line-height: 1.5; }
+    .field input:focus, .field textarea:focus { border-color: var(--vscode-focusBorder); outline: none; }
+    .help {
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+        background: var(--vscode-textBlockQuote-background);
+        padding: 10px;
+        border-radius: 4px;
+        line-height: 1.5;
+    }
+    .help code {
+        background: var(--vscode-textCodeBlock-background);
+        padding: 2px 5px;
+        border-radius: 3px;
+        font-family: var(--vscode-editor-font-family, monospace);
+    }
+    .buttons {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+        justify-content: flex-end;
+        flex-shrink: 0;
+    }
+    button {
+        padding: 8px 20px;
+        border: 1px solid var(--vscode-input-border);
+        background-color: var(--vscode-button-secondaryBackground);
+        color: var(--vscode-button-secondaryForeground);
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 13px;
+    }
+    button:hover { background-color: var(--vscode-button-secondaryHoverBackground); }
+    button.primary {
+        background-color: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+    }
+    button.primary:hover { background-color: var(--vscode-button-hoverBackground); }
+</style>
+</head>
+<body>
+    <h2>${escapeHtml(config.title)}</h2>
+    <div class="fields">
+        ${fieldsHtml}
+    </div>
+    <div class="buttons">
+        <button onclick="cancel()">Cancel</button>
+        <button class="primary" onclick="save()">Save</button>
+    </div>
+    <script>
+        const vscode = acquireVsCodeApi();
+        const fieldNames = ${JSON.stringify(config.fields.map(f => f.name))};
+
+        function cancel() { vscode.postMessage({ type: 'cancel' }); }
+
+        function save() {
+            const values = {};
+            fieldNames.forEach(name => {
+                const el = document.getElementById(name);
+                values[name] = el ? el.value : '';
+            });
+            vscode.postMessage({ type: 'save', values });
+        }
+    </script>
+</body></html>`;
+
+    templateEditorPanel.webview.onDidReceiveMessage(async (msg) => {
+        if (msg.type === 'cancel') {
+            templateEditorPanel?.dispose();
+        } else if (msg.type === 'save') {
+            await onSave(msg.values);
+            templateEditorPanel?.dispose();
+        }
+    });
+
+    templateEditorPanel.onDidDispose(() => {
+        templateEditorPanel = undefined;
+    });
+}
+
+// ============================================================================
+// Placeholder Expansion
+// ============================================================================
+
+/**
+ * Expand placeholders like {{selection}}, {{file}}, {{clipboard}} in a template string
+ */
+export async function expandPlaceholders(template: string): Promise<string> {
+    let result = template;
+    const editor = vscode.window.activeTextEditor;
+    
+    // {{selection}} - Current editor selection
+    if (editor) {
+        const selection = editor.document.getText(editor.selection);
+        result = result.replace(/\{\{selection\}\}/gi, selection || '(no selection)');
+    } else {
+        result = result.replace(/\{\{selection\}\}/gi, '(no editor)');
+    }
+    
+    // {{file}} - Current file path (relative)
+    if (editor) {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        const relativePath = workspaceFolder 
+            ? path.relative(workspaceFolder.uri.fsPath, editor.document.uri.fsPath)
+            : editor.document.uri.fsPath;
+        result = result.replace(/\{\{file\}\}/gi, relativePath);
+    } else {
+        result = result.replace(/\{\{file\}\}/gi, '(no file)');
+    }
+    
+    // {{filename}} - Current file name only
+    if (editor) {
+        result = result.replace(/\{\{filename\}\}/gi, path.basename(editor.document.uri.fsPath));
+    } else {
+        result = result.replace(/\{\{filename\}\}/gi, '(no file)');
+    }
+    
+    // {{filecontent}} - Current file content
+    if (editor) {
+        result = result.replace(/\{\{filecontent\}\}/gi, editor.document.getText());
+    } else {
+        result = result.replace(/\{\{filecontent\}\}/gi, '(no file)');
+    }
+    
+    // {{date}}, {{time}}, {{datetime}}
+    const now = new Date();
+    result = result.replace(/\{\{date\}\}/gi, now.toLocaleDateString());
+    result = result.replace(/\{\{time\}\}/gi, now.toLocaleTimeString());
+    result = result.replace(/\{\{datetime\}\}/gi, now.toLocaleString());
+    
+    // {{clipboard}}
+    try {
+        const clipboard = await vscode.env.clipboard.readText();
+        result = result.replace(/\{\{clipboard\}\}/gi, clipboard || '(empty clipboard)');
+    } catch {
+        result = result.replace(/\{\{clipboard\}\}/gi, '(clipboard error)');
+    }
+    
+    // {{workspace}}, {{workspacepath}}
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    result = result.replace(/\{\{workspace\}\}/gi, workspaceFolder?.name || '(no workspace)');
+    result = result.replace(/\{\{workspacepath\}\}/gi, workspaceFolder?.uri.fsPath || '(no workspace)');
+    
+    // {{language}}
+    if (editor) {
+        result = result.replace(/\{\{language\}\}/gi, editor.document.languageId);
+    } else {
+        result = result.replace(/\{\{language\}\}/gi, '(no file)');
+    }
+    
+    // {{line}}, {{column}}
+    if (editor) {
+        result = result.replace(/\{\{line\}\}/gi, String(editor.selection.active.line + 1));
+        result = result.replace(/\{\{column\}\}/gi, String(editor.selection.active.character + 1));
+    } else {
+        result = result.replace(/\{\{line\}\}/gi, '(no editor)');
+        result = result.replace(/\{\{column\}\}/gi, '(no editor)');
+    }
+    
+    return result;
+}
+
+// ============================================================================
+// Preview Panel
+// ============================================================================
+
+let previewPanel: vscode.WebviewPanel | undefined;
+
+/**
+ * Show a preview panel with expanded content and optional send button
+ */
+export async function showPreviewPanel(title: string, content: string, onSend?: (text: string) => Promise<void>): Promise<void> {
+    if (previewPanel) {
+        previewPanel.dispose();
+    }
+    
+    previewPanel = vscode.window.createWebviewPanel(
+        'dartscriptPreview',
+        `Preview: ${title}`,
+        vscode.ViewColumn.Beside,
+        { enableScripts: true, retainContextWhenHidden: true }
+    );
+    
+    const escapedContent = content
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    
+    previewPanel.webview.html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 16px; margin: 0; }
+pre { white-space: pre-wrap; word-wrap: break-word; background: var(--vscode-textCodeBlock-background); padding: 12px; border-radius: 4px; font-family: var(--vscode-editor-font-family); font-size: 13px; overflow: auto; max-height: calc(100vh - 100px); }
+.buttons { margin-top: 16px; display: flex; gap: 8px; }
+button { padding: 6px 14px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 3px; cursor: pointer; font-size: 13px; }
+button:hover { background: var(--vscode-button-hoverBackground); }
+button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+</style>
+</head><body>
+<pre>${escapedContent}</pre>
+<div class="buttons">
+    <button class="secondary" onclick="copyToClipboard()">Copy to Clipboard</button>
+    ${onSend ? '<button onclick="send()">Send</button>' : ''}
+</div>
+<script>
+const vscode = acquireVsCodeApi();
+function copyToClipboard() { vscode.postMessage({ type: 'copy' }); }
+function send() { vscode.postMessage({ type: 'send' }); }
+</script>
+</body></html>`;
+
+    previewPanel.webview.onDidReceiveMessage(async (msg) => {
+        if (msg.type === 'copy') {
+            await vscode.env.clipboard.writeText(content);
+            vscode.window.showInformationMessage('Copied to clipboard');
+        } else if (msg.type === 'send' && onSend) {
+            await onSend(content);
+            previewPanel?.dispose();
+        }
+    });
+
+    previewPanel.onDidDispose(() => {
+        previewPanel = undefined;
+    });
+}
+
+/** Placeholder help text for template editors */
+export const PLACEHOLDER_HELP = `<strong>Available Placeholders:</strong><br>
+<code>{{selection}}</code> - Current text selection<br>
+<code>{{file}}</code> - Current file path (relative)<br>
+<code>{{filename}}</code> - Current file name<br>
+<code>{{filecontent}}</code> - Full file content<br>
+<code>{{clipboard}}</code> - Clipboard contents<br>
+<code>{{date}}</code> / <code>{{time}}</code> / <code>{{datetime}}</code> - Current date/time<br>
+<code>{{workspace}}</code> - Workspace name<br>
+<code>{{language}}</code> - File language ID<br>
+<code>{{line}}</code> - Current line number`;

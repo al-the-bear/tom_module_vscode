@@ -57,6 +57,8 @@ import {
     registerCombinedCommands,
     registerStateMachineCommands,
     registerDsNotesViews,
+    registerUnifiedNotepad,
+    registerT3Panel,
     telegramTestHandler,
     telegramToggleHandler,
     telegramConfigureHandler,
@@ -68,7 +70,7 @@ import {
 
 // Tom AI Chat tools
 import { registerTomAiChatTools } from './tools/tomAiChat-tools';
-import { initializeToolDescriptions } from './tools/tool-executors';
+import { initializeToolDescriptions, initializeEscalationTools } from './tools/tool-executors';
 
 // Global manager instance for SendToChatAdvanced
 let sendToChatAdvancedManager: SendToChatAdvancedManager | undefined;
@@ -110,6 +112,12 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register DS Notes panel views
     registerDsNotesViews(context);
 
+    // Register Unified Notepad (T2) panel
+    registerUnifiedNotepad(context);
+
+    // Register T3 test panel
+    registerT3Panel(context);
+
     // Check for test reinstall marker and send reload prompt to Copilot Chat
     checkTestReinstallMarker();
 
@@ -137,6 +145,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register Tom AI Chat tools
     initializeToolDescriptions();
+    await initializeEscalationTools();
     registerTomAiChatTools(context);
 
     // Show activation message

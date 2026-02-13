@@ -65,6 +65,8 @@ export { registerCombinedCommands } from './combinedCommand-handler';
 export { registerStateMachineCommands } from './stateMachine-handler';
 export { telegramTestHandler, telegramToggleHandler, telegramConfigureHandler, disposeTelegramStandalone, isTelegramPollingActive } from './telegram-commands';
 export { registerDsNotesViews } from './dsNotes-handler';
+export { registerUnifiedNotepad } from './unifiedNotepad-handler';
+export { registerT3Panel } from './t3Panel-handler';
 export { toggleTrail, setTrailEnabled, isTrailEnabled, loadTrailConfig } from './trailLogger-handler';
 export { showStatusPageHandler, toggleTrailHandler } from './statusPage-handler';
 export { getCliServerStatus } from './cliServer-handler';

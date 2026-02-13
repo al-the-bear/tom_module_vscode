@@ -9,19 +9,32 @@
  *   - _ai/conversation/trail/ - Bot conversation interactions
  *   - _ai/tomai/trail/     - Tom AI chat interactions  
  *   - _ai/copilot/trail/   - Copilot interactions
+ *   - _ai/trail/escalation/<trailId>/ - Escalation tool interactions
  * 
  * File naming pattern:
- *   <timestamp>_<type>_<direction>.md|.json
+ *   <YYYYMMDD>_<HHMMSS>_<NNN>_<type>_<detail>.md|.json
  *   
+ * Step types and formats:
+ *   - prompt_to_<model>              .md    Prompt sent to model
+ *   - response_partial_from_<model>  .md    Response before tool call
+ *   - response_final_from_<model>    .md    Final response
+ *   - toolrequest_<toolname>         .json  Tool invocation request
+ *   - toolresult_<toolname>          .json  Tool execution result
+ *   - continuation_to_<model>        .md    Continuation after tool result
+ *   - copilot_answer                 .json  Copilot answer file content
+ *   - summarization_prompt_<model>   .md    Summarization prompt
+ *   - summarization_response_<model> .md    Summarization response
+ *   - error                          .md    Error details
+ * 
  * Examples:
- *   20260212_143052_001_prompt_to_local.md
- *   20260212_143055_002_response_toolrequest_from_local.json
- *   20260212_143056_003_tool_call_read_file.json
- *   20260212_143057_004_tool_result.json
- *   20260212_143100_005_prompt_continuation_to_local.md
- *   20260212_143105_006_response_final_from_local.md
- *   20260212_143110_001_prompt_to_copilot.md
- *   20260212_143200_002_answerfile_from_copilot.json
+ *   20260212_175442_001_prompt_to_ollama.md
+ *   20260212_175459_002_response_partial_from_ollama.md
+ *   20260212_175459_003_toolrequest_tom_websearch.json
+ *   20260212_175501_004_toolresult_tom_websearch.json
+ *   20260212_175501_005_continuation_to_ollama.md
+ *   20260212_175551_018_response_final_from_ollama.md
+ *   20260212_103015_007_prompt_to_copilot.md
+ *   20260212_103045_008_copilot_answer.json
  */
 
 import * as vscode from 'vscode';
@@ -317,7 +330,7 @@ export function logCopilotAnswer(
         timestamp: new Date().toISOString()
     }, null, 2);
     
-    writeTrailFile('copilot', 'answerfile_from_copilot', jsonContent, true);
+    writeTrailFile('copilot', 'copilot_answer', jsonContent, true);
 }
 
 /**

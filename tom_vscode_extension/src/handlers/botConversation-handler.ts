@@ -80,8 +80,13 @@ export type HistoryMode = 'full' | 'last' | 'summary' | 'trim_and_summary';
 /** Conversation mode — who talks to whom. */
 export type ConversationMode = 'ollama-copilot' | 'ollama-ollama';
 
+/** Actor type — which AI backend to use. */
+export type ActorType = 'ollama' | 'copilot';
+
 /** Self-talk persona config for ollama-ollama mode. */
 export interface SelfTalkPersona {
+    /** Actor type for this persona (ollama or copilot). */
+    actor?: ActorType;
     /** System prompt that gives this persona its identity. */
     systemPrompt: string;
     /** Model config key from promptExpander.models (null → default). */
@@ -161,6 +166,12 @@ export interface BotConversationConfig {
     };
     /** Telegram integration config. */
     telegram: TelegramConfig;
+    /** Whether tools are enabled for the orchestrator. */
+    toolsEnabled: boolean;
+    /** Temperature for trail summarization. */
+    trailSummarizationTemperature: number;
+    /** Remove prompt template from trail log. */
+    removePromptTemplateFromTrail: boolean;
 }
 
 /** Conversation state for a running bot conversation. */
@@ -291,6 +302,9 @@ const DEFAULTS: BotConversationConfig = {
         },
     },
     telegram: { ...TELEGRAM_DEFAULTS },
+    toolsEnabled: true,
+    trailSummarizationTemperature: 0.3,
+    removePromptTemplateFromTrail: true,
 };
 
 // ============================================================================
@@ -477,6 +491,9 @@ export class BotConversationManager {
             if (typeof sec.logConversation === 'boolean') { config.logConversation = sec.logConversation; }
             if (typeof sec.stripThinkingTags === 'boolean') { config.stripThinkingTags = sec.stripThinkingTags; }
             if (typeof sec.copilotModel === 'string') { config.copilotModel = sec.copilotModel; }
+            if (typeof sec.toolsEnabled === 'boolean') { config.toolsEnabled = sec.toolsEnabled; }
+            if (typeof sec.trailSummarizationTemperature === 'number') { config.trailSummarizationTemperature = sec.trailSummarizationTemperature; }
+            if (typeof sec.removePromptTemplateFromTrail === 'boolean') { config.removePromptTemplateFromTrail = sec.removePromptTemplateFromTrail; }
             if (typeof sec.historyMode === 'string' &&
                 ['full', 'last', 'summary', 'trim_and_summary'].includes(sec.historyMode)) {
                 config.historyMode = sec.historyMode;
@@ -515,6 +532,10 @@ export class BotConversationManager {
             // Self-talk config
             if (sec.selfTalk && typeof sec.selfTalk === 'object') {
                 if (sec.selfTalk.personA && typeof sec.selfTalk.personA === 'object') {
+                    if (typeof sec.selfTalk.personA.actor === 'string' &&
+                        ['ollama', 'copilot'].includes(sec.selfTalk.personA.actor)) {
+                        config.selfTalk.personA.actor = sec.selfTalk.personA.actor as ActorType;
+                    }
                     if (typeof sec.selfTalk.personA.systemPrompt === 'string') {
                         config.selfTalk.personA.systemPrompt = sec.selfTalk.personA.systemPrompt;
                     }
@@ -526,6 +547,10 @@ export class BotConversationManager {
                     }
                 }
                 if (sec.selfTalk.personB && typeof sec.selfTalk.personB === 'object') {
+                    if (typeof sec.selfTalk.personB.actor === 'string' &&
+                        ['ollama', 'copilot'].includes(sec.selfTalk.personB.actor)) {
+                        config.selfTalk.personB.actor = sec.selfTalk.personB.actor as ActorType;
+                    }
                     if (typeof sec.selfTalk.personB.systemPrompt === 'string') {
                         config.selfTalk.personB.systemPrompt = sec.selfTalk.personB.systemPrompt;
                     }
