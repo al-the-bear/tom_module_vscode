@@ -1197,7 +1197,7 @@ These VS Code settings serve as fallbacks. Prefer configuring via the `promptExp
 ## Additional Resources
 
 - [README.md](../README.md) - Quick reference and installation
-- [extension_commands.md](extension_commands.md) - Detailed command reference
+- [vscode_extension_overview.md](vscode_extension_overview.md) - Feature overview with documentation index
 - [BRIDGE_SCRIPTING_GUIDE.md](BRIDGE_SCRIPTING_GUIDE.md) - JavaScript bridge scripting
 - [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture details
 

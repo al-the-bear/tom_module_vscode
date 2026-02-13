@@ -262,7 +262,7 @@ tom_vscode_extension/
 ├── out/                       # Compiled JavaScript (generated)
 ├── doc/                       # Documentation
 │   ├── USER_GUIDE.md
-│   └── extension_commands.md
+│   └── vscode_extension_overview.md
 ├── package.json               # Extension manifest
 ├── tsconfig.json              # TypeScript configuration
 └── README.md                  # This file
@@ -300,7 +300,7 @@ Copyright (c) 2024-2026 Tom Framework. All rights reserved.
 ## Documentation
 
 - [User Guide](doc/USER_GUIDE.md) - Complete guide to extension features
-- [Command Reference](doc/extension_commands.md) - Detailed command documentation
+- [Feature Overview](doc/vscode_extension_overview.md) - All 15 feature areas with documentation index
 - [Bridge Scripting Guide](doc/BRIDGE_SCRIPTING_GUIDE.md) - Advanced JavaScript/Dart bridge scripting
 - [Architecture](doc/ARCHITECTURE.md) - System architecture details
 

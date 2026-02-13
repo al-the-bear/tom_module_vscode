@@ -8,7 +8,7 @@ The DartScript extension provides keyboard-driven AI workflows, a bidirectional 
 |---|------|-------------|
 | 1 | [Chord Menu Shortcuts](#1-chord-menu-shortcuts) | Which-key style keyboard shortcut system with 6 chord menus |
 | 2 | [Favorites & Multi-Command Shortcuts](#2-favorites--multi-command-shortcuts) | User-configurable shortcut picker with multi-command support |
-| 3 | [Combined Commands](#3-combined-commands) | Direct keybindings for configurable command sequences |
+| 3 | [Combined Commands](#3-combined-commands) | Direct keybindings for configurable command sequences and state machines |
 | 4 | [Send to Copilot Chat](#4-send-to-copilot-chat) | Template-based prompt sending to GitHub Copilot Chat |
 | 5 | [Tom AI Chat](#5-tom-ai-chat) | Agentic `.chat.md` workflow with 60+ workspace tools |
 | 6 | [Bot Conversation](#6-bot-conversation) | Automated multi-turn Ollama↔Copilot conversation loop |
@@ -18,7 +18,9 @@ The DartScript extension provides keyboard-driven AI workflows, a bidirectional 
 | 10 | [Telegram Integration](#10-telegram-integration) | Remote workspace control via Telegram bot with 14 commands |
 | 11 | [CLI Integration](#11-cli-integration) | TCP server for Tom CLI→VS Code external access |
 | 12 | [Commandline Manager](#12-commandline-manager) | Save, execute, and manage shell commands and VS Code expressions |
-| 13 | [Developer Utilities](#13-developer-utilities) | Debug logging, API info, process monitor, configuration dump |
+| 13 | [TOM AI Bottom Panel](#13-tom-ai-bottom-panel) | 6-section accordion panel for AI workflows (Guidelines, Notes, LLM, Conversation, Copilot, Tom AI Chat) |
+| 14 | [Status & Configuration Page](#14-status--configuration-page) | Full-tab dashboard for service status and configuration management |
+| 15 | [Developer Utilities](#15-developer-utilities) | Debug logging, API info, process monitor, configuration dump |
 
 ---
 
@@ -221,7 +223,48 @@ Save, organize, and execute shell commands or VS Code expressions with smart wor
 
 **Quick selection:** The picker shows auto-assigned keys (1-9, a-z) for fast keyboard selection without arrow navigation.
 
-## 13. Developer Utilities
+## 13. TOM AI Bottom Panel
+
+A webview-based bottom panel with 6 accordion sections for AI workflows and developer tools. Registered as view container `dartscript-t2-panel` (title: "TOM AI").
+
+| Section | Icon | Purpose |
+|---------|------|---------|
+| Guidelines | `codicon-book` | Edit Copilot instructions and `_copilot_guidelines/` files in-place |
+| Notes | `codicon-note` | Multi-note scratch pad |
+| Local LLM | `codicon-robot` | Prompt local Ollama models with templates and reply history |
+| AI Conversation | `codicon-comment-discussion` | Bot conversation control and prompting |
+| Copilot | `codicon-copilot` | Template-based prompts to Copilot Chat |
+| Tom AI Chat | `codicon-comment-discussion-sparkle` | Insert prompts into `.chat.md` agentic workflow |
+
+**Common features:** Multi-note support, auto-save (500ms debounce), character counter, template system with placeholders (`{{selection}}`, `{{file}}`, `{{clipboard}}`, etc.), prompt preview in webview panel.
+
+**Additional explorer views:** VS CODE NOTES (`dartscript.tomNotepad`) and WORKSPACE NOTES (`dartscript.workspaceNotepad`) in the Explorer sidebar.
+
+**Secondary panel:** TOM (`dartscript-t3-panel`) with Tasks, Logs, and Settings sections.
+
+See [tom_ai_bottom_panel.md](tom_ai_bottom_panel.md) for full section descriptions.
+
+## 14. Status & Configuration Page
+
+Full-tab webview dashboard for managing service status and configuration.
+
+| Feature | Description |
+|---------|-------------|
+| **Open** | `Ctrl+Shift+8` → `dartscript.showStatusPage` |
+| **CLI Server** | Start/Stop with live status badge (Running/Stopped + port) |
+| **Bridge** | Restart, profile switching with Connected/Disconnected badge |
+| **Trail Logging** | Toggle with Enabled/Disabled badge |
+| **Local LLM** | Ollama URL, model, temperature, thinking tags, profiles, tools |
+| **AI Conversation** | Max turns, temperature, history mode, conversation mode, tools |
+| **Telegram** | Start/Stop/Test, bot token, chat ID, poll interval, notifications |
+| **Ask Copilot** | Enable, timeout, poll interval, prompt prefix/suffix |
+| **Ask Big Brother** | Enable, model, temperature, tool iterations, summarization |
+
+All configuration changes persist to `~/.tom/vscode/tom_vscode_extension.json`.
+
+See [tom_status_page.md](tom_status_page.md) for full section descriptions.
+
+## 15. Developer Utilities
 
 | Feature | Description |
 |---------|-------------|
@@ -235,3 +278,20 @@ Save, organize, and execute shell commands or VS Code expressions with smart wor
 ---
 
 *57 registered commands across 18 handler files. Configuration via VS Code settings (`dartscript.*`) and config file (`dartscript.configPath`, default: `~/.tom/vscode/tom_vscode_extension.json`).*
+
+## Documentation Index
+
+| Document | Location | Content |
+|----------|----------|---------|
+| [dartscript_extension_bridge.md](../_copilot_guidelines/dartscript_extension_bridge.md) | _copilot_guidelines/ | VS Code commands + JSON-RPC bridge methods (consolidated) |
+| [keybindings_and_commands.md](../_copilot_guidelines/keybindings_and_commands.md) | _copilot_guidelines/ | Chord menus, favorites, combined/state machine commands, commandlines, JS execution |
+| [tom_ai_chat.md](../_copilot_guidelines/tom_ai_chat.md) | _copilot_guidelines/ | Tom AI Chat `.chat.md` workflow, tools, templates |
+| [copilot_answers.md](../_copilot_guidelines/copilot_answers.md) | _copilot_guidelines/ | Copilot answer file system |
+| [ai_conversation.md](../_copilot_guidelines/ai_conversation.md) | _copilot_guidelines/ | AI Conversation multi-turn orchestration |
+| [local_llm.md](../_copilot_guidelines/local_llm.md) | _copilot_guidelines/ | Local LLM / Ollama integration |
+| [BRIDGE_SCRIPTING_GUIDE.md](BRIDGE_SCRIPTING_GUIDE.md) | doc/ | Bridge scripting guide with profile configuration |
+| [tom_ai_bottom_panel.md](tom_ai_bottom_panel.md) | doc/ | TOM AI bottom panel (6 accordion sections) |
+| [tom_status_page.md](tom_status_page.md) | doc/ | Status & configuration page (8 sections) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | doc/ | System architecture |
+| [USER_GUIDE.md](USER_GUIDE.md) | doc/ | End-user guide |
+| [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | doc/ | Quick reference card |
