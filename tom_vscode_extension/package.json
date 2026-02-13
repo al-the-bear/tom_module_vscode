@@ -396,6 +396,12 @@
           "id": "dartscript.t3Panel",
           "name": "TOM",
           "icon": "$(beaker)"
+        },
+        {
+          "type": "webview",
+          "id": "dartscript.githubIssues",
+          "name": "GitHub Issues",
+          "icon": "$(issues)"
         }
       ],
       "explorer": [
