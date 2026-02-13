@@ -1,26 +1,26 @@
 /**
- * GitHub Issues Panel Handler
+ * Issues Panel Handler
  *
- * Provides a split-panel UI for browsing and managing GitHub issues.
+ * Provides a split-panel UI for browsing and managing issues.
  * Left side: issue browser with repo dropdown.
  * Right side: issue viewer/editor with comment history, attachments, and actions.
  *
- * Registered as a subpanel in the TOM bottom panel (T3).
+ * Works with any IssueProvider implementation (GitHub, Jira, Bugzilla, …).
+ * Registered as subpanels in the TOM bottom panel (T3):
+ *   - TOM ISSUES  (dartscript.tomIssues)
+ *   - TOM TESTS   (dartscript.tomTests)
  */
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import {
-    RepoInfo,
-    discoverWorkspaceRepos,
-    listIssues,
-    listComments,
-    createIssue,
-    addComment,
-    updateIssue,
-    getIssue,
-} from './githubApi';
+    IssueProvider,
+    IssueProviderRepo,
+    getIssueProvider,
+    registerIssueProvider,
+} from './issueProvider';
+import { GitHubIssueProvider } from './githubIssueProvider';
 import { getConfigPath } from './handler_shared';
 
 // ============================================================================
@@ -29,7 +29,7 @@ import { getConfigPath } from './handler_shared';
 
 type PanelMode = 'issues' | 'tests';
 
-interface GitHubPanelOptions {
+interface IssuePanelOptions {
     mode: PanelMode;
     viewId: string;
     configSection: string;
@@ -37,19 +37,21 @@ interface GitHubPanelOptions {
     includeWorkspaceRepos: boolean;
 }
 
-interface GitHubPanelConfig {
+interface IssuePanelConfig {
+    provider: string;                // provider id, default "github"
     repos: string[];                 // explicit repos (tests mode)
     additionalRepos: string[];       // extra repos beyond workspace (issues mode)
     statuses: string[];              // e.g. ["open", "in_triage", "assigned", "closed"]
-    labels: string[];                // quick-apply labels (tests mode)
+    labels: string[];                // quick-apply labels in key=value form
 }
 
-function loadPanelConfig(section: string): GitHubPanelConfig {
-    const defaults: GitHubPanelConfig = {
+function loadPanelConfig(section: string): IssuePanelConfig {
+    const defaults: IssuePanelConfig = {
+        provider: 'github',
         repos: [],
         additionalRepos: [],
         statuses: ['open', 'in_triage', 'assigned', 'closed'],
-        labels: ['flaky', 'regression', 'blocked', 'wont-fix'],
+        labels: ['quicklabel=Flaky', 'quicklabel=Regression', 'quicklabel=Blocked'],
     };
 
     try {
@@ -59,10 +61,11 @@ function loadPanelConfig(section: string): GitHubPanelConfig {
         const cfg = raw[section];
         if (!cfg) { return defaults; }
         return {
+            provider: typeof cfg.provider === 'string' ? cfg.provider : defaults.provider,
             repos: Array.isArray(cfg.repos) ? cfg.repos : [],
             additionalRepos: Array.isArray(cfg.additionalRepos) ? cfg.additionalRepos : [],
             statuses: Array.isArray(cfg.statuses) && cfg.statuses.length > 0 ? cfg.statuses : defaults.statuses,
-            labels: Array.isArray(cfg.labels) && cfg.labels.length > 0 ? cfg.labels : defaults.labels,
+            labels: Array.isArray(cfg.labels) ? cfg.labels : defaults.labels,
         };
     } catch {
         return defaults;
@@ -73,12 +76,12 @@ function loadPanelConfig(section: string): GitHubPanelConfig {
 // Panel Provider
 // ============================================================================
 
-export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
+export class IssuesPanelHandler implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _extensionUri: vscode.Uri;
-    private _options: GitHubPanelOptions;
+    private _options: IssuePanelOptions;
 
-    constructor(extensionUri: vscode.Uri, options: GitHubPanelOptions) {
+    constructor(extensionUri: vscode.Uri, options: IssuePanelOptions) {
         this._extensionUri = extensionUri;
         this._options = options;
     }
@@ -105,6 +108,19 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
     }
 
     // -----------------------------------------------------------------------
+    // Resolve provider
+    // -----------------------------------------------------------------------
+
+    private _getProvider(): IssueProvider {
+        const config = loadPanelConfig(this._options.configSection);
+        const provider = getIssueProvider(config.provider);
+        if (!provider) {
+            throw new Error(`Issue provider "${config.provider}" is not registered. Available: github`);
+        }
+        return provider;
+    }
+
+    // -----------------------------------------------------------------------
     // Message handling
     // -----------------------------------------------------------------------
 
@@ -115,12 +131,11 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
                 break;
 
             case 'loadIssues': {
-                const { owner, repo, state } = msg;
+                const { repoId, state } = msg;
                 try {
-                    const issues = await listIssues(owner, repo, state || 'all');
-                    // Filter out pull requests (GitHub returns PRs in the issues endpoint)
-                    const filtered = issues.filter((i: any) => !i.pull_request);
-                    webview.postMessage({ type: 'issues', issues: filtered, owner, repo });
+                    const provider = this._getProvider();
+                    const issues = await provider.listIssues(repoId, state || 'all');
+                    webview.postMessage({ type: 'issues', issues, repoId });
                 } catch (e: any) {
                     webview.postMessage({ type: 'error', message: e.message });
                 }
@@ -128,9 +143,10 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
             }
 
             case 'loadComments': {
-                const { owner, repo, issueNumber } = msg;
+                const { repoId, issueNumber } = msg;
                 try {
-                    const comments = await listComments(owner, repo, issueNumber);
+                    const provider = this._getProvider();
+                    const comments = await provider.listComments(repoId, issueNumber);
                     webview.postMessage({ type: 'comments', comments, issueNumber });
                 } catch (e: any) {
                     webview.postMessage({ type: 'error', message: e.message });
@@ -139,9 +155,10 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
             }
 
             case 'createIssue': {
-                const { owner, repo, title, body } = msg;
+                const { repoId, title, body } = msg;
                 try {
-                    const issue = await createIssue(owner, repo, title, body || '');
+                    const provider = this._getProvider();
+                    const issue = await provider.createIssue(repoId, title, body || '');
                     webview.postMessage({ type: 'issueCreated', issue });
                     vscode.window.showInformationMessage(`Issue #${issue.number} created`);
                 } catch (e: any) {
@@ -151,9 +168,10 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
             }
 
             case 'addComment': {
-                const { owner, repo, issueNumber, body } = msg;
+                const { repoId, issueNumber, body } = msg;
                 try {
-                    const comment = await addComment(owner, repo, issueNumber, body);
+                    const provider = this._getProvider();
+                    const comment = await provider.addComment(repoId, issueNumber, body);
                     webview.postMessage({ type: 'commentAdded', comment, issueNumber });
                 } catch (e: any) {
                     webview.postMessage({ type: 'error', message: e.message });
@@ -162,29 +180,11 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
             }
 
             case 'changeStatus': {
-                const { owner, repo, issueNumber, status } = msg;
+                const { repoId, issueNumber, status } = msg;
                 try {
-                    // GitHub only supports open/closed natively; other statuses use labels
-                    const ghState = (status === 'closed') ? 'closed' : 'open';
-                    const labelStatuses = ['in_triage', 'assigned'];
-                    const updates: any = { state: ghState };
-
-                    // Get current issue to manage labels
-                    const currentIssue = await getIssue(owner, repo, issueNumber);
-                    const currentLabels = (currentIssue.labels || []).map((l: any) => l.name);
-
-                    if (labelStatuses.includes(status)) {
-                        // Add label, remove other status labels, keep open
-                        const filtered = currentLabels.filter((l: string) => !labelStatuses.includes(l));
-                        filtered.push(status);
-                        updates.labels = filtered;
-                        updates.state = 'open';
-                    } else {
-                        // Remove status labels for plain open/closed
-                        updates.labels = currentLabels.filter((l: string) => !labelStatuses.includes(l));
-                    }
-
-                    const issue = await updateIssue(owner, repo, issueNumber, updates);
+                    const provider = this._getProvider();
+                    const config = loadPanelConfig(this._options.configSection);
+                    const issue = await provider.changeStatus(repoId, issueNumber, status, config.statuses);
                     webview.postMessage({ type: 'issueUpdated', issue });
                     vscode.window.showInformationMessage(`Issue #${issueNumber} → ${status}`);
                 } catch (e: any) {
@@ -194,17 +194,14 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
             }
 
             case 'toggleLabel': {
-                const { owner, repo, issueNumber, label } = msg;
+                const { repoId, issueNumber, label } = msg;
                 try {
-                    const currentIssue = await getIssue(owner, repo, issueNumber);
-                    const currentLabels = (currentIssue.labels || []).map((l: any) => l.name);
-                    const hasLabel = currentLabels.includes(label);
-                    const newLabels = hasLabel
-                        ? currentLabels.filter((l: string) => l !== label)
-                        : [...currentLabels, label];
-                    const issue = await updateIssue(owner, repo, issueNumber, { labels: newLabels });
+                    const provider = this._getProvider();
+                    const issue = await provider.toggleLabel(repoId, issueNumber, label);
+                    const eqIdx = label.indexOf('=');
+                    const displayLabel = eqIdx > 0 ? label.substring(eqIdx + 1) : label;
                     webview.postMessage({ type: 'issueUpdated', issue });
-                    vscode.window.showInformationMessage(`Issue #${issueNumber}: ${hasLabel ? 'removed' : 'added'} label "${label}"`);
+                    vscode.window.showInformationMessage(`Issue #${issueNumber}: toggled label "${displayLabel}"`);
                 } catch (e: any) {
                     webview.postMessage({ type: 'error', message: e.message });
                 }
@@ -237,44 +234,31 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
 
     private async _sendInitialData(webview: vscode.Webview): Promise<void> {
         const config = loadPanelConfig(this._options.configSection);
-        let repos: RepoInfo[];
+        const provider = this._getProvider();
+        let repos: IssueProviderRepo[];
 
         if (this._options.includeWorkspaceRepos) {
             // Issues mode: workspace repos + additional configured repos
-            repos = discoverWorkspaceRepos();
-            const additionalRepos: RepoInfo[] = config.additionalRepos
-                .map((r: string) => {
-                    const parts = r.split('/');
-                    if (parts.length === 2) {
-                        return { owner: parts[0], repo: parts[1], displayName: r };
-                    }
-                    return undefined;
-                })
-                .filter((r: RepoInfo | undefined): r is RepoInfo => r !== undefined);
-
-            const seen = new Set(repos.map(r => r.displayName));
+            repos = provider.discoverRepos();
+            const additionalRepos: IssueProviderRepo[] = config.additionalRepos.map(r => ({
+                id: r,
+                displayName: r,
+            }));
+            const seen = new Set(repos.map(r => r.id));
             for (const r of additionalRepos) {
-                if (!seen.has(r.displayName)) {
+                if (!seen.has(r.id)) {
                     repos.push(r);
-                    seen.add(r.displayName);
+                    seen.add(r.id);
                 }
             }
         } else {
             // Tests mode: only explicitly configured repos
-            repos = config.repos
-                .map((r: string) => {
-                    const parts = r.split('/');
-                    if (parts.length === 2) {
-                        return { owner: parts[0], repo: parts[1], displayName: r };
-                    }
-                    return undefined;
-                })
-                .filter((r: RepoInfo | undefined): r is RepoInfo => r !== undefined);
+            repos = config.repos.map(r => ({ id: r, displayName: r }));
         }
 
         webview.postMessage({
             type: 'init',
-            repos: repos,
+            repos,
             statuses: config.statuses,
             mode: this._options.mode,
             labels: config.labels,
@@ -290,14 +274,8 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
             vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
         );
         const mode = this._options.mode;
-        const labelsButtonHtml = mode === 'tests'
-            ? '<button id="labelsBtn" class="icon-btn" title="Quick Labels" style="display:none;"><span class="codicon codicon-tag"></span></button>'
-            : '';
-        const labelsPickerHtml = mode === 'tests'
-            ? '<div id="labelsPicker" class="labels-picker" style="display:none;"></div>'
-            : '';
 
-        return `<!DOCTYPE html>
+        return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -333,9 +311,9 @@ ${getStyles()}
     <div class="editor-toolbar">
       <span id="issueTitle" class="issue-title-bar">No issue selected</span>
       <div class="toolbar-icons">
-        <span id="statusBadge" class="status-badge" style="display:none;" title="Click to change status"></span>
+        <select id="statusSelect" class="status-select" style="display:none;" title="Change status"></select>
         <button id="openBrowserBtn" class="icon-btn" title="Open in Browser" style="display:none;"><span class="codicon codicon-link-external"></span></button>
-        ${labelsButtonHtml}
+        <button id="labelsBtn" class="icon-btn" title="Quick Labels" style="display:none;"><span class="codicon codicon-tag"></span></button>
         <button id="addBtn" class="icon-btn" title="New Issue"><span class="codicon codicon-add"></span></button>
       </div>
     </div>
@@ -353,17 +331,18 @@ ${getStyles()}
 
     <!-- Input area -->
     <div id="inputArea" class="input-area">
-      <textarea id="inputText" placeholder="Write a comment…"></textarea>
+      <div class="input-column">
+        <input id="titleInput" type="text" placeholder="Issue title…" style="display:none;" />
+        <textarea id="inputText" placeholder="Write a comment…"></textarea>
+      </div>
       <div class="input-icons">
         <button id="attachBtn" class="icon-btn" title="Add Attachment"><span class="codicon codicon-paperclip"></span></button>
         <button id="sendBtn" class="icon-btn send-btn" title="Send"><span class="codicon codicon-send"></span></button>
       </div>
     </div>
 
-    <!-- Status picker overlay -->
-    <div id="statusPicker" class="status-picker" style="display:none;"></div>
-    <!-- Labels picker overlay (tests mode) -->
-    ${labelsPickerHtml}
+    <!-- Labels picker overlay -->
+    <div id="labelsPicker" class="labels-picker" style="display:none;"></div>
   </div>
 </div>
 <script>
@@ -379,7 +358,7 @@ ${getScript()}
 // ============================================================================
 
 function getStyles(): string {
-    return `
+    return /* css */ `
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
     font-family: var(--vscode-font-family);
@@ -464,13 +443,10 @@ body {
     border-radius: 50%;
     margin-top: 4px;
     flex-shrink: 0;
+    background: #888;
 }
-.issue-state-dot.open { background: #3fb950; }
-.issue-state-dot.closed { background: #f85149; }
-.issue-state-dot.in_triage { background: #d29922; }
-.issue-state-dot.assigned { background: #58a6ff; }
 
-/* Status stamp overlay on issue list items */
+/* Status stamp overlay – uniform black on white */
 .issue-status-stamp {
     position: absolute;
     right: 6px;
@@ -483,22 +459,9 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.3px;
     pointer-events: none;
-    opacity: 0.85;
-}
-.issue-status-stamp.closed {
-    background: rgba(248, 81, 73, 0.15);
-    color: #f85149;
-    border: 1px solid rgba(248, 81, 73, 0.3);
-}
-.issue-status-stamp.in_triage {
-    background: rgba(210, 153, 34, 0.15);
-    color: #d29922;
-    border: 1px solid rgba(210, 153, 34, 0.3);
-}
-.issue-status-stamp.assigned {
-    background: rgba(88, 166, 255, 0.15);
-    color: #58a6ff;
-    border: 1px solid rgba(88, 166, 255, 0.3);
+    background: #ffffff;
+    color: #000000;
+    border: 1px solid #cccccc;
 }
 
 /* ---- Picker overlays ---- */
@@ -619,6 +582,19 @@ body {
 .toolbar-icons {
     display: flex;
     gap: 2px;
+    align-items: center;
+}
+
+/* Status dropdown – black on white, no transparency */
+.status-select {
+    padding: 1px 4px;
+    height: 20px;
+    background: #ffffff;
+    color: #000000;
+    border: 1px solid #cccccc;
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
 }
 
 /* Comment history */
@@ -726,9 +702,29 @@ body {
     min-height: 60px;
     flex: 0 0 auto;
 }
-/* In new-issue mode, textarea fills the editor area */
 .input-area.expanded { flex: 1; }
-.input-area textarea {
+.input-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 0;
+}
+.input-column input[type="text"] {
+    padding: 4px 8px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 13px;
+    flex: 0 0 auto;
+}
+.input-column input[type="text"]:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+.input-column textarea {
     flex: 1;
     min-height: 40px;
     resize: none;
@@ -741,7 +737,7 @@ body {
     font-size: 13px;
     line-height: 1.4;
 }
-.input-area textarea:focus {
+.input-column textarea:focus {
     outline: none;
     border-color: var(--vscode-focusBorder);
 }
@@ -771,68 +767,7 @@ body {
 .icon-btn .codicon { font-size: 16px; }
 .send-btn .codicon { font-size: 18px; }
 
-/* Status picker (right side for changing issue status) */
-.status-picker {
-    position: absolute;
-    right: 8px;
-    top: 34px;
-    background: var(--vscode-menu-background);
-    border: 1px solid var(--vscode-menu-border);
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    z-index: 100;
-    padding: 4px 0;
-    min-width: 140px;
-}
-.status-option {
-    padding: 6px 12px;
-    cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-.status-option:hover {
-    background: var(--vscode-menu-selectionBackground);
-    color: var(--vscode-menu-selectionForeground);
-}
-.status-option .codicon { font-size: 14px; }
-
-/* Status badge in toolbar */
-.status-badge {
-    padding: 1px 8px;
-    border-radius: 8px;
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    cursor: pointer;
-    white-space: nowrap;
-    user-select: none;
-}
-.status-badge:hover { opacity: 0.85; }
-.status-badge.open {
-    background: rgba(63, 185, 80, 0.15);
-    color: #3fb950;
-    border: 1px solid rgba(63, 185, 80, 0.3);
-}
-.status-badge.closed {
-    background: rgba(248, 81, 73, 0.15);
-    color: #f85149;
-    border: 1px solid rgba(248, 81, 73, 0.3);
-}
-.status-badge.in_triage {
-    background: rgba(210, 153, 34, 0.15);
-    color: #d29922;
-    border: 1px solid rgba(210, 153, 34, 0.3);
-}
-.status-badge.assigned {
-    background: rgba(88, 166, 255, 0.15);
-    color: #58a6ff;
-    border: 1px solid rgba(88, 166, 255, 0.3);
-}
-
-/* Labels picker (tests mode) */
+/* Labels picker */
 .labels-picker {
     position: absolute;
     right: 8px;
@@ -902,26 +837,26 @@ function getScript(): string {
     var configLabels = [];
     var panelMode = document.body.dataset.mode || 'issues';
     var currentRepo = null;
-    var allIssues = [];         // All issues from API, unfiltered
-    var issues = [];            // Filtered+sorted for display
+    var allIssues = [];
+    var issues = [];
     var selectedIssue = null;
     var currentComments = [];
     var isNewIssueMode = false;
     var attachments = [];
 
-    // Filter state: selected statuses (multi-select)
-    var activeFilters = ['open']; // default: show open only
+    // Filter state
+    var activeFilters = ['open'];
 
-    // Sort state: ordered list of field keys
-    var sortFields = ['updated_at'];
+    // Sort state
+    var sortFields = ['updatedAt'];
     var SORTABLE_FIELDS = [
         { key: 'number', label: 'Number' },
         { key: 'title', label: 'Title' },
         { key: 'state', label: 'Status' },
-        { key: 'created_at', label: 'Created' },
-        { key: 'updated_at', label: 'Updated' },
-        { key: 'comments', label: 'Comments' },
-        { key: 'user', label: 'Author' },
+        { key: 'createdAt', label: 'Created' },
+        { key: 'updatedAt', label: 'Updated' },
+        { key: 'commentCount', label: 'Comments' },
+        { key: 'author', label: 'Author' }
     ];
 
     // DOM refs
@@ -931,16 +866,16 @@ function getScript(): string {
     var refreshBtn = document.getElementById('refreshBtn');
     var issueListEl = document.getElementById('issueList');
     var addBtn = document.getElementById('addBtn');
-    var statusBadge = document.getElementById('statusBadge');
+    var statusSelect = document.getElementById('statusSelect');
     var openBrowserBtn = document.getElementById('openBrowserBtn');
     var labelsBtn = document.getElementById('labelsBtn');
     var sendBtn = document.getElementById('sendBtn');
     var attachBtn = document.getElementById('attachBtn');
+    var titleInput = document.getElementById('titleInput');
     var inputText = document.getElementById('inputText');
     var commentHistory = document.getElementById('commentHistory');
     var attachmentArea = document.getElementById('attachmentArea');
     var attachmentListEl = document.getElementById('attachmentList');
-    var statusPicker = document.getElementById('statusPicker');
     var labelsPicker = document.getElementById('labelsPicker');
     var issueTitleBar = document.getElementById('issueTitle');
     var splitHandle = document.getElementById('splitHandle');
@@ -967,18 +902,15 @@ function getScript(): string {
                 break;
 
             case 'issues':
-                // Merge issues (for "All" mode) or replace
-                if (currentRepo && currentRepo.owner === '__all__') {
+                if (currentRepo && currentRepo.id === '__all__') {
                     var tagged = (msg.issues || []).map(function(iss) {
-                        iss._owner = msg.owner;
-                        iss._repo = msg.repo;
+                        iss._repoId = msg.repoId;
                         return iss;
                     });
                     allIssues = allIssues.concat(tagged);
                 } else {
                     allIssues = (msg.issues || []).map(function(iss) {
-                        iss._owner = msg.owner;
-                        iss._repo = msg.repo;
+                        iss._repoId = msg.repoId;
                         return iss;
                     });
                 }
@@ -1027,14 +959,14 @@ function getScript(): string {
     });
 
     // ================================================================
-    // Determine effective status of an issue (GitHub state + labels)
+    // Determine effective status (provider-normalized)
     // ================================================================
     function getEffectiveStatus(issue) {
         if (issue.state === 'closed') return 'closed';
-        var labelNames = (issue.labels || []).map(function(l) { return l.name; });
-        var labelStatuses = ['in_triage', 'assigned'];
+        var labels = issue.labels || [];
+        var labelStatuses = configStatuses.filter(function(s) { return s !== 'open' && s !== 'closed'; });
         for (var i = 0; i < labelStatuses.length; i++) {
-            if (labelNames.indexOf(labelStatuses[i]) >= 0) return labelStatuses[i];
+            if (labels.indexOf(labelStatuses[i]) >= 0) return labelStatuses[i];
         }
         return 'open';
     }
@@ -1043,7 +975,6 @@ function getScript(): string {
     // Filter & Sort
     // ================================================================
     function applyFilterAndSort() {
-        // Filter
         if (activeFilters.length === 0) {
             issues = allIssues.slice();
         } else {
@@ -1051,7 +982,6 @@ function getScript(): string {
                 return activeFilters.indexOf(getEffectiveStatus(iss)) >= 0;
             });
         }
-        // Sort
         if (sortFields.length > 0) {
             issues.sort(function(a, b) {
                 for (var i = 0; i < sortFields.length; i++) {
@@ -1071,10 +1001,10 @@ function getScript(): string {
             case 'number': return issue.number || 0;
             case 'title': return (issue.title || '').toLowerCase();
             case 'state': return getEffectiveStatus(issue);
-            case 'created_at': return issue.created_at || '';
-            case 'updated_at': return issue.updated_at || '';
-            case 'comments': return issue.comments || 0;
-            case 'user': return (issue.user && issue.user.login || '').toLowerCase();
+            case 'createdAt': return issue.createdAt || '';
+            case 'updatedAt': return issue.updatedAt || '';
+            case 'commentCount': return issue.commentCount || 0;
+            case 'author': return (issue.author && issue.author.name || '').toLowerCase();
             default: return '';
         }
     }
@@ -1086,7 +1016,7 @@ function getScript(): string {
         var html = '<option value="">-- Select Repo --</option>';
         html += '<option value="__all__">All Repos</option>';
         for (var i = 0; i < repos.length; i++) {
-            html += '<option value="' + i + '">' + escapeHtml(repos[i].displayName) + '</option>';
+            html += '<option value="' + escapeHtml(repos[i].id) + '">' + escapeHtml(repos[i].displayName) + '</option>';
         }
         repoSelect.innerHTML = html;
     }
@@ -1094,11 +1024,14 @@ function getScript(): string {
     repoSelect.addEventListener('change', function() {
         var val = repoSelect.value;
         if (val === '' || val === '__all__') {
-            currentRepo = val === '__all__' ? { owner: '__all__', repo: '__all__', displayName: 'All Repos' } : null;
+            currentRepo = val === '__all__' ? { id: '__all__', displayName: 'All Repos' } : null;
             if (val === '__all__') { loadAllIssues(); }
             else { allIssues = []; issues = []; renderIssueList(); }
         } else {
-            currentRepo = repos[parseInt(val)];
+            currentRepo = null;
+            for (var i = 0; i < repos.length; i++) {
+                if (repos[i].id === val) { currentRepo = repos[i]; break; }
+            }
             loadIssues();
         }
         selectedIssue = null;
@@ -1107,19 +1040,18 @@ function getScript(): string {
     });
 
     refreshBtn.addEventListener('click', function() {
-        if (currentRepo && currentRepo.owner === '__all__') { loadAllIssues(); }
+        if (currentRepo && currentRepo.id === '__all__') { loadAllIssues(); }
         else if (currentRepo) { loadIssues(); }
     });
 
     function loadIssues() {
-        if (!currentRepo || currentRepo.owner === '__all__') return;
+        if (!currentRepo || currentRepo.id === '__all__') return;
         allIssues = [];
         issueListEl.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
         vscode.postMessage({
             type: 'loadIssues',
-            owner: currentRepo.owner,
-            repo: currentRepo.repo,
-            state: 'all',
+            repoId: currentRepo.id,
+            state: 'all'
         });
     }
 
@@ -1130,22 +1062,19 @@ function getScript(): string {
         for (var i = 0; i < repos.length; i++) {
             vscode.postMessage({
                 type: 'loadIssues',
-                owner: repos[i].owner,
-                repo: repos[i].repo,
-                state: 'all',
+                repoId: repos[i].id,
+                state: 'all'
             });
         }
     }
 
     function loadComments() {
         if (!selectedIssue || !currentRepo) return;
-        var owner = selectedIssue._owner || currentRepo.owner;
-        var repo = selectedIssue._repo || currentRepo.repo;
+        var repoId = selectedIssue._repoId || currentRepo.id;
         vscode.postMessage({
             type: 'loadComments',
-            owner: owner,
-            repo: repo,
-            issueNumber: selectedIssue.number,
+            repoId: repoId,
+            issueNumber: selectedIssue.number
         });
     }
 
@@ -1164,7 +1093,6 @@ function getScript(): string {
     });
 
     function renderFilterPicker() {
-        // Collect statuses actually present in current data
         var presentStatuses = {};
         for (var i = 0; i < allIssues.length; i++) {
             presentStatuses[getEffectiveStatus(allIssues[i])] = true;
@@ -1198,7 +1126,7 @@ function getScript(): string {
     }
 
     // ================================================================
-    // Sort picker (numbered multi-select)
+    // Sort picker
     // ================================================================
     var pendingSortFields = [];
 
@@ -1271,12 +1199,11 @@ function getScript(): string {
             var sel = selectedIssue && selectedIssue.id === issue.id ? ' selected' : '';
             var effStatus = getEffectiveStatus(issue);
             html += '<div class="issue-item' + sel + '" data-idx="' + i + '">';
-            html += '<span class="issue-state-dot ' + effStatus + '"></span>';
+            html += '<span class="issue-state-dot"></span>';
             html += '<span class="issue-number">#' + issue.number + '</span>';
             html += '<span class="issue-item-title">' + escapeHtml(issue.title) + '</span>';
-            // Status stamp for non-open issues
             if (effStatus !== 'open') {
-                html += '<span class="issue-status-stamp ' + effStatus + '">' + escapeHtml(formatStatusLabel(effStatus)) + '</span>';
+                html += '<span class="issue-status-stamp">' + escapeHtml(formatStatusLabel(effStatus)) + '</span>';
             }
             html += '</div>';
         }
@@ -1301,7 +1228,7 @@ function getScript(): string {
     }
 
     // ================================================================
-    // Editor state rendering
+    // Editor state
     // ================================================================
     function renderEditorState() {
         if (isNewIssueMode) {
@@ -1311,49 +1238,57 @@ function getScript(): string {
             commentHistory.style.flex = '';
             inputArea.classList.add('expanded');
             inputArea.style.flex = '';
-            inputText.placeholder = 'First line = title, rest = body…';
-            statusBadge.style.display = 'none';
+            titleInput.style.display = '';
+            titleInput.value = '';
+            inputText.placeholder = 'Issue body (optional)…';
+            statusSelect.style.display = 'none';
             openBrowserBtn.style.display = 'none';
-            if (labelsBtn) labelsBtn.style.display = 'none';
+            labelsBtn.style.display = 'none';
         } else {
             commentHistory.classList.remove('hidden');
             vSplitHandle.classList.remove('hidden');
             commentHistory.style.flex = '';
             inputArea.classList.remove('expanded');
             inputArea.style.flex = '';
+            titleInput.style.display = 'none';
             if (selectedIssue) {
                 issueTitleBar.textContent = '#' + selectedIssue.number + ' ' + selectedIssue.title;
                 inputText.placeholder = 'Write a comment…';
-                // Update status badge
+                // Populate status dropdown
                 var effStatus = getEffectiveStatus(selectedIssue);
-                statusBadge.textContent = formatStatusLabel(effStatus);
-                statusBadge.className = 'status-badge ' + effStatus;
-                statusBadge.style.display = '';
+                var optHtml = '';
+                for (var i = 0; i < configStatuses.length; i++) {
+                    var st = configStatuses[i];
+                    var sel = (effStatus === st) ? ' selected' : '';
+                    optHtml += '<option value="' + escapeHtml(st) + '"' + sel + '>' + escapeHtml(formatStatusLabel(st)) + '</option>';
+                }
+                statusSelect.innerHTML = optHtml;
+                statusSelect.style.display = '';
                 openBrowserBtn.style.display = '';
-                if (labelsBtn) labelsBtn.style.display = '';
+                labelsBtn.style.display = '';
                 renderComments();
             } else {
                 issueTitleBar.textContent = 'No issue selected';
                 commentHistory.innerHTML = '<div class="empty-state">Select an issue from the list</div>';
                 inputText.placeholder = 'Write a comment…';
-                statusBadge.style.display = 'none';
+                statusSelect.style.display = 'none';
                 openBrowserBtn.style.display = 'none';
-                if (labelsBtn) labelsBtn.style.display = 'none';
+                labelsBtn.style.display = 'none';
             }
         }
     }
 
     // ================================================================
-    // Comments rendering
+    // Comments
     // ================================================================
     function renderComments() {
         if (!selectedIssue) return;
         var html = '';
         html += '<div class="comment-card issue-body-card">';
         html += '<div class="comment-header">';
-        html += '<img class="comment-avatar" src="' + escapeHtml(selectedIssue.user.avatar_url) + '" />';
-        html += '<span class="comment-author">' + escapeHtml(selectedIssue.user.login) + '</span>';
-        html += '<span>' + formatDate(selectedIssue.created_at) + '</span>';
+        html += '<img class="comment-avatar" src="' + escapeHtml(selectedIssue.author.avatarUrl) + '" />';
+        html += '<span class="comment-author">' + escapeHtml(selectedIssue.author.name) + '</span>';
+        html += '<span>' + formatDate(selectedIssue.createdAt) + '</span>';
         html += '</div>';
         html += '<div class="comment-body">' + escapeHtml(selectedIssue.body || '(No description)') + '</div>';
         html += '</div>';
@@ -1362,9 +1297,9 @@ function getScript(): string {
             var c = currentComments[i];
             html += '<div class="comment-card">';
             html += '<div class="comment-header">';
-            html += '<img class="comment-avatar" src="' + escapeHtml(c.user.avatar_url) + '" />';
-            html += '<span class="comment-author">' + escapeHtml(c.user.login) + '</span>';
-            html += '<span>' + formatDate(c.created_at) + '</span>';
+            html += '<img class="comment-avatar" src="' + escapeHtml(c.author.avatarUrl) + '" />';
+            html += '<span class="comment-author">' + escapeHtml(c.author.name) + '</span>';
+            html += '<span>' + formatDate(c.createdAt) + '</span>';
             html += '</div>';
             html += '<div class="comment-body">' + escapeHtml(c.body) + '</div>';
             html += '</div>';
@@ -1379,95 +1314,62 @@ function getScript(): string {
     addBtn.addEventListener('click', function() {
         isNewIssueMode = true;
         attachments = [];
+        titleInput.value = '';
         inputText.value = '';
         renderAttachments();
         renderEditorState();
     });
 
     // ================================================================
-    // Status badge (change issue status)
+    // Status dropdown (native <select>)
     // ================================================================
-    statusBadge.addEventListener('click', function(e) {
-        e.stopPropagation();
-        if (statusPicker.style.display === 'none') {
-            showStatusPicker();
-        } else {
-            statusPicker.style.display = 'none';
-        }
+    statusSelect.addEventListener('change', function() {
+        if (!selectedIssue || !currentRepo) return;
+        var repoId = selectedIssue._repoId || currentRepo.id;
+        vscode.postMessage({
+            type: 'changeStatus',
+            repoId: repoId,
+            issueNumber: selectedIssue.number,
+            status: statusSelect.value
+        });
     });
 
-    function showStatusPicker() {
-        var html = '';
-        for (var i = 0; i < configStatuses.length; i++) {
-            var st = configStatuses[i];
-            var icon;
-            switch (st) {
-                case 'closed': icon = 'codicon-circle-slash'; break;
-                case 'in_triage': icon = 'codicon-search'; break;
-                case 'assigned': icon = 'codicon-person'; break;
-                default: icon = 'codicon-issue-opened'; break;
-            }
-            html += '<div class="status-option" data-status="' + escapeHtml(st) + '">';
-            html += '<span class="codicon ' + icon + '"></span>';
-            html += escapeHtml(formatStatusLabel(st));
-            html += '</div>';
-        }
-        statusPicker.innerHTML = html;
-        statusPicker.style.display = '';
-
-        statusPicker.querySelectorAll('.status-option').forEach(function(el) {
-            el.addEventListener('click', function() {
-                statusPicker.style.display = 'none';
-                if (!selectedIssue || !currentRepo) return;
-                var owner = selectedIssue._owner || currentRepo.owner;
-                var repo = selectedIssue._repo || currentRepo.repo;
-                vscode.postMessage({
-                    type: 'changeStatus',
-                    owner: owner,
-                    repo: repo,
-                    issueNumber: selectedIssue.number,
-                    status: el.dataset.status,
-                });
-            });
-        });
-    }
-
     // ================================================================
-    // Open in Browser button
+    // Open in Browser
     // ================================================================
     openBrowserBtn.addEventListener('click', function() {
-        if (selectedIssue && selectedIssue.html_url) {
-            vscode.postMessage({ type: 'openExternal', url: selectedIssue.html_url });
+        if (selectedIssue && selectedIssue.url) {
+            vscode.postMessage({ type: 'openExternal', url: selectedIssue.url });
         }
     });
 
     // ================================================================
-    // Labels picker (tests mode)
+    // Labels picker
     // ================================================================
-    if (labelsBtn && labelsPicker) {
-        labelsBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (labelsPicker.style.display !== 'none') {
-                labelsPicker.style.display = 'none';
-                return;
-            }
-            statusPicker.style.display = 'none';
-            showLabelsPicker();
-        });
-    }
+    labelsBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (labelsPicker.style.display !== 'none') {
+            labelsPicker.style.display = 'none';
+            return;
+        }
+        showLabelsPicker();
+    });
 
     function showLabelsPicker() {
-        if (!selectedIssue || !labelsPicker) return;
-        var currentLabels = (selectedIssue.labels || []).map(function(l) { return l.name; });
+        if (!selectedIssue) return;
+        var currentLabels = selectedIssue.labels || [];
         var html = '';
         for (var i = 0; i < configLabels.length; i++) {
             var label = configLabels[i];
+            var eqIdx = label.indexOf('=');
+            var displayName = eqIdx > 0 ? label.substring(eqIdx + 1) : label;
             var hasLabel = currentLabels.indexOf(label) >= 0;
+
             html += '<div class="label-option" data-label="' + escapeHtml(label) + '">';
             html += '<span class="check-box">';
             html += hasLabel ? '<span class="codicon codicon-check"></span>' : '';
             html += '</span>';
-            html += '<span>' + escapeHtml(formatStatusLabel(label)) + '</span>';
+            html += '<span>' + escapeHtml(displayName) + '</span>';
             html += '</div>';
         }
         labelsPicker.innerHTML = html;
@@ -1476,14 +1378,12 @@ function getScript(): string {
         labelsPicker.querySelectorAll('.label-option').forEach(function(el) {
             el.addEventListener('click', function() {
                 if (!selectedIssue || !currentRepo) return;
-                var owner = selectedIssue._owner || currentRepo.owner;
-                var repo = selectedIssue._repo || currentRepo.repo;
+                var repoId = selectedIssue._repoId || currentRepo.id;
                 vscode.postMessage({
                     type: 'toggleLabel',
-                    owner: owner,
-                    repo: repo,
+                    repoId: repoId,
                     issueNumber: selectedIssue.number,
-                    label: el.dataset.label,
+                    label: el.dataset.label
                 });
                 labelsPicker.style.display = 'none';
             });
@@ -1492,31 +1392,26 @@ function getScript(): string {
 
     // Close pickers on outside click
     document.addEventListener('click', function() {
-        statusPicker.style.display = 'none';
         filterPicker.style.display = 'none';
         sortPicker.style.display = 'none';
-        if (labelsPicker) labelsPicker.style.display = 'none';
+        labelsPicker.style.display = 'none';
     });
 
     // ================================================================
     // Send button
     // ================================================================
     sendBtn.addEventListener('click', function() {
-        var text = inputText.value.trim();
-        if (!text && !isNewIssueMode) return;
-
         if (isNewIssueMode) {
-            if (!currentRepo || currentRepo.owner === '__all__') {
+            var title = titleInput.value.trim();
+            if (!title) {
+                showError('Please enter a title');
+                return;
+            }
+            if (!currentRepo || currentRepo.id === '__all__') {
                 showError('Please select a specific repo to create an issue');
                 return;
             }
-            var lines = text.split('\\n');
-            var title = lines[0].trim();
-            if (!title) {
-                showError('First line must be the issue title');
-                return;
-            }
-            var body = lines.slice(1).join('\\n').trim();
+            var body = inputText.value.trim();
             if (attachments.length > 0) {
                 body += '\\n\\n---\\nAttachments:\\n';
                 for (var i = 0; i < attachments.length; i++) {
@@ -1525,14 +1420,14 @@ function getScript(): string {
             }
             vscode.postMessage({
                 type: 'createIssue',
-                owner: currentRepo.owner,
-                repo: currentRepo.repo,
+                repoId: currentRepo.id,
                 title: title,
-                body: body,
+                body: body
             });
         } else if (selectedIssue) {
-            var owner = selectedIssue._owner || currentRepo.owner;
-            var repo = selectedIssue._repo || currentRepo.repo;
+            var text = inputText.value.trim();
+            if (!text) return;
+            var repoId = selectedIssue._repoId || currentRepo.id;
             var commentBody = text;
             if (attachments.length > 0) {
                 commentBody += '\\n\\n---\\nAttachments:\\n';
@@ -1542,10 +1437,9 @@ function getScript(): string {
             }
             vscode.postMessage({
                 type: 'addComment',
-                owner: owner,
-                repo: repo,
+                repoId: repoId,
                 issueNumber: selectedIssue.number,
-                body: commentBody,
+                body: commentBody
             });
             attachments = [];
             renderAttachments();
@@ -1624,7 +1518,7 @@ function getScript(): string {
     })();
 
     // ================================================================
-    // Vertical split resize (comment history vs input)
+    // Vertical split resize
     // ================================================================
     (function() {
         var dragging = false;
@@ -1691,31 +1585,34 @@ function getScript(): string {
 // Registration
 // ============================================================================
 
-let _issuesProvider: GitHubIssuesPanelHandler | undefined;
-let _testsProvider: GitHubIssuesPanelHandler | undefined;
+let _issuesProvider: IssuesPanelHandler | undefined;
+let _testsProvider: IssuesPanelHandler | undefined;
 
-export function registerGitHubIssuesPanel(context: vscode.ExtensionContext): void {
-    _issuesProvider = new GitHubIssuesPanelHandler(context.extensionUri, {
+export function registerIssuePanels(context: vscode.ExtensionContext): void {
+    // Register the built-in GitHub provider
+    registerIssueProvider(new GitHubIssueProvider());
+
+    _issuesProvider = new IssuesPanelHandler(context.extensionUri, {
         mode: 'issues',
-        viewId: 'dartscript.githubIssues',
-        configSection: 'githubIssues',
-        panelTitle: 'GitHub Issues',
+        viewId: 'dartscript.tomIssues',
+        configSection: 'tomIssues',
+        panelTitle: 'TOM ISSUES',
         includeWorkspaceRepos: true,
     });
 
-    _testsProvider = new GitHubIssuesPanelHandler(context.extensionUri, {
+    _testsProvider = new IssuesPanelHandler(context.extensionUri, {
         mode: 'tests',
-        viewId: 'dartscript.githubTests',
-        configSection: 'githubTests',
-        panelTitle: 'GitHub Tests',
+        viewId: 'dartscript.tomTests',
+        configSection: 'tomTests',
+        panelTitle: 'TOM TESTS',
         includeWorkspaceRepos: false,
     });
 
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider('dartscript.githubIssues', _issuesProvider, {
+        vscode.window.registerWebviewViewProvider('dartscript.tomIssues', _issuesProvider, {
             webviewOptions: { retainContextWhenHidden: true },
         }),
-        vscode.window.registerWebviewViewProvider('dartscript.githubTests', _testsProvider, {
+        vscode.window.registerWebviewViewProvider('dartscript.tomTests', _testsProvider, {
             webviewOptions: { retainContextWhenHidden: true },
         }),
     );

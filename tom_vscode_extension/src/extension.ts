@@ -59,7 +59,7 @@ import {
     registerDsNotesViews,
     registerUnifiedNotepad,
     registerT3Panel,
-    registerGitHubIssuesPanel,
+    registerIssuePanels,
     telegramTestHandler,
     telegramToggleHandler,
     telegramConfigureHandler,
@@ -119,8 +119,8 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register T3 test panel
     registerT3Panel(context);
 
-    // Register GitHub Issues panel
-    registerGitHubIssuesPanel(context);
+    // Register TOM Issues and TOM Tests panels
+    registerIssuePanels(context);
 
     // Check for test reinstall marker and send reload prompt to Copilot Chat
     checkTestReinstallMarker();

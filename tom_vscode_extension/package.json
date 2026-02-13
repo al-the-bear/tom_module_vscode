@@ -399,14 +399,14 @@
         },
         {
           "type": "webview",
-          "id": "dartscript.githubIssues",
-          "name": "GitHub Issues",
+          "id": "dartscript.tomIssues",
+          "name": "TOM ISSUES",
           "icon": "$(issues)"
         },
         {
           "type": "webview",
-          "id": "dartscript.githubTests",
-          "name": "GitHub Tests",
+          "id": "dartscript.tomTests",
+          "name": "TOM TESTS",
           "icon": "$(beaker)"
         }
       ],
