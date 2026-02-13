@@ -82,14 +82,71 @@ function getCopilotAnswersMdPath(): string {
     return path.join(fullBase, getWindowId(), 'copilot-answer.md');
 }
 
-/** Apply the answer file template suffix to a prompt. */
-function applyAnswerFileTemplate(text: string): string {
+/** Get the copilot prompts markdown file path. */
+function getCopilotPromptsPath(): string {
+    const config = loadSendToChatConfig();
+    const wsRoot = getWorkspaceRoot();
+    const basePath = config?.copilotAnswerPath || '_ai/copilot';
+    const fullBase = wsRoot ? path.join(wsRoot, basePath) : path.join(os.homedir(), '.tom', 'copilot-prompts');
+    return path.join(fullBase, getWindowId(), 'copilot-prompts.md');
+}
+
+/** Log a prompt to the copilot-prompts.md file (prepended at top). */
+function logCopilotPrompt(prompt: string, template: string): void {
+    const promptsPath = getCopilotPromptsPath();
+    const dir = path.dirname(promptsPath);
+    
+    // Ensure directory exists
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    // Format the entry
+    const timestamp = new Date().toISOString();
+    const templateLabel = template || '(none)';
+    const entry = `## ${timestamp}\n\n**Template:** ${templateLabel}\n\n${prompt}\n\n---\n\n`;
+    
+    // Read existing file or create new
+    let existingContent = '';
+    if (fs.existsSync(promptsPath)) {
+        existingContent = fs.readFileSync(promptsPath, 'utf-8');
+    }
+    
+    // Prepend to file (after header if exists)
+    let newContent: string;
+    if (existingContent.startsWith('# ')) {
+        // Find end of first line (header)
+        const headerEnd = existingContent.indexOf('\n');
+        if (headerEnd > 0) {
+            newContent = existingContent.substring(0, headerEnd + 1) + '\n' + entry + existingContent.substring(headerEnd + 1);
+        } else {
+            newContent = existingContent + '\n\n' + entry;
+        }
+    } else if (existingContent.trim()) {
+        newContent = entry + existingContent;
+    } else {
+        newContent = '# Copilot Prompts\n\n' + entry;
+    }
+    
+    fs.writeFileSync(promptsPath, newContent, 'utf-8');
+}
+
+/** Get the default answer file template suffix. */
+function getDefaultAnswerFileSuffix(): string {
     const requestId = generateRequestId();
     const answerFileName = `${getWindowId()}_answer.json`;
     
-    const suffix = `\n\n---\nIMPORTANT: When you have completed your response, write your answer to the file:\n~/.tom/copilot-chat-answers/${answerFileName}\n\nThe file must be valid JSON with this structure:\n{\n  "requestId": "${requestId}",\n  "generatedMarkdown": "<your response as a JSON-escaped string>",\n  "comments": "<optional comments>",\n  "references": ["<optional array of file paths that are relevant context for the response>"],\n  "requestedAttachments": ["<optional array of file paths the user explicitly requested>"]\n}\n\nField descriptions:\n- generatedMarkdown: Your main response text (required)\n- comments: Any additional notes or metadata (optional)\n- references: Files you referenced while forming your response (optional, include workspace-relative paths)\n- requestedAttachments: Files the user explicitly asked you to provide/attach (optional, include workspace-relative paths)\n\nRequest ID: ${requestId}\n`;
+    return `\n\n---\nIMPORTANT: When you have completed your response, write your answer to the file:\n~/.tom/copilot-chat-answers/${answerFileName}\n\nThe file must be valid JSON with this structure:\n{\n  "requestId": "${requestId}",\n  "generatedMarkdown": "<your response as a JSON-escaped string>",\n  "comments": "<optional comments>",\n  "references": ["<optional array of file paths that are relevant context for the response>"],\n  "requestedAttachments": ["<optional array of file paths the user explicitly requested>"]\n}\n\nField descriptions:\n- generatedMarkdown: Your main response text (required)\n- comments: Any additional notes or metadata (optional)\n- references: Files you referenced while forming your response (optional, include workspace-relative paths)\n- requestedAttachments: Files the user explicitly asked you to provide/attach (optional, include workspace-relative paths)\n\nRequest ID: ${requestId}\n`;
+}
+
+/** Apply the answer file template to a prompt. */
+function applyAnswerFileTemplate(text: string): string {
+    const config = loadSendToChatConfig();
+    const tpl = config?.templates?.['__answer_file__'];
+    const prefix = tpl?.prefix || '';
+    const suffix = tpl?.suffix || getDefaultAnswerFileSuffix();
     
-    return text + suffix;
+    return prefix + (prefix ? '\n' : '') + text + (suffix ? '\n' : '') + suffix;
 }
 
 const VIEW_ID = 'dartscript.unifiedNotepad';
@@ -106,10 +163,12 @@ class UnifiedNotepadViewProvider implements vscode.WebviewViewProvider {
     private _context: vscode.ExtensionContext;
     private _answerFileWatcher?: fs.FSWatcher;
     private _autoHideDelay: number = 0; // 0 = keep open, otherwise ms
+    private _keepContentAfterSend: boolean = false;
 
     constructor(context: vscode.ExtensionContext) {
         this._context = context;
         this._autoHideDelay = context.workspaceState.get('copilotAutoHideDelay', 0);
+        this._keepContentAfterSend = context.workspaceState.get('copilotKeepContent', false);
         this._setupAnswerFileWatcher();
     }
 
@@ -258,11 +317,11 @@ class UnifiedNotepadViewProvider implements vscode.WebviewViewProvider {
                         break;
                     // Copilot answer file handlers
                     case 'setAutoHideDelay':
-                        this._autoHideDelay = message.delay;
-                        this._context.workspaceState.update('copilotAutoHideDelay', message.delay);
+                        this._autoHideDelay = message.value;
+                        this._context.workspaceState.update('copilotAutoHideDelay', message.value);
                         break;
                     case 'getAutoHideDelay':
-                        this._view?.webview.postMessage({ type: 'autoHideDelay', delay: this._autoHideDelay });
+                        this._view?.webview.postMessage({ type: 'autoHideDelay', value: this._autoHideDelay });
                         break;
                     case 'checkAnswerFile':
                         this._notifyAnswerFileStatus();
@@ -272,6 +331,16 @@ class UnifiedNotepadViewProvider implements vscode.WebviewViewProvider {
                         break;
                     case 'extractAnswer':
                         await this._extractAnswerToMd();
+                        break;
+                    case 'setKeepContent':
+                        this._keepContentAfterSend = message.value;
+                        this._context.workspaceState.update('copilotKeepContent', message.value);
+                        break;
+                    case 'getKeepContent':
+                        this._view?.webview.postMessage({ type: 'keepContent', value: this._keepContentAfterSend });
+                        break;
+                    case 'openPromptsFile':
+                        await this._openPromptsFile();
                         break;
                 }
             },
@@ -343,6 +412,9 @@ class UnifiedNotepadViewProvider implements vscode.WebviewViewProvider {
         const config = loadSendToChatConfig();
         const isAnswerFileTemplate = template === '__answer_file__';
         
+        // Always log the prompt (before expansion)
+        logCopilotPrompt(text, template);
+        
         let expanded: string;
         if (isAnswerFileTemplate) {
             // Delete existing answer file before sending
@@ -354,11 +426,16 @@ class UnifiedNotepadViewProvider implements vscode.WebviewViewProvider {
             const templateObj = template && template !== '__none__' ? config?.templates?.[template] : null;
             const prefix = templateObj?.prefix || '';
             const suffix = templateObj?.suffix || '';
-            const full = prefix + text + suffix;
+            const full = prefix + (prefix ? '\n' : '') + text + (suffix ? '\n' : '') + suffix;
             expanded = await expandPlaceholders(full);
         }
         
         await vscode.commands.executeCommand('workbench.action.chat.open', { query: expanded });
+        
+        // Clear the textarea if keepContent is false
+        if (!this._keepContentAfterSend) {
+            this._view?.webview.postMessage({ type: 'clearCopilotText' });
+        }
         
         // Apply auto-hide if configured
         if (this._autoHideDelay > 0) {
@@ -546,6 +623,25 @@ ${comments ? `<strong>Comments:</strong> ${comments}` : ''}
         await vscode.window.showTextDocument(doc, { preview: false });
     }
 
+    private async _openPromptsFile(): Promise<void> {
+        const promptsPath = getCopilotPromptsPath();
+        const dir = path.dirname(promptsPath);
+        
+        // Ensure directory exists
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        
+        // Create file if it doesn't exist
+        if (!fs.existsSync(promptsPath)) {
+            fs.writeFileSync(promptsPath, '# Copilot Prompts\n\n', 'utf-8');
+        }
+        
+        // Open or focus the file
+        const doc = await vscode.workspace.openTextDocument(promptsPath);
+        await vscode.window.showTextDocument(doc, { preview: false });
+    }
+
     private _escapeHtml(text: string): string {
         return text
             .replace(/&/g, '&amp;')
@@ -582,11 +678,19 @@ ${comments ? `<strong>Comments:</strong> ${comments}` : ''}
             }
             case 'copilot': {
                 title = 'Copilot';
-                const template = profileOrTemplate && profileOrTemplate !== '__none__' ? config?.templates?.[profileOrTemplate] : null;
-                const prefix = template?.prefix || '';
-                const suffix = template?.suffix || '';
-                if (prefix || suffix) {
-                    previewContent = `=== PREFIX ===\n${prefix}\n\n=== YOUR INPUT ===\n${text}\n\n=== SUFFIX ===\n${suffix}\n\n=== FULL PROMPT ===\n${prefix}${text}${suffix}`;
+                if (profileOrTemplate === '__answer_file__') {
+                    // Use stored Answer File template or defaults
+                    const tpl = config?.templates?.['__answer_file__'];
+                    const prefix = tpl?.prefix || '';
+                    const suffix = tpl?.suffix || getDefaultAnswerFileSuffix();
+                    previewContent = prefix + (prefix ? '\n' : '') + text + (suffix ? '\n' : '') + suffix;
+                } else {
+                    const template = profileOrTemplate && profileOrTemplate !== '__none__' ? config?.templates?.[profileOrTemplate] : null;
+                    const prefix = template?.prefix || '';
+                    const suffix = template?.suffix || '';
+                    if (prefix || suffix) {
+                        previewContent = prefix + (prefix ? '\n' : '') + text + (suffix ? '\n' : '') + suffix;
+                    }
                 }
                 onSend = async (t) => await this._handleSendCopilot(t, profileOrTemplate);
                 break;
@@ -837,25 +941,35 @@ ${comments ? `<strong>Comments:</strong> ${comments}` : ''}
         if (!config) { return; }
 
         if (section === 'copilot') {
-            const tpl = config.templates?.[name];
-            if (!tpl) { return; }
+            // For Answer File template, use stored template or default
+            const isAnswerFile = name === '__answer_file__';
+            const tpl = isAnswerFile 
+                ? (config.templates?.['__answer_file__'] || { prefix: '', suffix: getDefaultAnswerFileSuffix() })
+                : config.templates?.[name];
+            if (!tpl && !isAnswerFile) { return; }
             await showTemplateEditorPanel({
                 type: 'copilot',
-                title: `Edit Copilot Template: ${name}`,
+                title: isAnswerFile ? 'Edit Answer File Template' : `Edit Copilot Template: ${name}`,
                 fields: [
-                    { name: 'name', label: 'Template Name', type: 'text', placeholder: 'my_template', value: name },
-                    { name: 'prefix', label: 'Prefix (added before your prompt)', type: 'textarea', placeholder: 'Please help me with the following:\\n\\n', value: tpl.prefix || '' },
-                    { name: 'suffix', label: 'Suffix (added after your prompt)', type: 'textarea', placeholder: '\\n\\nUse best practices.', value: tpl.suffix || '', help: PLACEHOLDER_HELP }
+                    ...(isAnswerFile ? [] : [{ name: 'name', label: 'Template Name', type: 'text' as const, placeholder: 'my_template', value: name }]),
+                    { name: 'prefix', label: 'Prefix (added before your prompt)', type: 'textarea' as const, placeholder: 'Please help me with the following:\\n\\n', value: tpl?.prefix || '' },
+                    { name: 'suffix', label: 'Suffix (added after your prompt)', type: 'textarea' as const, placeholder: '\\n\\nUse best practices.', value: tpl?.suffix || '', help: isAnswerFile ? 'Leave empty to reset to default Answer File suffix.' : PLACEHOLDER_HELP }
                 ]
             }, async (values) => {
-                if (!values.name) { vscode.window.showWarningMessage('Template name is required'); return; }
+                if (!isAnswerFile && !values.name) { vscode.window.showWarningMessage('Template name is required'); return; }
                 const cfg = loadSendToChatConfig();
                 if (cfg) {
-                    if (values.name !== name) { delete cfg.templates[name]; }
-                    cfg.templates[values.name] = { prefix: values.prefix || '', suffix: values.suffix || '', showInMenu: true };
+                    const templateName = isAnswerFile ? '__answer_file__' : values.name;
+                    if (!isAnswerFile && values.name !== name) { delete cfg.templates[name]; }
+                    // For Answer File, if both prefix and suffix are empty, remove from config (use defaults)
+                    if (isAnswerFile && !values.prefix?.trim() && !values.suffix?.trim()) {
+                        delete cfg.templates['__answer_file__'];
+                    } else {
+                        cfg.templates[templateName] = { prefix: values.prefix || '', suffix: values.suffix || '', showInMenu: true };
+                    }
                     if (saveSendToChatConfig(cfg)) {
                         this._sendProfiles();
-                        vscode.window.showInformationMessage(`Template "${values.name}" updated`);
+                        vscode.window.showInformationMessage(isAnswerFile ? 'Answer File template updated' : `Template "${values.name}" updated`);
                     }
                 }
             });
@@ -1223,6 +1337,8 @@ textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
 .toolbar-spacer { flex: 1; min-width: 16px; }
 .answers-toolbar { background: rgba(200, 170, 0, 0.15); border: 1px solid rgba(200, 170, 0, 0.4); border-radius: 4px; padding: 4px 8px !important; }
 .answer-indicator { font-size: 12px; font-weight: 600; color: var(--vscode-editorWarning-foreground, #cca700); margin-right: 8px; }
+.checkbox-label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; margin-left: 8px; }
+.checkbox-label input[type="checkbox"] { margin: 0; cursor: pointer; }
 `;
     }
 
@@ -1289,7 +1405,7 @@ function getSectionContent(id) {
         notes: '<div class="toolbar"><label>Note:</label><select id="notes-file" onchange="selectNotesFile(this.value)"></select><button class="icon-btn" data-action="reloadNotes" title="Reload"><span class="codicon codicon-refresh"></span></button><button class="icon-btn" data-action="addNotesFile" title="Add Note"><span class="codicon codicon-add"></span></button><button class="icon-btn danger" data-action="deleteNotesFile" title="Delete Note"><span class="codicon codicon-trash"></span></button><button class="icon-btn" data-action="openNotesInEditor" title="Open in Editor"><span class="codicon codicon-go-to-file"></span></button></div><textarea id="notes-text" placeholder="Select a note to edit..." data-input="notes"></textarea><div class="status-bar"><span id="notes-charCount">0 chars</span></div>',
         localLlm: '<div class="toolbar"><label>Profile:</label><select id="localLlm-profile"><option value="">(None)</option></select><button class="icon-btn" data-action="addProfile" data-id="localLlm" title="Add Profile"><span class="codicon codicon-add"></span></button><button class="icon-btn" data-action="editProfile" data-id="localLlm" title="Edit Profile"><span class="codicon codicon-edit"></span></button><button class="icon-btn danger" data-action="deleteProfile" data-id="localLlm" title="Delete Profile"><span class="codicon codicon-trash"></span></button><button data-action="preview" data-id="localLlm" title="Preview expanded prompt">Preview</button><button class="primary" data-action="send" data-id="localLlm" title="Send prompt to Local LLM">Send to LLM</button><button class="icon-btn" data-action="trail" data-id="localLlm" title="Open Trail File"><span class="codicon codicon-list-flat"></span></button></div><div id="localLlm-profileInfo" class="profile-info" style="display:none;"></div><textarea id="localLlm-text" placeholder="Enter your prompt for the local LLM..." data-input="localLlm"></textarea><div class="status-bar"><span id="localLlm-charCount">0 chars</span></div><div class="placeholder-help"><strong>Placeholders:</strong> <code>{{selection}}</code>, <code>{{file}}</code>, <code>{{clipboard}}</code>, <code>{{date}}</code></div>',
         conversation: '<div class="toolbar"><label>Profile:</label><select id="conversation-profile"><option value="">(None)</option></select><button class="icon-btn" data-action="addProfile" data-id="conversation" title="Add Profile"><span class="codicon codicon-add"></span></button><button class="icon-btn" data-action="editProfile" data-id="conversation" title="Edit Profile"><span class="codicon codicon-edit"></span></button><button class="icon-btn danger" data-action="deleteProfile" data-id="conversation" title="Delete Profile"><span class="codicon codicon-trash"></span></button><button data-action="preview" data-id="conversation" title="Preview expanded prompt">Preview</button><button class="primary" data-action="send" data-id="conversation" title="Start AI Conversation">Start</button></div><div id="conversation-profileInfo" class="profile-info" style="display:none;"></div><textarea id="conversation-text" placeholder="Enter your goal/description for the conversation..." data-input="conversation"></textarea><div class="status-bar"><span id="conversation-charCount">0 chars</span></div><div class="placeholder-help"><strong>Tip:</strong> Describe the goal clearly. The bot will orchestrate a multi-turn conversation with Copilot.</div>',
-        copilot: '<div class="toolbar"><label>Template:</label><select id="copilot-template"><option value="">(None)</option><option value="__answer_file__">Answer File</option></select><button class="icon-btn" data-action="addTemplate" data-id="copilot" title="Add Template"><span class="codicon codicon-add"></span></button><button class="icon-btn" data-action="editTemplate" data-id="copilot" title="Edit Template"><span class="codicon codicon-edit"></span></button><button class="icon-btn danger" data-action="deleteTemplate" data-id="copilot" title="Delete Template"><span class="codicon codicon-trash"></span></button><button data-action="preview" data-id="copilot" title="Preview expanded prompt">Preview</button><button class="primary" data-action="send" data-id="copilot" title="Send to GitHub Copilot">Send</button><span class="toolbar-spacer"></span><label>Auto-hide:</label><select id="copilot-autohide"><option value="0">Keep open</option><option value="1000">1s</option><option value="5000">5s</option><option value="10000">10s</option></select></div><div class="toolbar answers-toolbar" id="copilot-answers-toolbar" style="display:none;"><span id="copilot-answer-indicator" class="answer-indicator">Answer Ready</span><button class="icon-btn" data-action="showAnswerViewer" data-id="copilot" title="View Answer"><span class="codicon codicon-eye"></span></button><button class="icon-btn" data-action="extractAnswer" data-id="copilot" title="Extract to Markdown"><span class="codicon codicon-file-symlink-file"></span></button></div><div id="copilot-templateInfo" class="profile-info" style="display:none;"></div><textarea id="copilot-text" placeholder="Enter your prompt..." data-input="copilot"></textarea><div class="status-bar"><span id="copilot-charCount">0 chars</span></div><div class="placeholder-help"><strong>Placeholders:</strong> <code>{{selection}}</code>, <code>{{file}}</code>, <code>{{clipboard}}</code>, <code>{{date}}</code></div>',
+        copilot: '<div class="toolbar"><label>Template:</label><select id="copilot-template"><option value="">(None)</option><option value="__answer_file__">Answer File</option></select><button class="icon-btn" data-action="addTemplate" data-id="copilot" title="Add Template"><span class="codicon codicon-add"></span></button><button class="icon-btn" data-action="editTemplate" data-id="copilot" title="Edit Template"><span class="codicon codicon-edit"></span></button><button class="icon-btn danger" data-action="deleteTemplate" data-id="copilot" title="Delete Template"><span class="codicon codicon-trash"></span></button><button data-action="preview" data-id="copilot" title="Preview expanded prompt">Preview</button><button class="primary" data-action="send" data-id="copilot" title="Send to GitHub Copilot">Send</button><span class="toolbar-spacer"></span><label>Auto-hide:</label><select id="copilot-autohide"><option value="0">Keep open</option><option value="1000">1s</option><option value="5000">5s</option><option value="10000">10s</option></select><button class="icon-btn" data-action="openPromptsFile" data-id="copilot" title="Open Prompts Log"><span class="codicon codicon-list-flat"></span></button><label class="checkbox-label"><input type="checkbox" id="copilot-keep-content"> Keep</label></div><div class="toolbar answers-toolbar" id="copilot-answers-toolbar" style="display:none;"><span id="copilot-answer-indicator" class="answer-indicator">Answer Ready</span><button class="icon-btn" data-action="showAnswerViewer" data-id="copilot" title="View Answer"><span class="codicon codicon-eye"></span></button><button class="icon-btn" data-action="extractAnswer" data-id="copilot" title="Extract to Markdown"><span class="codicon codicon-file-symlink-file"></span></button></div><div id="copilot-templateInfo" class="profile-info" style="display:none;"></div><textarea id="copilot-text" placeholder="Enter your prompt..." data-input="copilot"></textarea><div class="status-bar"><span id="copilot-charCount">0 chars</span></div><div class="placeholder-help"><strong>Placeholders:</strong> <code>{{selection}}</code>, <code>{{file}}</code>, <code>{{clipboard}}</code>, <code>{{date}}</code></div>',
         tomAiChat: '<div class="toolbar"><label>Template:</label><select id="tomAiChat-template"><option value="">(None)</option></select><button class="icon-btn" data-action="addTemplate" data-id="tomAiChat" title="Add Template"><span class="codicon codicon-add"></span></button><button class="icon-btn" data-action="editTemplate" data-id="tomAiChat" title="Edit Template"><span class="codicon codicon-edit"></span></button><button class="icon-btn danger" data-action="deleteTemplate" data-id="tomAiChat" title="Delete Template"><span class="codicon codicon-trash"></span></button><button data-action="openChatFile" data-id="tomAiChat" title="Open or create .chat.md file">Open</button><button data-action="preview" data-id="tomAiChat" title="Preview expanded prompt">Preview</button><button class="primary" data-action="insertToChatFile" data-id="tomAiChat" title="Insert into .chat.md file">Insert</button></div><div id="tomAiChat-templateInfo" class="profile-info" style="display:none;"></div><textarea id="tomAiChat-text" placeholder="Enter your prompt for Tom AI Chat..." data-input="tomAiChat"></textarea><div class="status-bar"><span id="tomAiChat-charCount">0 chars</span></div><div class="placeholder-help"><strong>Tip:</strong> Write your prompt, then click "Insert" to add it to an open .chat.md file.</div>'
     };
     return contents[id] || '<div>Unknown section</div>';
@@ -1346,7 +1462,7 @@ function stopResize() { if (resizing) { resizing.handle.classList.remove('draggi
 function handleAction(action, id) {
     switch(action) {
         case 'send': { var text = document.getElementById(id + '-text'); text = text ? text.value : ''; if (!text.trim()) return; var profile = document.getElementById(id + '-profile'); profile = profile ? profile.value : ''; var template = document.getElementById(id + '-template'); template = template ? template.value : ''; vscode.postMessage({ type: 'send' + id.charAt(0).toUpperCase() + id.slice(1), text: text, profile: profile, template: template }); break; }
-        case 'preview': vscode.postMessage({ type: 'preview', section: id }); break;
+        case 'preview': { var prvText = document.getElementById(id + '-text'); prvText = prvText ? prvText.value : ''; var prvTpl = document.getElementById(id + '-template'); prvTpl = prvTpl ? prvTpl.value : ''; vscode.postMessage({ type: 'preview', section: id, text: prvText, template: prvTpl }); break; }
         case 'trail': vscode.postMessage({ type: 'showTrail', section: id }); break;
         case 'reload': vscode.postMessage({ type: 'reload', section: id }); break;
         case 'open': vscode.postMessage({ type: 'openInEditor', section: id }); break;
@@ -1354,9 +1470,9 @@ function handleAction(action, id) {
         case 'addProfile': vscode.postMessage({ type: 'addProfile', section: id }); break;
         case 'editProfile': { var epSel = document.getElementById(id + '-profile'); vscode.postMessage({ type: 'editProfile', section: id, name: epSel ? epSel.value : '' }); break; }
         case 'addTemplate': vscode.postMessage({ type: 'addTemplate', section: id }); break;
-        case 'editTemplate': { var etSel = document.getElementById(id + '-template'); vscode.postMessage({ type: 'editTemplate', section: id, name: etSel ? etSel.value : '' }); break; }
+        case 'editTemplate': { var etSel = document.getElementById(id + '-template'); var etVal = etSel ? etSel.value : ''; vscode.postMessage({ type: 'editTemplate', section: id, name: etVal }); break; }
         case 'deleteProfile': confirmDelete('profile', id); break;
-        case 'deleteTemplate': confirmDelete('template', id); break;
+        case 'deleteTemplate': { var dtSel = document.getElementById(id + '-template'); var dtVal = dtSel ? dtSel.value : ''; if (dtVal === '__answer_file__') { vscode.postMessage({ type: 'showMessage', message: 'The Answer File template is built-in and cannot be deleted.' }); return; } confirmDelete('template', id); break; }
         case 'openChatFile': vscode.postMessage({ type: 'openChatFile' }); break;
         case 'insertToChatFile': { var insertText = document.getElementById(id + '-text'); insertText = insertText ? insertText.value : ''; if (!insertText.trim()) return; var insertTemplate = document.getElementById(id + '-template'); insertTemplate = insertTemplate ? insertTemplate.value : ''; vscode.postMessage({ type: 'insertToChatFile', text: insertText, template: insertTemplate }); break; }
         case 'reloadGuidelines': vscode.postMessage({ type: 'getGuidelinesFiles' }); break;
@@ -1369,6 +1485,7 @@ function handleAction(action, id) {
         case 'openNotesInEditor': if (notesSelectedFile) vscode.postMessage({ type: 'openNotesInEditor', file: notesSelectedFile }); break;
         case 'showAnswerViewer': vscode.postMessage({ type: 'showAnswerViewer' }); break;
         case 'extractAnswer': vscode.postMessage({ type: 'extractAnswer' }); break;
+        case 'openPromptsFile': vscode.postMessage({ type: 'openPromptsFile' }); break;
     }
 }
 
@@ -1377,9 +1494,8 @@ function confirmDelete(itemType, sectionId) {
     var sel = document.getElementById(selectId);
     var selectedValue = sel ? sel.value : '';
     if (!selectedValue) { vscode.postMessage({ type: 'showMessage', message: 'Please select a ' + itemType + ' to delete.' }); return; }
-    if (confirm('Are you sure you want to delete the ' + itemType + ' "' + selectedValue + '"?')) {
-        vscode.postMessage({ type: 'delete' + itemType.charAt(0).toUpperCase() + itemType.slice(1), section: sectionId, name: selectedValue });
-    }
+    // Send directly to extension - VS Code will show its own confirmation dialog
+    vscode.postMessage({ type: 'delete' + itemType.charAt(0).toUpperCase() + itemType.slice(1), section: sectionId, name: selectedValue });
 }
 
 function populateDropdowns() {
@@ -1489,6 +1605,12 @@ window.addEventListener('message', function(e) {
     } else if (msg.type === 'autoHideDelay') {
         var select = document.getElementById('copilot-autohide');
         if (select) select.value = String(msg.value || 0);
+    } else if (msg.type === 'keepContent') {
+        var cb = document.getElementById('copilot-keep-content');
+        if (cb) cb.checked = msg.value;
+    } else if (msg.type === 'clearCopilotText') {
+        var ta = document.getElementById('copilot-text');
+        if (ta) { ta.value = ''; updateCharCount('copilot'); }
     }
 });
 
@@ -1497,6 +1619,12 @@ function initCopilotSection() {
     if (autohideSelect) {
         autohideSelect.addEventListener('change', function() {
             vscode.postMessage({ type: 'setAutoHideDelay', value: parseInt(this.value, 10) });
+        });
+    }
+    var keepContentCb = document.getElementById('copilot-keep-content');
+    if (keepContentCb) {
+        keepContentCb.addEventListener('change', function() {
+            vscode.postMessage({ type: 'setKeepContent', value: this.checked });
         });
     }
 }
@@ -1508,6 +1636,7 @@ vscode.postMessage({ type: 'getProfiles' });
 vscode.postMessage({ type: 'getGuidelinesFiles' });
 vscode.postMessage({ type: 'getNotesFiles' });
 vscode.postMessage({ type: 'getAutoHideDelay' });
+vscode.postMessage({ type: 'getKeepContent' });
 vscode.postMessage({ type: 'checkAnswerFile' });
 `;
     }
@@ -1772,7 +1901,7 @@ vscode.postMessage({ type: 'checkAnswerFile' });
                 notes: '<div class="toolbar"><div class="toolbar-row"><button data-action="reload" data-id="notes">Reload</button><button data-action="addNote">Add</button><button data-action="open" data-id="notes">Open</button></div></div><textarea id="notes-text" placeholder="Notes..."></textarea>',
                 localLlm: '<div class="toolbar"><div class="toolbar-row"><label>Profile:</label><select id="localLlm-profile"><option value="">(None)</option></select><button class="icon-btn" data-action="addProfile" data-id="localLlm" title="Add Profile">+</button><button class="icon-btn" data-action="editProfile" data-id="localLlm" title="Edit Profile">✏️</button><button class="icon-btn danger" data-action="deleteProfile" data-id="localLlm" title="Delete Profile">🗑️</button></div><div class="toolbar-row"><button data-action="preview" data-id="localLlm">Preview</button><button class="primary" data-action="send" data-id="localLlm">Send to LLM</button><button data-action="trail" data-id="localLlm">📜 Trail</button></div></div><div id="localLlm-profileInfo" class="profile-info" style="display:none;"></div><textarea id="localLlm-text" placeholder="Enter your prompt for the local LLM..." data-input="localLlm"></textarea><div class="status-bar"><span id="localLlm-charCount">0 chars</span></div><div class="placeholder-help"><strong>Placeholders:</strong> <code>{{selection}}</code>, <code>{{file}}</code>, <code>{{clipboard}}</code>, <code>{{date}}</code></div>',
                 conversation: '<div class="toolbar"><div class="toolbar-row"><label>Profile:</label><select id="conversation-profile"><option value="">(None)</option></select><button class="icon-btn" data-action="addProfile" data-id="conversation" title="Add Profile">+</button><button class="icon-btn" data-action="editProfile" data-id="conversation" title="Edit Profile">✏️</button><button class="icon-btn danger" data-action="deleteProfile" data-id="conversation" title="Delete Profile">🗑️</button></div><div class="toolbar-row"><button data-action="preview" data-id="conversation">Preview</button><button class="primary" data-action="send" data-id="conversation">Start Conversation</button></div></div><div id="conversation-profileInfo" class="profile-info" style="display:none;"></div><textarea id="conversation-text" placeholder="Enter your goal/description for the conversation..." data-input="conversation"></textarea><div class="status-bar"><span id="conversation-charCount">0 chars</span></div><div class="placeholder-help"><strong>Tip:</strong> Describe the goal clearly. The bot will orchestrate a multi-turn conversation with Copilot.</div>',
-                copilot: '<div class="toolbar"><div class="toolbar-row"><label>Template:</label><select id="copilot-template"><option value="">(None)</option><option value="__answer_file__">Answer File</option></select><button class="icon-btn" data-action="addTemplate" data-id="copilot" title="Add Template">+</button><button class="icon-btn" data-action="editTemplate" data-id="copilot" title="Edit Template">✏️</button><button class="icon-btn danger" data-action="deleteTemplate" data-id="copilot" title="Delete Template">🗑️</button></div><div class="toolbar-row"><button data-action="preview" data-id="copilot">Preview</button><button class="primary" data-action="send" data-id="copilot">Send to Copilot</button><label style="margin-left:8px;">Auto-hide:</label><select id="copilot-autohide"><option value="0">Keep</option><option value="1000">1s</option><option value="5000">5s</option><option value="10000">10s</option></select></div></div><div class="toolbar answers-toolbar" id="copilot-answers-toolbar" style="display:none;"><span id="copilot-answer-indicator" class="answer-indicator">Answer Ready</span><button class="icon-btn" data-action="showAnswerViewer" data-id="copilot" title="View Answer">👁️</button><button class="icon-btn" data-action="extractAnswer" data-id="copilot" title="Extract to Markdown">📄</button></div><div id="copilot-templateInfo" class="profile-info" style="display:none;"></div><textarea id="copilot-text" placeholder="Enter your prompt... The selected template\'s prefix/suffix will wrap this content." data-input="copilot"></textarea><div class="status-bar"><span id="copilot-charCount">0 chars</span></div><div class="placeholder-help"><strong>Placeholders:</strong> <code>{{selection}}</code>, <code>{{file}}</code>, <code>{{clipboard}}</code>, <code>{{date}}</code></div>',
+                copilot: '<div class="toolbar"><div class="toolbar-row"><label>Template:</label><select id="copilot-template"><option value="">(None)</option><option value="__answer_file__">Answer File</option></select><button class="icon-btn" data-action="addTemplate" data-id="copilot" title="Add Template">+</button><button class="icon-btn" data-action="editTemplate" data-id="copilot" title="Edit Template">✏️</button><button class="icon-btn danger" data-action="deleteTemplate" data-id="copilot" title="Delete Template">🗑️</button></div><div class="toolbar-row"><button data-action="preview" data-id="copilot">Preview</button><button class="primary" data-action="send" data-id="copilot">Send to Copilot</button><label style="margin-left:8px;">Auto-hide:</label><select id="copilot-autohide"><option value="0">Keep</option><option value="1000">1s</option><option value="5000">5s</option><option value="10000">10s</option></select><button class="icon-btn" data-action="openPromptsFile" data-id="copilot" title="Open Prompts Log" style="margin-left:4px;">📋</button><label style="margin-left:4px;display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" id="copilot-keep-content"> Keep</label></div></div><div class="toolbar answers-toolbar" id="copilot-answers-toolbar" style="display:none;"><span id="copilot-answer-indicator" class="answer-indicator">Answer Ready</span><button class="icon-btn" data-action="showAnswerViewer" data-id="copilot" title="View Answer">👁️</button><button class="icon-btn" data-action="extractAnswer" data-id="copilot" title="Extract to Markdown">📄</button></div><div id="copilot-templateInfo" class="profile-info" style="display:none;"></div><textarea id="copilot-text" placeholder="Enter your prompt... The selected template\'s prefix/suffix will wrap this content." data-input="copilot"></textarea><div class="status-bar"><span id="copilot-charCount">0 chars</span></div><div class="placeholder-help"><strong>Placeholders:</strong> <code>{{selection}}</code>, <code>{{file}}</code>, <code>{{clipboard}}</code>, <code>{{date}}</code></div>',
                 tomAiChat: '<div class="toolbar"><div class="toolbar-row"><label>Template:</label><select id="tomAiChat-template"><option value="">(None)</option></select><button class="icon-btn" data-action="addTemplate" data-id="tomAiChat" title="Add Template">+</button><button class="icon-btn" data-action="editTemplate" data-id="tomAiChat" title="Edit Template">✏️</button><button class="icon-btn danger" data-action="deleteTemplate" data-id="tomAiChat" title="Delete Template">🗑️</button></div><div class="toolbar-row"><button data-action="openChatFile" data-id="tomAiChat">Open Chat</button><button data-action="preview" data-id="tomAiChat">Preview</button><button class="primary" data-action="insertToChatFile" data-id="tomAiChat">Insert</button></div></div><div id="tomAiChat-templateInfo" class="profile-info" style="display:none;"></div><textarea id="tomAiChat-text" placeholder="Enter your prompt for Tom AI Chat..." data-input="tomAiChat"></textarea><div class="status-bar"><span id="tomAiChat-charCount">0 chars</span></div><div class="placeholder-help"><strong>Tip:</strong> Write your prompt, then click "Insert" to add it to an open .chat.md file.</div>'
             };
             return contents[id] || '<div>Unknown section</div>';
@@ -1910,9 +2039,12 @@ vscode.postMessage({ type: 'checkAnswerFile' });
                     vscode.postMessage({ type: 'send' + id.charAt(0).toUpperCase() + id.slice(1), text, profile, template });
                     break;
                 }
-                case 'preview':
-                    vscode.postMessage({ type: 'preview', section: id });
+                case 'preview': {
+                    const prvText = document.getElementById(id + '-text')?.value || '';
+                    const prvTpl = document.getElementById(id + '-template')?.value || '';
+                    vscode.postMessage({ type: 'preview', section: id, text: prvText, template: prvTpl });
                     break;
+                }
                 case 'trail':
                     vscode.postMessage({ type: 'showTrail', section: id });
                     break;
@@ -1938,15 +2070,23 @@ vscode.postMessage({ type: 'checkAnswerFile' });
                     break;
                 case 'editTemplate': {
                     const etSel = document.getElementById(id + '-template');
-                    vscode.postMessage({ type: 'editTemplate', section: id, name: etSel?.value || '' });
+                    const etVal = etSel?.value || '';
+                    vscode.postMessage({ type: 'editTemplate', section: id, name: etVal });
                     break;
                 }
                 case 'deleteProfile':
                     confirmDelete('profile', id);
                     break;
-                case 'deleteTemplate':
+                case 'deleteTemplate': {
+                    const dtSel = document.getElementById(id + '-template');
+                    const dtVal = dtSel?.value || '';
+                    if (dtVal === '__answer_file__') {
+                        vscode.postMessage({ type: 'showMessage', message: 'The Answer File template is built-in and cannot be deleted.' });
+                        return;
+                    }
                     confirmDelete('template', id);
                     break;
+                }
                 case 'openChatFile':
                     vscode.postMessage({ type: 'openChatFile' });
                     break;
@@ -1963,6 +2103,9 @@ vscode.postMessage({ type: 'checkAnswerFile' });
                 case 'extractAnswer':
                     vscode.postMessage({ type: 'extractAnswer' });
                     break;
+                case 'openPromptsFile':
+                    vscode.postMessage({ type: 'openPromptsFile' });
+                    break;
             }
         }
         
@@ -1974,9 +2117,8 @@ vscode.postMessage({ type: 'checkAnswerFile' });
                 vscode.postMessage({ type: 'showMessage', message: 'Please select a ' + itemType + ' to delete.' });
                 return;
             }
-            if (confirm('Are you sure you want to delete the ' + itemType + ' "' + selectedValue + '"?')) {
-                vscode.postMessage({ type: 'delete' + itemType.charAt(0).toUpperCase() + itemType.slice(1), section: sectionId, name: selectedValue });
-            }
+            // Send directly to extension - VS Code will show its own confirmation dialog
+            vscode.postMessage({ type: 'delete' + itemType.charAt(0).toUpperCase() + itemType.slice(1), section: sectionId, name: selectedValue });
         }
         
         function populateDropdowns() {
@@ -2013,6 +2155,12 @@ vscode.postMessage({ type: 'checkAnswerFile' });
             } else if (msg.type === 'autoHideDelay') {
                 var select = document.getElementById('copilot-autohide');
                 if (select) select.value = String(msg.value || 0);
+            } else if (msg.type === 'keepContent') {
+                var cb = document.getElementById('copilot-keep-content');
+                if (cb) cb.checked = msg.value;
+            } else if (msg.type === 'clearCopilotText') {
+                var ta = document.getElementById('copilot-text');
+                if (ta) { ta.value = ''; updateCharCount('copilot'); }
             }
         });
         
@@ -2021,6 +2169,12 @@ vscode.postMessage({ type: 'checkAnswerFile' });
             if (autohideSelect) {
                 autohideSelect.addEventListener('change', function() {
                     vscode.postMessage({ type: 'setAutoHideDelay', value: parseInt(this.value, 10) });
+                });
+            }
+            var keepContentCb = document.getElementById('copilot-keep-content');
+            if (keepContentCb) {
+                keepContentCb.addEventListener('change', function() {
+                    vscode.postMessage({ type: 'setKeepContent', value: this.checked });
                 });
             }
         }
@@ -2035,6 +2189,7 @@ vscode.postMessage({ type: 'checkAnswerFile' });
             initCopilotSection();
             vscode.postMessage({ type: 'getProfiles' });
             vscode.postMessage({ type: 'getAutoHideDelay' });
+            vscode.postMessage({ type: 'getKeepContent' });
             vscode.postMessage({ type: 'checkAnswerFile' });
         } catch(err) {
             var errMsg = (err && err.message) ? err.message : String(err);

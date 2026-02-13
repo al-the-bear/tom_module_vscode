@@ -14,7 +14,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getBridgeClient, getConfigPath } from './handler_shared';
+import { getBridgeClient, getConfigPath, loadSendToChatConfig, saveSendToChatConfig } from './handler_shared';
 import { getCliServerStatus } from './cliServer-handler';
 import { loadBridgeConfig, BridgeConfig } from './restartBridge-handler';
 import { isTrailEnabled, setTrailEnabled, loadTrailConfig, toggleTrail } from './trailLogger-handler';
@@ -150,6 +150,16 @@ async function updateAskBigBrotherSettings(settings: any): Promise<void> {
     }
 }
 
+async function updateT2CopilotPanelSettings(settings: any): Promise<void> {
+    const config = loadSendToChatConfig() || { templates: {}, promptExpander: { profiles: {} }, botConversation: { profiles: {} } };
+    if (settings.copilotAnswerPath !== undefined) {
+        config.copilotAnswerPath = settings.copilotAnswerPath;
+    }
+    if (saveSendToChatConfig(config)) {
+        vscode.window.showInformationMessage('T2 Copilot Panel settings updated');
+    }
+}
+
 /**
  * Status data for the webview
  */
@@ -201,6 +211,10 @@ interface StatusData {
     };
     askCopilot: AskCopilotConfig;
     askBigBrother: AskBigBrotherConfig;
+    t2CopilotPanel: {
+        copilotAnswerPath: string;
+        keepContentAfterSend: boolean;
+    };
 }
 
 /**
@@ -270,6 +284,10 @@ async function gatherStatusData(): Promise<StatusData> {
             profiles: botConversation.profiles ? Object.keys(botConversation.profiles) : [],
         },
         ...loadEscalationToolsConfig(),
+        t2CopilotPanel: {
+            copilotAnswerPath: loadSendToChatConfig()?.copilotAnswerPath ?? '_ai/copilot',
+            keepContentAfterSend: false,  // This is managed by the T2 panel itself, not saved to config
+        },
     };
 }
 
@@ -738,6 +756,18 @@ function getStatusPageHtml(status: StatusData): string {
         </div>
     </div>
 
+    <!-- T2 Copilot Panel Settings -->
+    <div class="section">
+        <div class="section-header collapsed" onclick="toggleSection('t2CopilotPanel')">T2 Copilot Panel <span class="collapse-icon"></span></div>
+        <div id="t2CopilotPanel-content" class="section-content">
+            <div class="setting-row">
+                <label>Copilot Answer Path:</label>
+                <input type="text" id="t2cp-copilotAnswerPath" value="${status.t2CopilotPanel.copilotAnswerPath}" onchange="updateT2CopilotPanel()">
+            </div>
+            <p class="info-text">Path relative to workspace root for extracting Copilot answers and storing prompts.</p>
+        </div>
+    </div>
+
     <script>
         const vscode = acquireVsCodeApi();
         
@@ -837,6 +867,15 @@ function getStatusPageHtml(status: StatusData): string {
                 }
             });
         }
+        
+        function updateT2CopilotPanel() {
+            vscode.postMessage({ 
+                type: 'updateT2CopilotPanel',
+                settings: {
+                    copilotAnswerPath: document.getElementById('t2cp-copilotAnswerPath').value
+                }
+            });
+        }
     </script>
 </body></html>`;
 }
@@ -900,6 +939,9 @@ export async function showStatusPageHandler(): Promise<void> {
                 break;
             case 'updateAskBigBrother':
                 await updateAskBigBrotherSettings(msg.settings);
+                break;
+            case 'updateT2CopilotPanel':
+                await updateT2CopilotPanelSettings(msg.settings);
                 break;
         }
         

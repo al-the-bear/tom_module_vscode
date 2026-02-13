@@ -513,6 +513,10 @@
       {
         "command": "dartscript.stateMachine.vsWindowStateFlow",
         "key": "ctrl+shift+y"
+      },
+      {
+        "command": "dartscript.showStatusPage",
+        "key": "ctrl+shift+9"
       }
     ],
     "menus": {
