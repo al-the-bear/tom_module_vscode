@@ -998,14 +998,32 @@ class LocalLlmNotepadProvider implements vscode.WebviewViewProvider {
         const profileKey = this._selectedProfile === '__none__' ? null : this._selectedProfile;
         const profileLabel = this._selectedProfile === '__none__' ? 'None' : this._selectedProfile;
         
+        // Resolve model name for status messages
+        const modelName = manager.getResolvedModelName();
+        
         try {
+            // Check if model needs loading
+            const modelLoaded = await manager.checkModelLoaded();
+            
             const result = await vscode.window.withProgress(
                 {
                     location: vscode.ProgressLocation.Notification,
-                    title: `Sending to Local LLM (${profileLabel})...`,
+                    title: modelLoaded ? `Sending to local ${modelName}...` : `Loading ${modelName}...`,
                     cancellable: true,
                 },
-                async (_progress, token) => {
+                async (progress, token) => {
+                    if (!modelLoaded) {
+                        const checkInterval = setInterval(async () => {
+                            const loaded = await manager.checkModelLoaded();
+                            if (loaded) {
+                                progress.report({ message: `Processing prompt with ${modelName}...` });
+                                clearInterval(checkInterval);
+                            }
+                        }, 2000);
+                        token.onCancellationRequested(() => clearInterval(checkInterval));
+                    } else {
+                        progress.report({ message: `Processing prompt with ${modelName}...` });
+                    }
                     return manager.process(text, profileKey, null, undefined, token);
                 }
             );

@@ -371,14 +371,35 @@ class UnifiedNotepadViewProvider implements vscode.WebviewViewProvider {
         const profileKey = profile === '__none__' ? null : profile;
         const profileLabel = profile === '__none__' ? 'None' : profile;
         
+        // Resolve model name for status messages
+        const modelName = manager.getResolvedModelName();
+        
         try {
+            // Check if model needs loading
+            const modelLoaded = await manager.checkModelLoaded();
+            
             const result = await vscode.window.withProgress(
                 {
                     location: vscode.ProgressLocation.Notification,
-                    title: `Sending to Local LLM (${profileLabel})...`,
+                    title: modelLoaded ? `Sending to local ${modelName}...` : `Loading ${modelName}...`,
                     cancellable: true,
                 },
-                async (_progress, token) => {
+                async (progress, token) => {
+                    if (!modelLoaded) {
+                        // Model is loading as part of generate — update status once process starts
+                        // The loading happens at the start of the Ollama call
+                        const checkInterval = setInterval(async () => {
+                            const loaded = await manager.checkModelLoaded();
+                            if (loaded) {
+                                progress.report({ message: `Processing prompt with ${modelName}...` });
+                                clearInterval(checkInterval);
+                            }
+                        }, 2000);
+                        token.onCancellationRequested(() => clearInterval(checkInterval));
+                    } else {
+                        // Model already loaded, go straight to processing
+                        progress.report({ message: `Processing prompt with ${modelName}...` });
+                    }
                     return manager.process(expanded, profileKey, null, undefined, token);
                 }
             );
@@ -897,7 +918,7 @@ ${comments ? `<strong>Comments:</strong> ${comments}<br>` : ''}
                 title: 'New Copilot Template',
                 fields: [
                     { name: 'name', label: 'Template Name', type: 'text', placeholder: 'my_template' },
-                    { name: 'prefix', label: 'Prefix (added before your prompt)', type: 'textarea', placeholder: 'Please help me with the following:\\n\\n', help: PLACEHOLDER_HELP },
+                    { name: 'prefix', label: 'Prefix (added before your prompt)', type: 'textarea', placeholder: 'Please help me with the following:\\n\\n' },
                     { name: 'suffix', label: 'Suffix (added after your prompt)', type: 'textarea', placeholder: '\\n\\nUse best practices.', help: PLACEHOLDER_HELP }
                 ]
             }, async (values) => {
@@ -958,7 +979,7 @@ ${comments ? `<strong>Comments:</strong> ${comments}<br>` : ''}
                 title: isAnswerFile ? 'Edit Answer File Template' : `Edit Copilot Template: ${name}`,
                 fields: [
                     ...(isAnswerFile ? [] : [{ name: 'name', label: 'Template Name', type: 'text' as const, placeholder: 'my_template', value: name }]),
-                    { name: 'prefix', label: 'Prefix (added before your prompt)', type: 'textarea' as const, placeholder: 'Please help me with the following:\\n\\n', value: tpl?.prefix || '', help: PLACEHOLDER_HELP },
+                    { name: 'prefix', label: 'Prefix (added before your prompt)', type: 'textarea' as const, placeholder: 'Please help me with the following:\\n\\n', value: tpl?.prefix || '' },
                     { name: 'suffix', label: 'Suffix (added after your prompt)', type: 'textarea' as const, placeholder: '\\n\\nUse best practices.', value: tpl?.suffix || '', help: isAnswerFile ? PLACEHOLDER_HELP + '<br><br><em>Leave empty to reset to default Answer File suffix.</em>' : PLACEHOLDER_HELP }
                 ]
             }, async (values) => {
