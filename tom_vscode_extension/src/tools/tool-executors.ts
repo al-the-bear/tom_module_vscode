@@ -23,6 +23,7 @@ import {
     buildAskCopilotDescription,
     generateModelList,
 } from './escalation-tools-config';
+import { updateChatResponseValues } from '../handlers/handler_shared';
 
 const execAsync = promisify(exec);
 
@@ -1038,7 +1039,7 @@ async function executeAskCopilot(input: AskCopilotInput): Promise<string> {
         const answerFolder = path.join(workspaceRoot, config.askCopilot.answerFolder);
         const sessionId = vscode.env.sessionId;
         const machineId = vscode.env.machineId;
-        const answerFilePath = path.join(answerFolder, `${sessionId}_${machineId}_answer.yaml`);
+        const answerFilePath = path.join(answerFolder, `${sessionId}_${machineId}_answer.json`);
         
         // Ensure folder exists
         if (!fs.existsSync(answerFolder)) {
@@ -1075,7 +1076,7 @@ async function executeAskCopilot(input: AskCopilotInput): Promise<string> {
     const answerFolder = path.join(workspaceRoot, config.askCopilot.answerFolder);
     const sessionId = vscode.env.sessionId;
     const machineId = vscode.env.machineId;
-    const answerFilePath = path.join(answerFolder, `${sessionId}_${machineId}_answer.yaml`);
+    const answerFilePath = path.join(answerFolder, `${sessionId}_${machineId}_answer.json`);
     
     const pollInterval = config.askCopilot.pollInterval;
     const startTime = Date.now();
@@ -1087,19 +1088,19 @@ async function executeAskCopilot(input: AskCopilotInput): Promise<string> {
             try {
                 const content = fs.readFileSync(answerFilePath, 'utf-8').trim();
                 if (content) {
-                    // Try to parse as YAML/JSON
+                    // Try to parse as JSON
                     try {
                         const parsed = JSON.parse(content);
+                        // Propagate responseValues to shared store
+                        if (parsed.responseValues && typeof parsed.responseValues === 'object') {
+                            updateChatResponseValues(parsed.responseValues);
+                        }
                         if (parsed.response) {
                             return `**Copilot Response:**\n\n${parsed.response}`;
                         }
                         return `**Copilot Response:**\n\n${JSON.stringify(parsed, null, 2)}`;
                     } catch {
-                        // Try simple YAML key: value parsing
-                        const responseMatch = content.match(/^response:\s*(.*)$/ms);
-                        if (responseMatch) {
-                            return `**Copilot Response:**\n\n${responseMatch[1].trim()}`;
-                        }
+                        // Plain text fallback
                         return `**Copilot Response:**\n\n${content}`;
                     }
                 }

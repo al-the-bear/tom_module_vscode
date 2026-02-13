@@ -75,7 +75,7 @@ const DEFAULT_ASK_COPILOT_CONFIG: AskCopilotConfig = {
     promptPrefix: '',
     promptSuffix: `
 
-After completing this request, please write a brief summary of your response to the answer file at "\${answerFolder}/\${sessionId}_\${machineId}_answer.yaml" in YAML format with a "response" key.`,
+After completing this request, please write your response to the answer file at "\${answerFolder}/\${sessionId}_\${machineId}_answer.json" in JSON format with a "response" key. If there are structured data values to return, include them under a "responseValues" key.`,
 };
 
 const DEFAULT_ASK_BIG_BROTHER_CONFIG: AskBigBrotherConfig = {

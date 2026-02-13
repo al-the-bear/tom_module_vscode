@@ -184,6 +184,8 @@ When `toolsEnabled: true` (in a profile or globally), the model can invoke read-
 | `tom_askBigBrother` | Escalate a question to VS Code Language Model API |
 | `tom_askCopilot` | Escalate a question to Copilot Chat (writes answer file, waits for response) |
 
+The `tom_askCopilot` tool communicates with Copilot via JSON answer files. When Copilot's response includes `responseValues`, they are automatically stored in the shared chat answer store and become available as `${dartscript.chat.<key>}` in all template contexts. See [copilot_answers.md](copilot_answers.md) for the complete answer file specification.
+
 ### How Tool Calls Work
 
 1. The model receives your prompt along with the system prompt and tool definitions

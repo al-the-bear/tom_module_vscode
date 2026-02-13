@@ -131,7 +131,7 @@ Create profiles for different conversation types:
 
 ## Response Format
 
-Copilot responses are captured in JSON format:
+Copilot responses are captured in JSON answer files. See [copilot_answers.md](copilot_answers.md) for the complete answer file specification, format details, and `responseValues` reuse.
 
 ```json
 {
@@ -139,9 +139,14 @@ Copilot responses are captured in JSON format:
   "generatedMarkdown": "Here is the implementation...",
   "comments": "Based on your requirements...",
   "references": ["src/api/users.ts"],
-  "requestedAttachments": ["config.json"]
+  "requestedAttachments": ["config.json"],
+  "responseValues": {
+    "status": "completed"
+  }
 }
 ```
+
+When `responseValues` are present, they are automatically saved to the shared chat answer store and can be referenced via `${dartscript.chat.<key>}` in subsequent prompts and templates.
 
 ## Usage Workflow
 

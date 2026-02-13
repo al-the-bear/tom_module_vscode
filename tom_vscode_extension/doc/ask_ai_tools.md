@@ -327,7 +327,7 @@ Based on the README.md file, the project architecture consists of...
 {
   "response": "I've analyzed the code and...",
   "source": "copied_from_answer_file",
-  "originalPath": "_ai/chat_replies/abc123_answer.yaml"
+  "originalPath": "_ai/chat_replies/abc123_answer.json"
 }
 ```
 
@@ -497,7 +497,7 @@ Send a question to GitHub Copilot via the chat window and wait for a response.
 #### Prompt Suffix Template (promptSuffix)
 
 ```
-After completing this request, please write a brief summary of your response to the answer file at "${answerFolder}/${sessionId}_${machineId}_answer.yaml" in YAML format with a "response" key.
+After completing this request, please write your response to the answer file at "${answerFolder}/${sessionId}_${machineId}_answer.json" in JSON format with a "response" key. If there are structured data values to return, include them under a "responseValues" key.
 ```
 
 **Placeholders:**
@@ -823,7 +823,7 @@ Below is the complete default configuration with all templates:
       "pollInterval": 2000,
       "answerFolder": "_ai/chat_replies",
       "promptPrefix": "",
-      "promptSuffix": "\n\nAfter completing this request, please write a brief summary of your response to the answer file at \"${answerFolder}/${sessionId}_${machineId}_answer.yaml\" in YAML format with a \"response\" key.",
+      "promptSuffix": "\n\nAfter completing this request, please write your response to the answer file at \"${answerFolder}/${sessionId}_${machineId}_answer.json\" in JSON format with a \"response\" key. If there are structured data values to return, include them under a \"responseValues\" key.",
       "descriptionTemplate": "Send a question to GitHub Copilot via the chat window and wait for a response.\n\n**How it works:**\n- Opens Copilot Chat with your prompt\n- Watches for an answer file written by Copilot\n- Returns the response content\n\n**When to use:**\n- Questions that benefit from Copilot's full context (open files, workspace)\n- Tasks where Copilot can use its native tools (edit files, run commands)\n- Complex coding tasks requiring iterative refinement\n\n**Parameters:**\n- prompt: Your question for Copilot\n- waitForAnswer: Whether to wait for answer file (default: true)\n- timeoutMs: Max time to wait for answer (default: from config)"
     },
     "askBigBrother": {

@@ -599,7 +599,7 @@ export class SendToChatAdvancedManager {
         const answerFilePath = path.join(
             workspaceFolders[0].uri.fsPath,
             chatAnswerFolder,
-            `${vscode.env.sessionId}_${vscode.env.machineId}_answer.yaml`
+            `${vscode.env.sessionId}_${vscode.env.machineId}_answer.json`
         );
 
         try {

@@ -153,7 +153,7 @@ Expanded in all prompts. These provide system values and access to stored respon
   "templates": {
     "Trail Reminder": {
       "prefix": "Quest: ${dartscript.chat.quest}\n\nREMINDER: Create trail file with timestamp ${dartscript.datetime}.\n",
-      "suffix": "\n\nWrite data to \"${dartscript.chatAnswerFolder}/${dartscript.windowId}_${dartscript.machineId}_answer.yaml\"",
+      "suffix": "\n\nWrite data to \"${dartscript.chatAnswerFolder}/${dartscript.windowId}_${dartscript.machineId}_answer.json\" in JSON format",
       "showInMenu": true
     }
   }
@@ -221,3 +221,52 @@ Create a custom `__answer_file__` template in your `send_to_chat.json`:
 - Clearing answer values (via command palette) resets both the shared store and the Send to Chat data
 - The request ID helps match prompts to responses when debugging
 - The `{{requestId}}` placeholder is expanded at send time; use it instead of hardcoded values
+
+## Send to Chat Answer File
+
+The **Send to Chat** system uses a separate answer file path for Copilot communication via the context menu / command palette:
+
+```
+{workspace}/{chatAnswerFolder}/{sessionId}_{machineId}_answer.json
+```
+
+- `chatAnswerFolder` is configured in `send_to_chat.json` (default: `_ai/chat_replies`)
+- `sessionId` and `machineId` are VS Code environment values
+
+### Format
+
+The Send to Chat answer file uses the same JSON format. Copilot writes the file, and the extension reads and parses it:
+
+```json
+{
+  "response": "Summary of completed work...",
+  "responseValues": {
+    "status": "completed",
+    "filesChanged": 3
+  }
+}
+```
+
+When `responseValues` are present, they are automatically propagated to the shared chat answer store — making them available as `${dartscript.chat.<key>}` in all template contexts.
+
+### Ask Copilot Tool (Escalation)
+
+The **Ask Copilot** tool (used by local LLMs to escalate questions to Copilot) uses the same answer file mechanism:
+
+- The tool sends a prompt to Copilot Chat with a suffix instructing it to write a JSON answer file
+- It then polls for the file and reads the response
+- If the response contains `responseValues`, they are propagated to the shared store
+- Configuration: `localLlmTools.askCopilot` section in `tom_vscode_extension.json`
+
+```json
+{
+  "localLlmTools": {
+    "askCopilot": {
+      "answerFolder": "_ai/chat_replies",
+      "promptSuffix": "...write to answer.json in JSON format with a response key..."
+    }
+  }
+}
+```
+
+**Important:** All answer files use JSON format (`.json` extension). The legacy YAML format (`.yaml`) is no longer used.
