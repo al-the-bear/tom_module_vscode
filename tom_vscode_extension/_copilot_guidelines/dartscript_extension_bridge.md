@@ -155,7 +155,7 @@ Displays VS Code AI/Chat API information in a dedicated output channel: language
 
 **Keybinding:** `Ctrl+Shift+8`
 
-Opens the Tom Extension Status dashboard. See [tom_status_page.md](../doc/tom_status_page.md) for full section descriptions.
+Opens the Tom Extension Status dashboard. See [tom_status_page.md](tom_status_page.md) for full section descriptions.
 
 ---
 

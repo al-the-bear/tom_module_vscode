@@ -242,7 +242,7 @@ A webview-based bottom panel with 6 accordion sections for AI workflows and deve
 
 **Secondary panel:** TOM (`dartscript-t3-panel`) with Tasks, Logs, and Settings sections.
 
-See [tom_ai_bottom_panel.md](tom_ai_bottom_panel.md) for full section descriptions.
+See [tom_ai_bottom_panel.md](tom_ai_bottom_panel.md) for full section descriptions. See also [explorer_notes.md](explorer_notes.md) for the Explorer sidebar notes views.
 
 ## 14. Status & Configuration Page
 
@@ -283,15 +283,18 @@ See [tom_status_page.md](tom_status_page.md) for full section descriptions.
 
 | Document | Location | Content |
 |----------|----------|---------|
-| [dartscript_extension_bridge.md](../_copilot_guidelines/dartscript_extension_bridge.md) | _copilot_guidelines/ | VS Code commands + JSON-RPC bridge methods (consolidated) |
-| [keybindings_and_commands.md](../_copilot_guidelines/keybindings_and_commands.md) | _copilot_guidelines/ | Chord menus, favorites, combined/state machine commands, commandlines, JS execution |
-| [tom_ai_chat.md](../_copilot_guidelines/tom_ai_chat.md) | _copilot_guidelines/ | Tom AI Chat `.chat.md` workflow, tools, templates |
-| [copilot_answers.md](../_copilot_guidelines/copilot_answers.md) | _copilot_guidelines/ | Copilot answer file system |
-| [ai_conversation.md](../_copilot_guidelines/ai_conversation.md) | _copilot_guidelines/ | AI Conversation multi-turn orchestration |
-| [local_llm.md](../_copilot_guidelines/local_llm.md) | _copilot_guidelines/ | Local LLM / Ollama integration |
-| [BRIDGE_SCRIPTING_GUIDE.md](BRIDGE_SCRIPTING_GUIDE.md) | doc/ | Bridge scripting guide with profile configuration |
-| [tom_ai_bottom_panel.md](tom_ai_bottom_panel.md) | doc/ | TOM AI bottom panel (6 accordion sections) |
-| [tom_status_page.md](tom_status_page.md) | doc/ | Status & configuration page (8 sections) |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | doc/ | System architecture |
-| [USER_GUIDE.md](USER_GUIDE.md) | doc/ | End-user guide |
-| [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | doc/ | Quick reference card |
+| [dartscript_extension_bridge.md](dartscript_extension_bridge.md) | _copilot_guidelines/ | VS Code commands + JSON-RPC bridge methods (consolidated) |
+| [keybindings_and_commands.md](keybindings_and_commands.md) | _copilot_guidelines/ | Chord menus, favorites, combined/state machine commands, commandlines, JS execution |
+| [tom_ai_chat.md](tom_ai_chat.md) | _copilot_guidelines/ | Tom AI Chat `.chat.md` workflow, tools, templates |
+| [copilot_answers.md](copilot_answers.md) | _copilot_guidelines/ | Copilot answer file system |
+| [ai_conversation.md](ai_conversation.md) | _copilot_guidelines/ | AI Conversation multi-turn orchestration |
+| [local_llm.md](local_llm.md) | _copilot_guidelines/ | Local LLM / Ollama integration |
+| [ask_ai_tools.md](ask_ai_tools.md) | _copilot_guidelines/ | Escalation tools (Ask Copilot, Ask Big Brother) |
+| [bridge_scripting_guide.md](bridge_scripting_guide.md) | _copilot_guidelines/ | Bridge scripting guide with profile configuration |
+| [tom_ai_bottom_panel.md](tom_ai_bottom_panel.md) | _copilot_guidelines/ | TOM AI bottom panel (6 accordion sections) |
+| [tom_status_page.md](tom_status_page.md) | _copilot_guidelines/ | Status & configuration page (8 sections) |
+| [explorer_notes.md](explorer_notes.md) | _copilot_guidelines/ | VS Code Notes & Workspace Notes explorer views |
+| [ARCHITECTURE.md](../doc/ARCHITECTURE.md) | doc/ | System architecture |
+| [IMPLEMENTATION.md](../doc/IMPLEMENTATION.md) | doc/ | Implementation guide |
+| [USER_GUIDE.md](../doc/USER_GUIDE.md) | doc/ | End-user guide |
+| [QUICK_REFERENCE.md](../doc/QUICK_REFERENCE.md) | doc/ | Quick reference card |

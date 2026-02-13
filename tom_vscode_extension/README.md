@@ -251,18 +251,13 @@ Start the Tom Process Monitor to watch and auto-restart background processes:
 tom_vscode_extension/
 ├── src/
 │   ├── extension.ts           # Main extension activation
-│   ├── handlers/              # Command handlers
-│   │   ├── execute-handler.ts
-│   │   ├── sendToChat-handler.ts
-│   │   ├── cliServer-handler.ts
-│   │   └── ...
-│   ├── bridge/                # Dart bridge client
-│   ├── cli-server/            # Tom CLI integration server
-│   └── process-monitor/       # Process monitor client
+│   ├── vscode-bridge.ts       # DartBridgeClient (JSON-RPC)
+│   ├── handlers/              # Command handlers (~30 files)
+│   ├── managers/              # Todo persistence
+│   └── tools/                 # Language Model Tool implementations
 ├── out/                       # Compiled JavaScript (generated)
-├── doc/                       # Documentation
-│   ├── USER_GUIDE.md
-│   └── vscode_extension_overview.md
+├── doc/                       # Documentation (ARCHITECTURE, IMPLEMENTATION, USER_GUIDE)
+├── _copilot_guidelines/       # Developer reference docs
 ├── package.json               # Extension manifest
 ├── tsconfig.json              # TypeScript configuration
 └── README.md                  # This file
@@ -300,8 +295,8 @@ Copyright (c) 2024-2026 Tom Framework. All rights reserved.
 ## Documentation
 
 - [User Guide](doc/USER_GUIDE.md) - Complete guide to extension features
-- [Feature Overview](doc/vscode_extension_overview.md) - All 15 feature areas with documentation index
-- [Bridge Scripting Guide](doc/BRIDGE_SCRIPTING_GUIDE.md) - Advanced JavaScript/Dart bridge scripting
+- [Feature Overview](_copilot_guidelines/vscode_extension_overview.md) - All 15 feature areas with documentation index
+- [Bridge Scripting Guide](_copilot_guidelines/bridge_scripting_guide.md) - Advanced JavaScript/Dart bridge scripting
 - [Architecture](doc/ARCHITECTURE.md) - System architecture details
 
 ## Resources

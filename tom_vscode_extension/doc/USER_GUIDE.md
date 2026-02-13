@@ -833,7 +833,7 @@ When scripts are executed, they receive context about:
 
 ### Advanced Bridge Scripting
 
-For advanced script development including JavaScript bridge scripting, VS Code API access, and bidirectional Dart-TypeScript communication, see the [Bridge Scripting Guide](BRIDGE_SCRIPTING_GUIDE.md).
+For advanced script development including JavaScript bridge scripting, VS Code API access, and bidirectional Dart-TypeScript communication, see the [Bridge Scripting Guide](../_copilot_guidelines/bridge_scripting_guide.md).
 
 ---
 
@@ -1197,8 +1197,8 @@ These VS Code settings serve as fallbacks. Prefer configuring via the `promptExp
 ## Additional Resources
 
 - [README.md](../README.md) - Quick reference and installation
-- [vscode_extension_overview.md](vscode_extension_overview.md) - Feature overview with documentation index
-- [BRIDGE_SCRIPTING_GUIDE.md](BRIDGE_SCRIPTING_GUIDE.md) - JavaScript bridge scripting
+- [vscode_extension_overview.md](../_copilot_guidelines/vscode_extension_overview.md) - Feature overview with documentation index
+- [bridge_scripting_guide.md](../_copilot_guidelines/bridge_scripting_guide.md) - Bridge scripting guide
 - [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture details
 
 ---
