@@ -12,8 +12,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import {
-    GitHubIssue,
-    GitHubComment,
     RepoInfo,
     discoverWorkspaceRepos,
     listIssues,
@@ -21,6 +19,7 @@ import {
     createIssue,
     addComment,
     updateIssue,
+    getIssue,
 } from './githubApi';
 import { getConfigPath } from './handler_shared';
 
@@ -32,13 +31,13 @@ const VIEW_ID = 'dartscript.githubIssues';
 
 interface GitHubIssuesConfig {
     additionalRepos: string[];       // "owner/repo" strings
-    statuses: string[];              // e.g. ["open", "closed"]
+    statuses: string[];              // e.g. ["open", "in_triage", "assigned", "closed"]
 }
 
 function loadGitHubIssuesConfig(): GitHubIssuesConfig {
     const defaults: GitHubIssuesConfig = {
         additionalRepos: [],
-        statuses: ['open', 'closed'],
+        statuses: ['open', 'in_triage', 'assigned', 'closed'],
     };
 
     try {
@@ -103,7 +102,7 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
             case 'loadIssues': {
                 const { owner, repo, state } = msg;
                 try {
-                    const issues = await listIssues(owner, repo, state || 'open');
+                    const issues = await listIssues(owner, repo, state || 'all');
                     // Filter out pull requests (GitHub returns PRs in the issues endpoint)
                     const filtered = issues.filter((i: any) => !i.pull_request);
                     webview.postMessage({ type: 'issues', issues: filtered, owner, repo });
@@ -150,8 +149,27 @@ export class GitHubIssuesPanelHandler implements vscode.WebviewViewProvider {
             case 'changeStatus': {
                 const { owner, repo, issueNumber, status } = msg;
                 try {
-                    const state = (status === 'closed') ? 'closed' : 'open';
-                    const issue = await updateIssue(owner, repo, issueNumber, { state });
+                    // GitHub only supports open/closed natively; other statuses use labels
+                    const ghState = (status === 'closed') ? 'closed' : 'open';
+                    const labelStatuses = ['in_triage', 'assigned'];
+                    const updates: any = { state: ghState };
+
+                    // Get current issue to manage labels
+                    const currentIssue = await getIssue(owner, repo, issueNumber);
+                    const currentLabels = (currentIssue.labels || []).map((l: any) => l.name);
+
+                    if (labelStatuses.includes(status)) {
+                        // Add label, remove other status labels, keep open
+                        const filtered = currentLabels.filter((l: string) => !labelStatuses.includes(l));
+                        filtered.push(status);
+                        updates.labels = filtered;
+                        updates.state = 'open';
+                    } else {
+                        // Remove status labels for plain open/closed
+                        updates.labels = currentLabels.filter((l: string) => !labelStatuses.includes(l));
+                    }
+
+                    const issue = await updateIssue(owner, repo, issueNumber, updates);
                     webview.postMessage({ type: 'issueUpdated', issue });
                     vscode.window.showInformationMessage(`Issue #${issueNumber} → ${status}`);
                 } catch (e: any) {
@@ -241,14 +259,15 @@ ${getStyles()}
   <div id="browser">
     <div class="browser-toolbar">
       <select id="repoSelect"><option value="">Loading…</option></select>
-      <select id="stateFilter">
-        <option value="open" selected>Open</option>
-        <option value="closed">Closed</option>
-        <option value="all">All</option>
-      </select>
+      <button id="filterBtn" class="icon-btn" title="Filter by status"><span class="codicon codicon-filter"></span></button>
+      <button id="sortBtn" class="icon-btn" title="Sort issues"><span class="codicon codicon-list-ordered"></span></button>
       <button id="refreshBtn" class="icon-btn" title="Refresh"><span class="codicon codicon-refresh"></span></button>
     </div>
     <div id="issueList" class="issue-list"></div>
+    <!-- Filter picker overlay -->
+    <div id="filterPicker" class="picker-overlay" style="display:none;"></div>
+    <!-- Sort picker overlay -->
+    <div id="sortPicker" class="picker-overlay sort-picker-overlay" style="display:none;"></div>
   </div>
 
   <!-- Resize handle -->
@@ -260,12 +279,12 @@ ${getStyles()}
     <div class="editor-toolbar">
       <span id="issueTitle" class="issue-title-bar">No issue selected</span>
       <div class="toolbar-icons">
-        <button id="addBtn" class="icon-btn" title="New Issue"><span class="codicon codicon-add"></span></button>
         <button id="statusBtn" class="icon-btn" title="Change Status"><span class="codicon codicon-circle-slash"></span></button>
+        <button id="addBtn" class="icon-btn" title="New Issue"><span class="codicon codicon-add"></span></button>
       </div>
     </div>
 
-    <!-- Comment history -->
+    <!-- Comment history (hidden in new-issue mode) -->
     <div id="commentHistory" class="comment-history"></div>
 
     <!-- Vertical resize handle -->
@@ -327,6 +346,7 @@ body {
     flex-direction: column;
     border-right: 1px solid var(--vscode-panel-border);
     overflow: hidden;
+    position: relative;
 }
 .browser-toolbar {
     display: flex;
@@ -346,7 +366,6 @@ body {
     font-size: 12px;
 }
 #repoSelect { flex: 1; min-width: 80px; }
-#stateFilter { width: 70px; }
 .issue-list {
     flex: 1;
     overflow-y: auto;
@@ -360,6 +379,8 @@ body {
     border-bottom: 1px solid var(--vscode-panel-border);
     font-size: 12px;
     line-height: 1.4;
+    position: relative;
+    overflow: hidden;
 }
 .issue-item:hover {
     background: var(--vscode-list-hoverBackground);
@@ -388,6 +409,119 @@ body {
 }
 .issue-state-dot.open { background: #3fb950; }
 .issue-state-dot.closed { background: #f85149; }
+.issue-state-dot.in_triage { background: #d29922; }
+.issue-state-dot.assigned { background: #58a6ff; }
+
+/* Status stamp overlay on issue list items */
+.issue-status-stamp {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    pointer-events: none;
+    opacity: 0.85;
+}
+.issue-status-stamp.closed {
+    background: rgba(248, 81, 73, 0.15);
+    color: #f85149;
+    border: 1px solid rgba(248, 81, 73, 0.3);
+}
+.issue-status-stamp.in_triage {
+    background: rgba(210, 153, 34, 0.15);
+    color: #d29922;
+    border: 1px solid rgba(210, 153, 34, 0.3);
+}
+.issue-status-stamp.assigned {
+    background: rgba(88, 166, 255, 0.15);
+    color: #58a6ff;
+    border: 1px solid rgba(88, 166, 255, 0.3);
+}
+
+/* ---- Picker overlays ---- */
+.picker-overlay {
+    position: absolute;
+    left: 6px;
+    top: 32px;
+    background: var(--vscode-menu-background);
+    border: 1px solid var(--vscode-menu-border);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    z-index: 100;
+    padding: 4px 0;
+    min-width: 180px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+.picker-option {
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.picker-option:hover {
+    background: var(--vscode-menu-selectionBackground);
+    color: var(--vscode-menu-selectionForeground);
+}
+.picker-option .check-box {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.picker-option .check-box .codicon { font-size: 14px; }
+.picker-option .sort-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    font-size: 10px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.picker-option .sort-number.empty {
+    background: transparent;
+    border: 1px solid var(--vscode-descriptionForeground);
+    color: transparent;
+}
+.picker-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    padding: 6px 10px 4px 10px;
+    border-top: 1px solid var(--vscode-panel-border);
+    margin-top: 2px;
+}
+.picker-footer button {
+    padding: 3px 10px;
+    font-size: 11px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+.picker-footer button.primary {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+.picker-footer button.primary:hover { background: var(--vscode-button-hoverBackground); }
+.picker-footer button.secondary {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+.picker-footer button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
 
 /* ---- Horizontal split handle ---- */
 .split-handle {
@@ -434,8 +568,9 @@ body {
     flex: 1;
     overflow-y: auto;
     padding: 8px;
-    min-height: 60px;
+    min-height: 40px;
 }
+.comment-history.hidden { display: none !important; }
 .comment-card {
     margin-bottom: 10px;
     padding: 8px;
@@ -487,6 +622,7 @@ body {
 .v-split-handle:hover, .v-split-handle.dragging {
     background: var(--vscode-focusBorder);
 }
+.v-split-handle.hidden { display: none !important; }
 
 /* Attachments */
 .attachment-area {
@@ -520,12 +656,8 @@ body {
     color: inherit;
     padding: 0 2px;
 }
-.attachment-chip:hover .remove-btn {
-    display: inline;
-}
-.attachment-chip:hover .remove-btn:hover {
-    opacity: 1;
-}
+.attachment-chip:hover .remove-btn { display: inline; }
+.attachment-chip:hover .remove-btn:hover { opacity: 1; }
 
 /* Input area */
 .input-area {
@@ -536,6 +668,8 @@ body {
     min-height: 60px;
     flex: 0 0 auto;
 }
+/* In new-issue mode, textarea fills the editor area */
+.input-area.expanded { flex: 1; }
 .input-area textarea {
     flex: 1;
     min-height: 40px;
@@ -579,7 +713,7 @@ body {
 .icon-btn .codicon { font-size: 16px; }
 .send-btn .codicon { font-size: 18px; }
 
-/* Status picker */
+/* Status picker (right side for changing issue status) */
 .status-picker {
     position: absolute;
     right: 8px;
@@ -590,7 +724,7 @@ body {
     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     z-index: 100;
     padding: 4px 0;
-    min-width: 120px;
+    min-width: 140px;
 }
 .status-option {
     padding: 6px 12px;
@@ -623,23 +757,6 @@ body {
     animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* New issue mode */
-.new-issue-input {
-    width: 100%;
-    padding: 6px 8px;
-    margin-bottom: 6px;
-    background: var(--vscode-input-background);
-    color: var(--vscode-input-foreground);
-    border: 1px solid var(--vscode-input-border);
-    border-radius: 3px;
-    font-size: 13px;
-    font-family: var(--vscode-font-family);
-}
-.new-issue-input:focus {
-    outline: none;
-    border-color: var(--vscode-focusBorder);
-}
 `;
 }
 
@@ -654,19 +771,36 @@ function getScript(): string {
 
     // State
     var repos = [];
-    var statuses = ['open', 'closed'];
-    var currentRepo = null; // { owner, repo, displayName }
-    var issues = [];
-    var selectedIssue = null;   // GitHubIssue
+    var configStatuses = ['open', 'in_triage', 'assigned', 'closed'];
+    var currentRepo = null;
+    var allIssues = [];         // All issues from API, unfiltered
+    var issues = [];            // Filtered+sorted for display
+    var selectedIssue = null;
     var currentComments = [];
     var isNewIssueMode = false;
-    var attachments = [];       // [{ name, path }]
+    var attachments = [];
+
+    // Filter state: selected statuses (multi-select)
+    var activeFilters = ['open']; // default: show open only
+
+    // Sort state: ordered list of field keys
+    var sortFields = ['updated_at'];
+    var SORTABLE_FIELDS = [
+        { key: 'number', label: 'Number' },
+        { key: 'title', label: 'Title' },
+        { key: 'state', label: 'Status' },
+        { key: 'created_at', label: 'Created' },
+        { key: 'updated_at', label: 'Updated' },
+        { key: 'comments', label: 'Comments' },
+        { key: 'user', label: 'Author' },
+    ];
 
     // DOM refs
     var repoSelect = document.getElementById('repoSelect');
-    var stateFilter = document.getElementById('stateFilter');
+    var filterBtn = document.getElementById('filterBtn');
+    var sortBtn = document.getElementById('sortBtn');
     var refreshBtn = document.getElementById('refreshBtn');
-    var issueList = document.getElementById('issueList');
+    var issueListEl = document.getElementById('issueList');
     var addBtn = document.getElementById('addBtn');
     var statusBtn = document.getElementById('statusBtn');
     var sendBtn = document.getElementById('sendBtn');
@@ -674,13 +808,16 @@ function getScript(): string {
     var inputText = document.getElementById('inputText');
     var commentHistory = document.getElementById('commentHistory');
     var attachmentArea = document.getElementById('attachmentArea');
-    var attachmentList = document.getElementById('attachmentList');
+    var attachmentListEl = document.getElementById('attachmentList');
     var statusPicker = document.getElementById('statusPicker');
     var issueTitleBar = document.getElementById('issueTitle');
     var splitHandle = document.getElementById('splitHandle');
     var vSplitHandle = document.getElementById('vSplitHandle');
     var browserEl = document.getElementById('browser');
     var editorEl = document.getElementById('editor');
+    var filterPicker = document.getElementById('filterPicker');
+    var sortPicker = document.getElementById('sortPicker');
+    var inputArea = document.getElementById('inputArea');
 
     // ---- Init ----
     vscode.postMessage({ type: 'ready' });
@@ -691,12 +828,27 @@ function getScript(): string {
         switch (msg.type) {
             case 'init':
                 repos = msg.repos || [];
-                statuses = msg.statuses || ['open', 'closed'];
+                configStatuses = msg.statuses || ['open', 'in_triage', 'assigned', 'closed'];
                 renderRepoDropdown();
                 break;
 
             case 'issues':
-                issues = msg.issues || [];
+                // Merge issues (for "All" mode) or replace
+                if (currentRepo && currentRepo.owner === '__all__') {
+                    var tagged = (msg.issues || []).map(function(iss) {
+                        iss._owner = msg.owner;
+                        iss._repo = msg.repo;
+                        return iss;
+                    });
+                    allIssues = allIssues.concat(tagged);
+                } else {
+                    allIssues = (msg.issues || []).map(function(iss) {
+                        iss._owner = msg.owner;
+                        iss._repo = msg.repo;
+                        return iss;
+                    });
+                }
+                applyFilterAndSort();
                 renderIssueList();
                 break;
 
@@ -740,7 +892,62 @@ function getScript(): string {
         }
     });
 
-    // ---- Repo dropdown ----
+    // ================================================================
+    // Determine effective status of an issue (GitHub state + labels)
+    // ================================================================
+    function getEffectiveStatus(issue) {
+        if (issue.state === 'closed') return 'closed';
+        var labelNames = (issue.labels || []).map(function(l) { return l.name; });
+        var labelStatuses = ['in_triage', 'assigned'];
+        for (var i = 0; i < labelStatuses.length; i++) {
+            if (labelNames.indexOf(labelStatuses[i]) >= 0) return labelStatuses[i];
+        }
+        return 'open';
+    }
+
+    // ================================================================
+    // Filter & Sort
+    // ================================================================
+    function applyFilterAndSort() {
+        // Filter
+        if (activeFilters.length === 0) {
+            issues = allIssues.slice();
+        } else {
+            issues = allIssues.filter(function(iss) {
+                return activeFilters.indexOf(getEffectiveStatus(iss)) >= 0;
+            });
+        }
+        // Sort
+        if (sortFields.length > 0) {
+            issues.sort(function(a, b) {
+                for (var i = 0; i < sortFields.length; i++) {
+                    var f = sortFields[i];
+                    var va = getSortValue(a, f);
+                    var vb = getSortValue(b, f);
+                    if (va < vb) return -1;
+                    if (va > vb) return 1;
+                }
+                return 0;
+            });
+        }
+    }
+
+    function getSortValue(issue, field) {
+        switch (field) {
+            case 'number': return issue.number || 0;
+            case 'title': return (issue.title || '').toLowerCase();
+            case 'state': return getEffectiveStatus(issue);
+            case 'created_at': return issue.created_at || '';
+            case 'updated_at': return issue.updated_at || '';
+            case 'comments': return issue.comments || 0;
+            case 'user': return (issue.user && issue.user.login || '').toLowerCase();
+            default: return '';
+        }
+    }
+
+    // ================================================================
+    // Repo dropdown
+    // ================================================================
     function renderRepoDropdown() {
         var html = '<option value="">-- Select Repo --</option>';
         html += '<option value="__all__">All Repos</option>';
@@ -755,7 +962,7 @@ function getScript(): string {
         if (val === '' || val === '__all__') {
             currentRepo = val === '__all__' ? { owner: '__all__', repo: '__all__', displayName: 'All Repos' } : null;
             if (val === '__all__') { loadAllIssues(); }
-            else { issues = []; renderIssueList(); }
+            else { allIssues = []; issues = []; renderIssueList(); }
         } else {
             currentRepo = repos[parseInt(val)];
             loadIssues();
@@ -765,11 +972,6 @@ function getScript(): string {
         renderEditorState();
     });
 
-    stateFilter.addEventListener('change', function() {
-        if (currentRepo && currentRepo.owner === '__all__') { loadAllIssues(); }
-        else if (currentRepo) { loadIssues(); }
-    });
-
     refreshBtn.addEventListener('click', function() {
         if (currentRepo && currentRepo.owner === '__all__') { loadAllIssues(); }
         else if (currentRepo) { loadIssues(); }
@@ -777,26 +979,26 @@ function getScript(): string {
 
     function loadIssues() {
         if (!currentRepo || currentRepo.owner === '__all__') return;
-        issueList.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
+        allIssues = [];
+        issueListEl.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
         vscode.postMessage({
             type: 'loadIssues',
             owner: currentRepo.owner,
             repo: currentRepo.repo,
-            state: stateFilter.value,
+            state: 'all',
         });
     }
 
     function loadAllIssues() {
-        issues = [];
-        issueList.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
-        var pending = repos.length;
-        if (pending === 0) { renderIssueList(); return; }
+        allIssues = [];
+        issueListEl.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
+        if (repos.length === 0) { issues = []; renderIssueList(); return; }
         for (var i = 0; i < repos.length; i++) {
             vscode.postMessage({
                 type: 'loadIssues',
                 owner: repos[i].owner,
                 repo: repos[i].repo,
-                state: stateFilter.value,
+                state: 'all',
             });
         }
     }
@@ -813,26 +1015,140 @@ function getScript(): string {
         });
     }
 
-    // ---- Issue list rendering ----
+    // ================================================================
+    // Filter picker (multi-select status)
+    // ================================================================
+    filterBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (filterPicker.style.display !== 'none') {
+            filterPicker.style.display = 'none';
+            return;
+        }
+        sortPicker.style.display = 'none';
+        renderFilterPicker();
+        filterPicker.style.display = '';
+    });
+
+    function renderFilterPicker() {
+        // Collect statuses actually present in current data
+        var presentStatuses = {};
+        for (var i = 0; i < allIssues.length; i++) {
+            presentStatuses[getEffectiveStatus(allIssues[i])] = true;
+        }
+        var html = '';
+        for (var j = 0; j < configStatuses.length; j++) {
+            var st = configStatuses[j];
+            if (!presentStatuses[st]) continue;
+            var checked = activeFilters.indexOf(st) >= 0;
+            html += '<div class="picker-option" data-status="' + escapeHtml(st) + '">';
+            html += '<span class="check-box">';
+            html += checked ? '<span class="codicon codicon-check"></span>' : '';
+            html += '</span>';
+            html += '<span>' + escapeHtml(formatStatusLabel(st)) + '</span>';
+            html += '</div>';
+        }
+        filterPicker.innerHTML = html;
+
+        filterPicker.querySelectorAll('.picker-option').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var s = el.dataset.status;
+                var idx = activeFilters.indexOf(s);
+                if (idx >= 0) { activeFilters.splice(idx, 1); }
+                else { activeFilters.push(s); }
+                applyFilterAndSort();
+                renderIssueList();
+                renderFilterPicker();
+            });
+        });
+    }
+
+    // ================================================================
+    // Sort picker (numbered multi-select)
+    // ================================================================
+    var pendingSortFields = [];
+
+    sortBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (sortPicker.style.display !== 'none') {
+            sortPicker.style.display = 'none';
+            return;
+        }
+        filterPicker.style.display = 'none';
+        pendingSortFields = sortFields.slice();
+        renderSortPicker();
+        sortPicker.style.display = '';
+    });
+
+    function renderSortPicker() {
+        var html = '';
+        for (var i = 0; i < SORTABLE_FIELDS.length; i++) {
+            var f = SORTABLE_FIELDS[i];
+            var order = pendingSortFields.indexOf(f.key);
+            var hasOrder = order >= 0;
+            html += '<div class="picker-option" data-field="' + f.key + '">';
+            html += '<span class="sort-number ' + (hasOrder ? '' : 'empty') + '">';
+            html += hasOrder ? (order + 1) : '';
+            html += '</span>';
+            html += '<span>' + escapeHtml(f.label) + '</span>';
+            html += '</div>';
+        }
+        html += '<div class="picker-footer">';
+        html += '<button class="secondary" id="sortReset">Reset</button>';
+        html += '<button class="primary" id="sortOk">OK</button>';
+        html += '</div>';
+        sortPicker.innerHTML = html;
+
+        sortPicker.querySelectorAll('.picker-option').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var field = el.dataset.field;
+                var idx = pendingSortFields.indexOf(field);
+                if (idx >= 0) { pendingSortFields.splice(idx, 1); }
+                else { pendingSortFields.push(field); }
+                renderSortPicker();
+            });
+        });
+        document.getElementById('sortReset').addEventListener('click', function(e) {
+            e.stopPropagation();
+            pendingSortFields = [];
+            renderSortPicker();
+        });
+        document.getElementById('sortOk').addEventListener('click', function(e) {
+            e.stopPropagation();
+            sortFields = pendingSortFields.slice();
+            sortPicker.style.display = 'none';
+            applyFilterAndSort();
+            renderIssueList();
+        });
+    }
+
+    // ================================================================
+    // Issue list rendering
+    // ================================================================
     function renderIssueList() {
         if (issues.length === 0) {
-            issueList.innerHTML = '<div class="empty-state">No issues found</div>';
+            issueListEl.innerHTML = '<div class="empty-state">No issues found</div>';
             return;
         }
         var html = '';
         for (var i = 0; i < issues.length; i++) {
             var issue = issues[i];
             var sel = selectedIssue && selectedIssue.id === issue.id ? ' selected' : '';
+            var effStatus = getEffectiveStatus(issue);
             html += '<div class="issue-item' + sel + '" data-idx="' + i + '">';
-            html += '<span class="issue-state-dot ' + issue.state + '"></span>';
+            html += '<span class="issue-state-dot ' + effStatus + '"></span>';
             html += '<span class="issue-number">#' + issue.number + '</span>';
             html += '<span class="issue-item-title">' + escapeHtml(issue.title) + '</span>';
+            // Status stamp for non-open issues
+            if (effStatus !== 'open') {
+                html += '<span class="issue-status-stamp ' + effStatus + '">' + escapeHtml(formatStatusLabel(effStatus)) + '</span>';
+            }
             html += '</div>';
         }
-        issueList.innerHTML = html;
+        issueListEl.innerHTML = html;
 
-        // Attach click handlers
-        var items = issueList.querySelectorAll('.issue-item');
+        var items = issueListEl.querySelectorAll('.issue-item');
         items.forEach(function(el) {
             el.addEventListener('click', function() {
                 var idx = parseInt(el.dataset.idx);
@@ -850,32 +1166,45 @@ function getScript(): string {
         loadComments();
     }
 
-    // ---- Editor state rendering ----
+    // ================================================================
+    // Editor state rendering
+    // ================================================================
     function renderEditorState() {
         if (isNewIssueMode) {
             issueTitleBar.textContent = 'New Issue';
-            commentHistory.innerHTML = '<input id="newIssueTitle" class="new-issue-input" placeholder="Issue title…" />';
-            inputText.placeholder = 'Issue body…';
+            commentHistory.classList.add('hidden');
+            vSplitHandle.classList.add('hidden');
+            commentHistory.style.flex = '';
+            inputArea.classList.add('expanded');
+            inputArea.style.flex = '';
+            inputText.placeholder = 'First line = title, rest = body…';
             statusBtn.style.display = 'none';
-        } else if (selectedIssue) {
-            issueTitleBar.textContent = '#' + selectedIssue.number + ' ' + selectedIssue.title;
-            inputText.placeholder = 'Write a comment…';
-            statusBtn.style.display = '';
-            renderComments();
         } else {
-            issueTitleBar.textContent = 'No issue selected';
-            commentHistory.innerHTML = '<div class="empty-state">Select an issue from the list</div>';
-            inputText.placeholder = 'Write a comment…';
-            statusBtn.style.display = 'none';
+            commentHistory.classList.remove('hidden');
+            vSplitHandle.classList.remove('hidden');
+            commentHistory.style.flex = '';
+            inputArea.classList.remove('expanded');
+            inputArea.style.flex = '';
+            if (selectedIssue) {
+                issueTitleBar.textContent = '#' + selectedIssue.number + ' ' + selectedIssue.title;
+                inputText.placeholder = 'Write a comment…';
+                statusBtn.style.display = '';
+                renderComments();
+            } else {
+                issueTitleBar.textContent = 'No issue selected';
+                commentHistory.innerHTML = '<div class="empty-state">Select an issue from the list</div>';
+                inputText.placeholder = 'Write a comment…';
+                statusBtn.style.display = 'none';
+            }
         }
     }
 
-    // ---- Comments rendering ----
+    // ================================================================
+    // Comments rendering
+    // ================================================================
     function renderComments() {
         if (!selectedIssue) return;
         var html = '';
-
-        // Issue body as first "comment"
         html += '<div class="comment-card issue-body-card">';
         html += '<div class="comment-header">';
         html += '<img class="comment-avatar" src="' + escapeHtml(selectedIssue.user.avatar_url) + '" />';
@@ -900,7 +1229,9 @@ function getScript(): string {
         commentHistory.scrollTop = commentHistory.scrollHeight;
     }
 
-    // ---- Add button (new issue) ----
+    // ================================================================
+    // New issue mode
+    // ================================================================
     addBtn.addEventListener('click', function() {
         isNewIssueMode = true;
         attachments = [];
@@ -909,7 +1240,9 @@ function getScript(): string {
         renderEditorState();
     });
 
-    // ---- Status button ----
+    // ================================================================
+    // Status button (change issue status)
+    // ================================================================
     statusBtn.addEventListener('click', function(e) {
         e.stopPropagation();
         if (statusPicker.style.display === 'none') {
@@ -921,11 +1254,18 @@ function getScript(): string {
 
     function showStatusPicker() {
         var html = '';
-        for (var i = 0; i < statuses.length; i++) {
-            var icon = statuses[i] === 'closed' ? 'codicon-circle-slash' : 'codicon-issue-opened';
-            html += '<div class="status-option" data-status="' + escapeHtml(statuses[i]) + '">';
+        for (var i = 0; i < configStatuses.length; i++) {
+            var st = configStatuses[i];
+            var icon;
+            switch (st) {
+                case 'closed': icon = 'codicon-circle-slash'; break;
+                case 'in_triage': icon = 'codicon-search'; break;
+                case 'assigned': icon = 'codicon-person'; break;
+                default: icon = 'codicon-issue-opened'; break;
+            }
+            html += '<div class="status-option" data-status="' + escapeHtml(st) + '">';
             html += '<span class="codicon ' + icon + '"></span>';
-            html += escapeHtml(statuses[i].charAt(0).toUpperCase() + statuses[i].slice(1));
+            html += escapeHtml(formatStatusLabel(st));
             html += '</div>';
         }
         statusPicker.innerHTML = html;
@@ -948,30 +1288,32 @@ function getScript(): string {
         });
     }
 
-    // Close status picker on outside click
+    // Close pickers on outside click
     document.addEventListener('click', function() {
         statusPicker.style.display = 'none';
+        filterPicker.style.display = 'none';
+        sortPicker.style.display = 'none';
     });
 
-    // ---- Send button ----
+    // ================================================================
+    // Send button
+    // ================================================================
     sendBtn.addEventListener('click', function() {
         var text = inputText.value.trim();
-        if (!text) return;
+        if (!text && !isNewIssueMode) return;
 
         if (isNewIssueMode) {
-            // Create new issue
             if (!currentRepo || currentRepo.owner === '__all__') {
                 showError('Please select a specific repo to create an issue');
                 return;
             }
-            var titleEl = document.getElementById('newIssueTitle');
-            var title = titleEl ? titleEl.value.trim() : '';
+            var lines = text.split('\\n');
+            var title = lines[0].trim();
             if (!title) {
-                showError('Issue title is required');
+                showError('First line must be the issue title');
                 return;
             }
-            var body = text;
-            // Append attachment references
+            var body = lines.slice(1).join('\\n').trim();
             if (attachments.length > 0) {
                 body += '\\n\\n---\\nAttachments:\\n';
                 for (var i = 0; i < attachments.length; i++) {
@@ -986,7 +1328,6 @@ function getScript(): string {
                 body: body,
             });
         } else if (selectedIssue) {
-            // Add comment
             var owner = selectedIssue._owner || currentRepo.owner;
             var repo = selectedIssue._repo || currentRepo.repo;
             var commentBody = text;
@@ -1008,12 +1349,13 @@ function getScript(): string {
         }
     });
 
-    // ---- Attachment button ----
+    // ================================================================
+    // Attachments
+    // ================================================================
     attachBtn.addEventListener('click', function() {
         vscode.postMessage({ type: 'pickAttachment' });
     });
 
-    // ---- Attachment rendering ----
     function renderAttachments() {
         if (attachments.length === 0) {
             attachmentArea.style.display = 'none';
@@ -1028,9 +1370,9 @@ function getScript(): string {
             html += '<button class="remove-btn" data-aidx="' + i + '">&times;</button>';
             html += '</span>';
         }
-        attachmentList.innerHTML = html;
+        attachmentListEl.innerHTML = html;
 
-        attachmentList.querySelectorAll('.remove-btn').forEach(function(btn) {
+        attachmentListEl.querySelectorAll('.remove-btn').forEach(function(btn) {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 var idx = parseInt(btn.dataset.aidx);
@@ -1040,18 +1382,18 @@ function getScript(): string {
         });
     }
 
-    // ---- Drag and drop ----
+    // Drag and drop
     document.body.addEventListener('dragover', function(e) { e.preventDefault(); });
     document.body.addEventListener('drop', function(e) {
         e.preventDefault();
-        // Note: In webview, dropped files from Finder need special handling;
-        // for now we show a message suggesting the attach button.
         if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             showError('Drag-and-drop from external apps is limited in webviews. Please use the attachment button.');
         }
     });
 
-    // ---- Horizontal split resize ----
+    // ================================================================
+    // Horizontal split resize
+    // ================================================================
     (function() {
         var dragging = false;
         var startX, startWidth;
@@ -1078,15 +1420,18 @@ function getScript(): string {
         }
     })();
 
-    // ---- Vertical split resize (comment history vs input) ----
+    // ================================================================
+    // Vertical split resize (comment history vs input)
+    // ================================================================
     (function() {
         var dragging = false;
-        var startY, startHeight;
+        var startY, startCommentH, startInputH;
         vSplitHandle.addEventListener('mousedown', function(e) {
             e.preventDefault();
             dragging = true;
             startY = e.clientY;
-            startHeight = commentHistory.offsetHeight;
+            startCommentH = commentHistory.offsetHeight;
+            startInputH = inputArea.offsetHeight;
             vSplitHandle.classList.add('dragging');
             document.addEventListener('mousemove', onMove);
             document.addEventListener('mouseup', onUp);
@@ -1094,8 +1439,10 @@ function getScript(): string {
         function onMove(e) {
             if (!dragging) return;
             var dy = e.clientY - startY;
-            var newHeight = Math.max(40, startHeight + dy);
-            commentHistory.style.flex = '0 0 ' + newHeight + 'px';
+            var newCommentH = Math.max(40, startCommentH + dy);
+            var newInputH = Math.max(40, startInputH - dy);
+            commentHistory.style.flex = '0 0 ' + newCommentH + 'px';
+            inputArea.style.flex = '0 0 ' + newInputH + 'px';
         }
         function onUp() {
             dragging = false;
@@ -1105,7 +1452,9 @@ function getScript(): string {
         }
     })();
 
-    // ---- Utility ----
+    // ================================================================
+    // Utility
+    // ================================================================
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -1118,8 +1467,11 @@ function getScript(): string {
         } catch(e) { return iso; }
     }
 
+    function formatStatusLabel(st) {
+        return st.replace(/_/g, ' ').replace(/\\b[a-z]/g, function(c) { return c.toUpperCase(); });
+    }
+
     function showError(msg) {
-        // Brief error toast in the comment history
         var div = document.createElement('div');
         div.className = 'empty-state';
         div.style.color = 'var(--vscode-errorForeground)';
