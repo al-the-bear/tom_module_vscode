@@ -615,7 +615,14 @@ export class SendToChatAdvancedManager {
             try {
                 const jsonData = JSON.parse(content);
                 if (typeof jsonData === 'object' && jsonData !== null) {
+                    // Copy all top-level fields first
                     Object.assign(SendToChatAdvancedManager.chatAnswerData, jsonData);
+                    
+                    // If responseValues exists, also spread those keys to top-level for ${dartscript.chat.KEY} access
+                    if (jsonData.responseValues && typeof jsonData.responseValues === 'object') {
+                        Object.assign(SendToChatAdvancedManager.chatAnswerData, jsonData.responseValues);
+                    }
+                    
                     this.log(`Loaded chat answer data from ${answerFilePath}`);
                     
                     // Trail: Log Copilot answer file

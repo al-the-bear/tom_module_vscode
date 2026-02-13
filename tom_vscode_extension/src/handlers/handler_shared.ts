@@ -654,6 +654,16 @@ export async function expandPlaceholders(template: string): Promise<string> {
     result = result.replace(/\{\{time\}\}/gi, now.toLocaleTimeString());
     result = result.replace(/\{\{datetime\}\}/gi, now.toLocaleString());
     
+    // {{requestId}} - Timestamp-based request ID (YYYYMMDD_HHMMSS)
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const requestId = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+    result = result.replace(/\{\{requestId\}\}/gi, requestId);
+    
     // {{clipboard}}
     try {
         const clipboard = await vscode.env.clipboard.readText();
@@ -761,6 +771,7 @@ export const PLACEHOLDER_HELP = `<strong>Available Placeholders:</strong><br>
 <code>{{filecontent}}</code> - Full file content<br>
 <code>{{clipboard}}</code> - Clipboard contents<br>
 <code>{{date}}</code> / <code>{{time}}</code> / <code>{{datetime}}</code> - Current date/time<br>
+<code>{{requestId}}</code> - Timestamp-based ID (YYYYMMDD_HHMMSS)<br>
 <code>{{workspace}}</code> - Workspace name<br>
 <code>{{language}}</code> - File language ID<br>
 <code>{{line}}</code> - Current line number`;
