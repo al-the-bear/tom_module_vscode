@@ -32,8 +32,8 @@ These files in `doc/` provide additional user documentation:
 
 | File | Description |
 |------|-------------|
-| [USER_GUIDE.md](../doc/USER_GUIDE.md) | End-user guide |
-| [QUICK_REFERENCE.md](../doc/QUICK_REFERENCE.md) | Quick reference card |
+| [user_guide.md](../doc/user_guide.md) | End-user guide |
+| [quick_reference.md](../doc/quick_reference.md) | Quick reference card |
 
 ## Quick Reference
 

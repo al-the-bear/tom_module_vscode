@@ -55,7 +55,7 @@ interface ChordGroup {
 const QUICK_REFERENCE_COMMAND = 'dartscript.showQuickReference';
 
 /**
- * Opens the QUICK_REFERENCE.md file from the extension's doc/ folder.
+ * Opens the quick_reference.md file from the extension's doc/ folder.
  */
 async function openQuickReference(): Promise<void> {
     // Find the extension by its ID
@@ -64,7 +64,7 @@ async function openQuickReference(): Promise<void> {
         vscode.window.showErrorMessage('DartScript extension not found.');
         return;
     }
-    const refPath = path.join(ext.extensionPath, 'doc', 'QUICK_REFERENCE.md');
+    const refPath = path.join(ext.extensionPath, 'doc', 'quick_reference.md');
     try {
         const uri = vscode.Uri.file(refPath);
         await vscode.commands.executeCommand('markdown.showPreview', uri);

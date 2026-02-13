@@ -272,7 +272,7 @@ See [tom_status_page.md](tom_status_page.md) for full section descriptions.
 | Toggle Debug Logging | Enable/disable verbose bridge debug output |
 | Print Configuration | Dump full D4rt interpreter config to output channel |
 | Show API Info | Display language models, tools, AI extensions, MCP servers, env info |
-| Show Help | Open USER_GUIDE.md in markdown preview |
+| Show Help | Open user_guide.md in markdown preview |
 | Process Monitor | Launch watcher + ledger server for process alive/dead status reporting |
 
 ---
@@ -297,5 +297,5 @@ See [tom_status_page.md](tom_status_page.md) for full section descriptions.
 | [architecture.md](architecture.md) | _copilot_guidelines/ | System architecture |
 | [implementation.md](implementation.md) | _copilot_guidelines/ | Implementation guide |
 | [project.md](project.md) | _copilot_guidelines/ | Project overview, commands, configuration |
-| [USER_GUIDE.md](../doc/USER_GUIDE.md) | doc/ | End-user guide |
-| [QUICK_REFERENCE.md](../doc/QUICK_REFERENCE.md) | doc/ | Quick reference card |
+| [user_guide.md](../doc/user_guide.md) | doc/ | End-user guide |
+| [quick_reference.md](../doc/quick_reference.md) | doc/ | Quick reference card |

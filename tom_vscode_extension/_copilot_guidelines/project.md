@@ -350,8 +350,8 @@ tom_vscode_extension/
 │   ├── tools/                    # LM tool registry, executors, escalation
 │   └── managers/                 # todoManager and other state managers
 ├── doc/                          # Technical documentation
-│   ├── USER_GUIDE.md             # End-user guide
-│   └── QUICK_REFERENCE.md        # Command quick reference
+│   ├── user_guide.md              # End-user guide
+│   └── quick_reference.md         # Command quick reference
 ├── _copilot_guidelines/          # Development guidelines + technical docs
 │   ├── architecture.md           # System architecture
 │   ├── implementation.md         # Implementation reference
@@ -397,7 +397,7 @@ Toggle bridge debug logging: `DartScript: Toggle Bridge Debug Logging` or enable
 
 - [architecture.md](architecture.md) — System architecture (bridge, protocol, Dart wrappers)
 - [implementation.md](implementation.md) — Technical implementation reference
-- [USER_GUIDE.md](../doc/USER_GUIDE.md) — End-user guide
-- [QUICK_REFERENCE.md](../doc/QUICK_REFERENCE.md) — Command quick reference
+- [user_guide.md](../doc/user_guide.md) — End-user guide
+- [quick_reference.md](../doc/quick_reference.md) — Command quick reference
 - [vscode_extension_overview.md](vscode_extension_overview.md) — Feature overview with full documentation index
 - [dartscript_extension_bridge.md](dartscript_extension_bridge.md) — Complete command and bridge method reference

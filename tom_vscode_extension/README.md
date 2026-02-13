@@ -9,8 +9,8 @@ DartScript provides productivity features for VS Code including smart Copilot Ch
 ## Key Features
 
 - 🤖 **Copilot Chat Integration**: Send text to Copilot with customizable prompt templates
-- 🧠 **Local LLM (Ollama)**: Expand, rewrite, and process prompts using a local Ollama model — with configurable profiles and model switching. See the [User Guide](doc/USER_GUIDE.md#prompt-expander-ollama) for details.
-- 💬 **Bot Conversation**: Orchestrate multi-turn conversations between a local Ollama model and GitHub Copilot, with halt/continue control, self-talk mode, and Telegram notifications. See the [User Guide](doc/USER_GUIDE.md#bot-conversation-ollama--copilot) for details.
+- 🧠 **Local LLM (Ollama)**: Expand, rewrite, and process prompts using a local Ollama model — with configurable profiles and model switching. See the [User Guide](doc/user_guide.md#prompt-expander-ollama) for details.
+- 💬 **Bot Conversation**: Orchestrate multi-turn conversations between a local Ollama model and GitHub Copilot, with halt/continue control, self-talk mode, and Telegram notifications. See the [User Guide](doc/user_guide.md#bot-conversation-ollama--copilot) for details.
 - ⚡ **Dart Script Execution**: Execute Dart files directly or via D4rt interpreter
 - 🔧 **Tom CLI Integration**: Control Tom CLI from VS Code with server communication
 - 📊 **Process Monitor**: Background process monitoring with auto-restart
@@ -90,7 +90,7 @@ Right-click in the editor to access the "DartScript: Send to Chat..." submenu:
 
 Right-click in the editor to access the "DartScript: Send to local LLM..." submenu with Expand, Rewrite, Detailed, and Annotated templates.
 
-See the [User Guide](doc/USER_GUIDE.md#prompt-expander-ollama) for configuration and profile setup.
+See the [User Guide](doc/user_guide.md#prompt-expander-ollama) for configuration and profile setup.
 
 ### Bot Conversation Commands
 
@@ -102,7 +102,7 @@ See the [User Guide](doc/USER_GUIDE.md#prompt-expander-ollama) for configuration
 | **DS: Continue Local-Copilot Conversation** | Resume a halted conversation |
 | **DS: Add to Local-Copilot Conversation** | Inject additional context into the next turn |
 
-See the [User Guide](doc/USER_GUIDE.md#bot-conversation-ollama--copilot) for profiles, self-talk mode, and Telegram integration.
+See the [User Guide](doc/user_guide.md#bot-conversation-ollama--copilot) for profiles, self-talk mode, and Telegram integration.
 
 ### Tom AI Chat Commands
 
@@ -294,7 +294,7 @@ Copyright (c) 2024-2026 Tom Framework. All rights reserved.
 
 ## Documentation
 
-- [User Guide](doc/USER_GUIDE.md) - Complete guide to extension features
+- [User Guide](doc/user_guide.md) - Complete guide to extension features
 - [Feature Overview](_copilot_guidelines/vscode_extension_overview.md) - All 15 feature areas with documentation index
 - [Bridge Scripting Guide](_copilot_guidelines/bridge_scripting_guide.md) - Advanced JavaScript/Dart bridge scripting
 - [Architecture](_copilot_guidelines/architecture.md) - System architecture details

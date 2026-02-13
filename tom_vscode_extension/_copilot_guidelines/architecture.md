@@ -570,7 +570,7 @@ Define a `SharedToolDefinition` in `tool-executors.ts` — it is automatically r
 
 - [implementation.md](implementation.md) — Technical implementation reference with code patterns
 - [project.md](project.md) — Project overview, quick start, and configuration
-- [USER_GUIDE.md](../doc/USER_GUIDE.md) — End-user guide
+- [user_guide.md](../doc/user_guide.md) — End-user guide
 - [vscode_extension_overview.md](vscode_extension_overview.md) — Complete 15-area feature overview with documentation index
 - [dartscript_extension_bridge.md](dartscript_extension_bridge.md) — Full command and bridge method reference
 - [tom_vscode_bridge PROJECT.md](../tom_vscode_bridge/PROJECT.md) — Dart bridge project documentation

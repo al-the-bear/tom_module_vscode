@@ -1,7 +1,7 @@
 /**
  * Handler for showing extension help/documentation.
  * 
- * Opens the extension's README.md or USER_GUIDE.md in a markdown preview.
+ * Opens the extension's README.md or user_guide.md in a markdown preview.
  */
 
 import * as vscode from 'vscode';
@@ -20,8 +20,8 @@ export async function showHelpHandler(): Promise<void> {
 
     const extensionPath = extension.extensionPath;
     
-    // Try USER_GUIDE.md first, fall back to README.md
-    const userGuidePath = path.join(extensionPath, 'doc', 'USER_GUIDE.md');
+    // Try user_guide.md first, fall back to README.md
+    const userGuidePath = path.join(extensionPath, 'doc', 'user_guide.md');
     const readmePath = path.join(extensionPath, 'README.md');
     
     // Check which file exists
