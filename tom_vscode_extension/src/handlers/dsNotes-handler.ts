@@ -2743,39 +2743,23 @@ class WorkspaceNotepadProvider implements vscode.WebviewViewProvider {
 // Registration
 // ============================================================================
 
-let guidelinesProvider: GuidelinesNotepadProvider | undefined;
-let notesProvider: NotesNotepadProvider | undefined;
-let localLlmProvider: LocalLlmNotepadProvider | undefined;
-let conversationProvider: ConversationNotepadProvider | undefined;
-let copilotProvider: CopilotNotepadProvider | undefined;
-let tomAiChatProvider: TomAiChatNotepadProvider | undefined;
 let tomNotepadProvider: TomNotepadProvider | undefined;
 let workspaceNotepadProvider: WorkspaceNotepadProvider | undefined;
 
 export function registerDsNotesViews(context: vscode.ExtensionContext): void {
-    guidelinesProvider = new GuidelinesNotepadProvider(context);
-    notesProvider = new NotesNotepadProvider(context);
-    localLlmProvider = new LocalLlmNotepadProvider(context);
-    conversationProvider = new ConversationNotepadProvider(context);
-    copilotProvider = new CopilotNotepadProvider(context);
-    tomAiChatProvider = new TomAiChatNotepadProvider(context);
+    // Only register explorer panel views (tomNotepad, workspaceNotepad)
+    // The old Tom AI panel views are replaced by the unified TOM AI panel (T2)
     tomNotepadProvider = new TomNotepadProvider(context);
     workspaceNotepadProvider = new WorkspaceNotepadProvider(context);
 
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(VIEW_IDS.guidelines, guidelinesProvider),
-        vscode.window.registerWebviewViewProvider(VIEW_IDS.notes, notesProvider),
-        vscode.window.registerWebviewViewProvider(VIEW_IDS.localLlm, localLlmProvider),
-        vscode.window.registerWebviewViewProvider(VIEW_IDS.conversation, conversationProvider),
-        vscode.window.registerWebviewViewProvider(VIEW_IDS.copilot, copilotProvider),
-        vscode.window.registerWebviewViewProvider(VIEW_IDS.tomAiChat, tomAiChatProvider),
         vscode.window.registerWebviewViewProvider(VIEW_IDS.tomNotepad, tomNotepadProvider),
         vscode.window.registerWebviewViewProvider(VIEW_IDS.workspaceNotepad, workspaceNotepadProvider),
         vscode.commands.registerCommand('dartscript.focusTomAI', async () => {
-            // Focus the Guidelines view to open the Tom AI panel
-            await vscode.commands.executeCommand('dartscript.guidelinesNotepad.focus');
+            // Focus the unified TOM AI panel
+            await vscode.commands.executeCommand('dartscript.unifiedNotepad.focus');
         })
     );
 }
 
-export { guidelinesProvider, notesProvider, localLlmProvider, conversationProvider, copilotProvider, tomAiChatProvider, tomNotepadProvider, workspaceNotepadProvider };
+export { tomNotepadProvider, workspaceNotepadProvider };

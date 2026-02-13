@@ -133,12 +133,22 @@ async function updateTelegramSettings(settings: any): Promise<void> {
 }
 
 async function updateAskCopilotSettings(settings: any): Promise<void> {
-    const config = loadEscalationToolsConfig();
-    config.askCopilot = { ...config.askCopilot, ...settings };
-    if (saveEscalationToolsConfig(config)) {
+    // Save escalation tools config (askCopilot settings)
+    const escalationConfig = loadEscalationToolsConfig();
+    const { copilotAnswerPath, ...askCopilotSettings } = settings;
+    escalationConfig.askCopilot = { ...escalationConfig.askCopilot, ...askCopilotSettings };
+    if (saveEscalationToolsConfig(escalationConfig)) {
         clearConfigCache();
-        vscode.window.showInformationMessage('Ask Copilot settings updated');
     }
+    
+    // Save copilotAnswerPath to send_to_chat config
+    if (copilotAnswerPath !== undefined) {
+        const sendToChatConfig = loadSendToChatConfig() || { templates: {}, promptExpander: { profiles: {} }, botConversation: { profiles: {} } };
+        sendToChatConfig.copilotAnswerPath = copilotAnswerPath;
+        saveSendToChatConfig(sendToChatConfig);
+    }
+    
+    vscode.window.showInformationMessage('Ask Copilot settings updated');
 }
 
 async function updateAskBigBrotherSettings(settings: any): Promise<void> {
@@ -150,15 +160,7 @@ async function updateAskBigBrotherSettings(settings: any): Promise<void> {
     }
 }
 
-async function updateT2CopilotPanelSettings(settings: any): Promise<void> {
-    const config = loadSendToChatConfig() || { templates: {}, promptExpander: { profiles: {} }, botConversation: { profiles: {} } };
-    if (settings.copilotAnswerPath !== undefined) {
-        config.copilotAnswerPath = settings.copilotAnswerPath;
-    }
-    if (saveSendToChatConfig(config)) {
-        vscode.window.showInformationMessage('T2 Copilot Panel settings updated');
-    }
-}
+
 
 /**
  * Status data for the webview
@@ -210,11 +212,8 @@ interface StatusData {
         profiles: string[];
     };
     askCopilot: AskCopilotConfig;
+    copilotAnswerPath: string;
     askBigBrother: AskBigBrotherConfig;
-    t2CopilotPanel: {
-        copilotAnswerPath: string;
-        keepContentAfterSend: boolean;
-    };
 }
 
 /**
@@ -284,10 +283,7 @@ async function gatherStatusData(): Promise<StatusData> {
             profiles: botConversation.profiles ? Object.keys(botConversation.profiles) : [],
         },
         ...loadEscalationToolsConfig(),
-        t2CopilotPanel: {
-            copilotAnswerPath: loadSendToChatConfig()?.copilotAnswerPath ?? '_ai/copilot',
-            keepContentAfterSend: false,  // This is managed by the T2 panel itself, not saved to config
-        },
+        copilotAnswerPath: loadSendToChatConfig()?.copilotAnswerPath ?? '_ai/copilot',
     };
 }
 
@@ -703,7 +699,11 @@ function getStatusPageHtml(status: StatusData): string {
                 <label>Prompt Suffix:</label>
                 <textarea id="ac-promptSuffix" rows="3" onchange="updateAskCopilot()">${status.askCopilot.promptSuffix || ''}</textarea>
             </div>
-            <p class="info-text">Opens Copilot Chat and monitors for answer file responses.</p>
+            <div class="setting-row">
+                <label>Answer Path:</label>
+                <input type="text" id="ac-copilotAnswerPath" value="${status.copilotAnswerPath}" onchange="updateAskCopilot()">
+            </div>
+            <p class="info-text">Opens Copilot Chat and monitors for answer file responses. Answer Path is relative to workspace root.</p>
         </div>
     </div>
 
@@ -753,18 +753,6 @@ function getStatusPageHtml(status: StatusData): string {
                 <input type="text" id="abb-summarizationModel" value="${status.askBigBrother.summarizationModel || ''}" onchange="updateAskBigBrother()">
             </div>
             <p class="info-text">Uses VS Code LM API for direct model queries with tool support.</p>
-        </div>
-    </div>
-
-    <!-- T2 Copilot Panel Settings -->
-    <div class="section">
-        <div class="section-header collapsed" onclick="toggleSection('t2CopilotPanel')">T2 Copilot Panel <span class="collapse-icon"></span></div>
-        <div id="t2CopilotPanel-content" class="section-content">
-            <div class="setting-row">
-                <label>Copilot Answer Path:</label>
-                <input type="text" id="t2cp-copilotAnswerPath" value="${status.t2CopilotPanel.copilotAnswerPath}" onchange="updateT2CopilotPanel()">
-            </div>
-            <p class="info-text">Path relative to workspace root for extracting Copilot answers and storing prompts.</p>
         </div>
     </div>
 
@@ -847,7 +835,8 @@ function getStatusPageHtml(status: StatusData): string {
                     pollInterval: parseInt(document.getElementById('ac-pollInterval').value),
                     answerFolder: document.getElementById('ac-answerFolder').value,
                     promptPrefix: document.getElementById('ac-promptPrefix').value,
-                    promptSuffix: document.getElementById('ac-promptSuffix').value
+                    promptSuffix: document.getElementById('ac-promptSuffix').value,
+                    copilotAnswerPath: document.getElementById('ac-copilotAnswerPath').value
                 }
             });
         }
@@ -868,14 +857,7 @@ function getStatusPageHtml(status: StatusData): string {
             });
         }
         
-        function updateT2CopilotPanel() {
-            vscode.postMessage({ 
-                type: 'updateT2CopilotPanel',
-                settings: {
-                    copilotAnswerPath: document.getElementById('t2cp-copilotAnswerPath').value
-                }
-            });
-        }
+
     </script>
 </body></html>`;
 }
@@ -939,9 +921,6 @@ export async function showStatusPageHandler(): Promise<void> {
                 break;
             case 'updateAskBigBrother':
                 await updateAskBigBrotherSettings(msg.settings);
-                break;
-            case 'updateT2CopilotPanel':
-                await updateT2CopilotPanelSettings(msg.settings);
                 break;
         }
         

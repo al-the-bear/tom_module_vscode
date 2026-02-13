@@ -18,18 +18,13 @@
     "viewsContainers": {
       "panel": [
         {
-          "id": "dartscript-panel",
-          "title": "Tom AI",
-          "icon": "$(notebook)"
-        },
-        {
           "id": "dartscript-t2-panel",
-          "title": "T2",
+          "title": "TOM AI",
           "icon": "$(layout)"
         },
         {
           "id": "dartscript-t3-panel",
-          "title": "T3",
+          "title": "TOM",
           "icon": "$(beaker)"
         }
       ]
@@ -382,49 +377,11 @@
       }
     ],
     "views": {
-      "dartscript-panel": [
-        {
-          "type": "webview",
-          "id": "dartscript.guidelinesNotepad",
-          "name": "Guidelines",
-          "icon": "$(law)"
-        },
-        {
-          "type": "webview",
-          "id": "dartscript.notesNotepad",
-          "name": "Notes",
-          "icon": "$(note)"
-        },
-        {
-          "type": "webview",
-          "id": "dartscript.localLlmNotepad",
-          "name": "Local LLM",
-          "icon": "$(hubot)"
-        },
-        {
-          "type": "webview",
-          "id": "dartscript.conversationNotepad",
-          "name": "AI Conversation",
-          "icon": "$(comment-discussion)"
-        },
-        {
-          "type": "webview",
-          "id": "dartscript.copilotNotepad",
-          "name": "Copilot",
-          "icon": "$(sparkle)"
-        },
-        {
-          "type": "webview",
-          "id": "dartscript.tomAiChatNotepad",
-          "name": "Tom AI Chat",
-          "icon": "$(comment)"
-        }
-      ],
       "dartscript-t2-panel": [
         {
           "type": "webview",
           "id": "dartscript.unifiedNotepad",
-          "name": "T2",
+          "name": "TOM AI",
           "icon": "$(layout)"
         }
       ],
@@ -432,7 +389,7 @@
         {
           "type": "webview",
           "id": "dartscript.t3Panel",
-          "name": "T3",
+          "name": "TOM",
           "icon": "$(beaker)"
         }
       ],
@@ -516,6 +473,10 @@
       },
       {
         "command": "dartscript.showStatusPage",
+        "key": "ctrl+shift+8"
+      },
+      {
+        "command": "dartscript.t3Panel.focus",
         "key": "ctrl+shift+9"
       }
     ],

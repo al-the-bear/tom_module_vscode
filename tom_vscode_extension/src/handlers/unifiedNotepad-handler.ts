@@ -19,6 +19,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { getConfigPath, SendToChatConfig, loadSendToChatConfig, saveSendToChatConfig, showTemplateEditorPanel, PLACEHOLDER_HELP, expandPlaceholders, showPreviewPanel, getWorkspaceRoot } from './handler_shared';
 import { getPromptExpanderManager } from './expandPrompt-handler';
+import { getAccordionStyles } from './accordionPanel';
 
 // ============================================================================
 // Answer File Utilities (for Copilot answer file feature)
@@ -1281,65 +1282,21 @@ _________ CHAT chat_${timestamp} ____________
     }
 
     private _getStyles(): string {
-        return `
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); background: var(--vscode-panel-background); height: 100vh; display: flex; flex-direction: row; overflow: hidden; }
-.accordion-container { display: flex; flex-direction: row; width: 100%; height: 100%; overflow: hidden; }
-.accordion-section { display: flex; flex-direction: column; border-right: 1px solid var(--vscode-panel-border); overflow: hidden; }
-.accordion-section:last-child { border-right: none; }
-.accordion-section.collapsed { flex: 0 0 18px; width: 18px; }
-.accordion-section.collapsed .section-content { display: none; }
-.accordion-section.collapsed .header-expanded { display: none; }
-.accordion-section.collapsed .header-collapsed { display: flex; }
-.accordion-section.expanded { flex: 1 1 auto; min-width: 120px; }
-.accordion-section.expanded .section-content { display: flex; }
-.accordion-section.expanded .header-expanded { display: flex; }
-.accordion-section.expanded .header-collapsed { display: none; }
-.resize-handle { flex: 0 0 4px; width: 4px; background: transparent; cursor: col-resize; transition: background 0.1s; }
-.resize-handle:hover, .resize-handle.dragging { background: var(--vscode-focusBorder); }
-.header-expanded { display: flex; align-items: center; gap: 6px; padding: 0 8px; height: 18px; background: var(--vscode-sideBarSectionHeader-background); border-bottom: 1px solid var(--vscode-panel-border); cursor: pointer; white-space: nowrap; }
-.header-expanded:hover { background: var(--vscode-list-hoverBackground); }
-.header-expanded .arrow { display: flex; align-items: center; }
-.header-expanded .arrow .codicon { font-size: 12px; }
-.header-expanded .icon { display: flex; align-items: center; opacity: 0.8; }
-.header-expanded .icon .codicon { font-size: 14px; }
-.header-expanded .title { font-size: 11px; font-weight: normal; text-transform: uppercase; }
-.header-expanded .pin-btn { margin-left: auto; opacity: 0.3; cursor: pointer; background: none; border: none; color: var(--vscode-foreground); padding: 0 2px; display: flex; align-items: center; }
-.header-expanded .pin-btn .codicon { font-size: 12px; }
-.header-expanded .pin-btn:hover { opacity: 0.7; }
-.header-expanded .pin-btn.pinned { opacity: 1; }
-.header-collapsed { writing-mode: vertical-lr; display: none; align-items: center; justify-content: flex-start; padding: 4px 0; background: var(--vscode-sideBarSectionHeader-background); cursor: pointer; white-space: nowrap; height: 100%; width: 18px; }
-.header-collapsed:hover { background: var(--vscode-list-hoverBackground); }
-.header-collapsed .arrow { display: flex; align-items: center; margin-bottom: 2px; }
-.header-collapsed .arrow .codicon { font-size: 12px; }
-.header-collapsed .icon { display: flex; align-items: center; margin-bottom: 4px; opacity: 0.8; }
-.header-collapsed .icon .codicon { font-size: 14px; }
-.header-collapsed .title { font-size: 11px; font-weight: normal; text-transform: uppercase; }
-.section-content { flex: 1; display: flex; flex-direction: column; padding: 8px; gap: 6px; overflow: hidden; }
-.toolbar { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: center; }
-.toolbar label { font-size: 12px; margin-right: 2px; }
-.toolbar select { padding: 0 6px; height: 22px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); border-radius: 3px; font-size: 12px; min-width: 60px; max-width: 120px; }
-.toolbar button { padding: 3px 8px; height: 22px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; border-radius: 3px; cursor: pointer; font-size: 12px; }
-.toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground); }
-.toolbar button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-.toolbar button.primary:hover { background: var(--vscode-button-hoverBackground); }
-.icon-btn { padding: 3px 6px; height: 22px; font-size: 12px; opacity: 0.8; display: inline-flex; align-items: center; justify-content: center; }
-.icon-btn:hover { opacity: 1; }
-.icon-btn.danger { color: var(--vscode-errorForeground); }
-.icon-btn .codicon { font-size: 14px; }
-.codicon { font-family: codicon; font-size: 12px; line-height: 1; }
+        // Use base accordion styles from shared component
+        const baseStyles = getAccordionStyles();
+        
+        // Add custom styles specific to unified notepad
+        const customStyles = `
 .profile-info { font-size: 11px; color: var(--vscode-descriptionForeground); padding: 4px 8px; background: var(--vscode-textBlockQuote-background); border-radius: 4px; margin-top: 4px; max-height: 60px; overflow-y: auto; }
-textarea { flex: 1; min-height: 50px; resize: none; padding: 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 3px; font-family: var(--vscode-editor-font-family); font-size: 13px; }
-textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
-.status-bar { font-size: 11px; color: var(--vscode-descriptionForeground); }
 .placeholder-help { font-size: 11px; color: var(--vscode-descriptionForeground); line-height: 1.4; }
 .placeholder-help code { background: var(--vscode-textCodeBlock-background); padding: 1px 3px; border-radius: 2px; }
 .toolbar-spacer { flex: 1; min-width: 16px; }
 .answers-toolbar { background: rgba(200, 170, 0, 0.15); border: 1px solid rgba(200, 170, 0, 0.4); border-radius: 4px; padding: 4px 8px !important; }
 .answer-indicator { font-size: 12px; font-weight: 600; color: var(--vscode-editorWarning-foreground, #cca700); margin-right: 8px; }
-.checkbox-label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; margin-left: 8px; }
+.checkbox-label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
 .checkbox-label input[type="checkbox"] { margin: 0; cursor: pointer; }
 `;
+        return baseStyles + customStyles;
     }
 
     private _getScript(): string {

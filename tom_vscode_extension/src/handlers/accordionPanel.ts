@@ -80,10 +80,10 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .header-collapsed .icon .codicon { font-size: 14px; }
 .header-collapsed .title { font-size: 11px; font-weight: normal; text-transform: uppercase; }
 .section-content { flex: 1; display: flex; flex-direction: column; padding: 8px; gap: 6px; overflow: hidden; }
-.toolbar { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: center; }
-.toolbar label { font-size: 12px; margin-right: 2px; }
-.toolbar select { padding: 0 6px; height: 22px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); border-radius: 3px; font-size: 12px; min-width: 60px; max-width: 120px; }
-.toolbar button { padding: 3px 8px; height: 22px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; border-radius: 3px; cursor: pointer; font-size: 12px; }
+.toolbar { display: flex; flex-direction: row; flex-wrap: wrap; gap: 0px; align-items: center; }
+.toolbar label { font-size: 12px; padding-right: 4px; }
+.toolbar select { padding: 0 4px; height: 22px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); border-radius: 3px; font-size: 12px; min-width: 60px; max-width: 120px; }
+.toolbar button { padding: 3px 4px; height: 22px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; border-radius: 3px; cursor: pointer; font-size: 12px; }
 .toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground); }
 .toolbar button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 .toolbar button.primary:hover { background: var(--vscode-button-hoverBackground); }
