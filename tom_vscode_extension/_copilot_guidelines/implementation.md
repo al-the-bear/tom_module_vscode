@@ -531,8 +531,8 @@ export const myTool: SharedToolDefinition = {
 
 ## See Also
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture and component diagrams
-- [USER_GUIDE.md](USER_GUIDE.md) — End-user guide
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) — Quick reference card
-- [vscode_extension_overview.md](../_copilot_guidelines/vscode_extension_overview.md) — Feature overview with documentation index
-- [dartscript_extension_bridge.md](../_copilot_guidelines/dartscript_extension_bridge.md) — Complete command and bridge method reference
+- [architecture.md](architecture.md) — System architecture and component diagrams
+- [USER_GUIDE.md](../doc/USER_GUIDE.md) — End-user guide
+- [QUICK_REFERENCE.md](../doc/QUICK_REFERENCE.md) — Quick reference card
+- [vscode_extension_overview.md](vscode_extension_overview.md) — Feature overview with documentation index
+- [dartscript_extension_bridge.md](dartscript_extension_bridge.md) — Complete command and bridge method reference

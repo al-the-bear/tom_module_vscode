@@ -1512,7 +1512,7 @@ return {
 
 ## See Also
 
-- [Architecture Documentation](../doc/ARCHITECTURE.md) - System architecture
-- [Implementation Guide](../doc/IMPLEMENTATION.md) - Implementation details
-- [Project Overview](../doc/PROJECT.md) - Extension features and setup
+- [Architecture Documentation](architecture.md) - System architecture
+- [Implementation Guide](implementation.md) - Implementation details
+- [Project Overview](project.md) - Extension features and setup
 - [Dart User Guide](../../tom_vscode_bridge/USER_GUIDE.md) - Dart side documentation

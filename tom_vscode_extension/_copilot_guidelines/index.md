@@ -22,15 +22,16 @@ This folder contains project-specific guidelines for the `tom_vscode_extension` 
 | [bottom_panel_accordion.md](bottom_panel_accordion.md) | Reusable accordion component for bottom panels |
 | [reinstall_extension.md](reinstall_extension.md) | Extension reinstallation workflow |
 | [restart_debugging_flow.backup.md](restart_debugging_flow.backup.md) | Debugging flow reference (backup) |
+| [architecture.md](architecture.md) | System architecture (bridge, extension, protocol) |
+| [implementation.md](implementation.md) | Technical implementation reference |
+| [project.md](project.md) | Project overview, commands, and configuration |
 
 ## Related Documentation (doc/)
 
-These files in `doc/` provide additional developer and user documentation:
+These files in `doc/` provide additional user documentation:
 
 | File | Description |
 |------|-------------|
-| [ARCHITECTURE.md](../doc/ARCHITECTURE.md) | System architecture (bridge, extension, protocol) |
-| [IMPLEMENTATION.md](../doc/IMPLEMENTATION.md) | Technical implementation reference |
 | [USER_GUIDE.md](../doc/USER_GUIDE.md) | End-user guide |
 | [QUICK_REFERENCE.md](../doc/QUICK_REFERENCE.md) | Quick reference card |
 

@@ -294,7 +294,8 @@ See [tom_status_page.md](tom_status_page.md) for full section descriptions.
 | [tom_ai_bottom_panel.md](tom_ai_bottom_panel.md) | _copilot_guidelines/ | TOM AI bottom panel (6 accordion sections) |
 | [tom_status_page.md](tom_status_page.md) | _copilot_guidelines/ | Status & configuration page (8 sections) |
 | [explorer_notes.md](explorer_notes.md) | _copilot_guidelines/ | VS Code Notes & Workspace Notes explorer views |
-| [ARCHITECTURE.md](../doc/ARCHITECTURE.md) | doc/ | System architecture |
-| [IMPLEMENTATION.md](../doc/IMPLEMENTATION.md) | doc/ | Implementation guide |
+| [architecture.md](architecture.md) | _copilot_guidelines/ | System architecture |
+| [implementation.md](implementation.md) | _copilot_guidelines/ | Implementation guide |
+| [project.md](project.md) | _copilot_guidelines/ | Project overview, commands, configuration |
 | [USER_GUIDE.md](../doc/USER_GUIDE.md) | doc/ | End-user guide |
 | [QUICK_REFERENCE.md](../doc/QUICK_REFERENCE.md) | doc/ | Quick reference card |

@@ -78,91 +78,91 @@ The extension has 15 feature areas. Each is briefly described below with links t
 
 Quick-pick menus triggered by keyboard chords. Six menu groups (chat, llm, execute, conversation, tomAiChat, favorites) with configurable entries.
 
-→ [keybindings_and_commands.md](../_copilot_guidelines/keybindings_and_commands.md)
+→ [keybindings_and_commands.md](keybindings_and_commands.md)
 
 ### 2. Favorites
 
 User-defined command shortcuts stored in external config. Accessible via `chordMenu.favorites`.
 
-→ [keybindings_and_commands.md](../_copilot_guidelines/keybindings_and_commands.md)
+→ [keybindings_and_commands.md](keybindings_and_commands.md)
 
 ### 3. Combined Commands
 
 Execute multiple VS Code commands in sequence from a single keybinding. Configurable with delays between commands.
 
-→ [keybindings_and_commands.md](../_copilot_guidelines/keybindings_and_commands.md)
+→ [keybindings_and_commands.md](keybindings_and_commands.md)
 
 ### 4. Send to Chat
 
 Send selected text or file content to Copilot Chat using configurable templates with `${variable}` expansion. Supports `${dartscript.*}` variables (workspace state, bridge data), trail reminders, and answer value store.
 
-→ [copilot_answers.md](../_copilot_guidelines/copilot_answers.md)
+→ [copilot_answers.md](copilot_answers.md)
 
 ### 5. Tom AI Chat
 
 Agentic AI workflow using `.chat.md` files. The extension reads the file, sends it to VS Code LM API with 14 workspace tools, and appends the response. Supports multi-turn iteration, tool calling, and prompt optimization mode.
 
-→ [tom_ai_chat.md](../_copilot_guidelines/tom_ai_chat.md)
+→ [tom_ai_chat.md](tom_ai_chat.md)
 
 ### 6. Bot Conversation
 
 Automated multi-turn dialogue between Ollama (local) and Copilot (VS Code LM API). Configurable turn count with tool calling, halt/resume control, and conversation injection.
 
-→ [ai_conversation.md](../_copilot_guidelines/ai_conversation.md)
+→ [ai_conversation.md](ai_conversation.md)
 
 ### 7. Local LLM (Prompt Expander)
 
 Send prompts to a local Ollama model for expansion, rewriting, or annotation. Supports tool calling with the same 14 shared tools. Multiple output modes (expand, rewrite, detailed, annotated).
 
-→ [local_llm.md](../_copilot_guidelines/local_llm.md)
+→ [local_llm.md](local_llm.md)
 
 ### 8. Script Execution & Bridge
 
 Execute Dart/D4rt scripts via the bridge child process. Supports file execution, inline script execution, and D4rt REPL. Bridge profiles allow switching between project configurations.
 
-→ [dartscript_extension_bridge.md](../_copilot_guidelines/dartscript_extension_bridge.md), [bridge_scripting_guide.md](../_copilot_guidelines/bridge_scripting_guide.md)
+→ [dartscript_extension_bridge.md](dartscript_extension_bridge.md), [bridge_scripting_guide.md](bridge_scripting_guide.md)
 
 ### 9. VS Code API from Dart
 
 Full VS Code API access from Dart code through typed wrapper classes. 80+ D4rt helper functions for common operations. Bidirectional JSON-RPC communication.
 
-→ [ARCHITECTURE.md](ARCHITECTURE.md) (Bridge Server Architecture section)
+→ [architecture.md](architecture.md) (Bridge Server Architecture section)
 
 ### 10. Telegram Bot Integration
 
 Telegram bot with 14 CLI-like commands for remote workspace control: notifications, file operations, command execution, AI queries, bridge management.
 
-→ [vscode_extension_overview.md](../_copilot_guidelines/vscode_extension_overview.md)
+→ [vscode_extension_overview.md](vscode_extension_overview.md)
 
 ### 11. CLI Integration
 
 TCP server allowing Tom CLI to interact with VS Code. Start/stop via commands or Status Page. Configurable port.
 
-→ [vscode_extension_overview.md](../_copilot_guidelines/vscode_extension_overview.md)
+→ [vscode_extension_overview.md](vscode_extension_overview.md)
 
 ### 12. Commandline Manager
 
 Named command sequences stored in external config. Define, delete, and execute commandlines via command palette.
 
-→ [keybindings_and_commands.md](../_copilot_guidelines/keybindings_and_commands.md)
+→ [keybindings_and_commands.md](keybindings_and_commands.md)
 
 ### 13. TOM AI Bottom Panel
 
 Webview-based accordion panel with 6 collapsible sections: Chat Quick Access, Prompt Templates, Workspace Info, AI Configuration, Tools Reference, Quick Actions.
 
-→ [tom_ai_bottom_panel.md](../_copilot_guidelines/tom_ai_bottom_panel.md)
+→ [tom_ai_bottom_panel.md](tom_ai_bottom_panel.md)
 
 ### 14. Status Page
 
 Full-tab webview dashboard for configuring 8 service areas: Bridge, CLI Server, Telegram, Trail, Local LLM, Bot Conversation, Tom AI Chat, Prompt Expander.
 
-→ [tom_status_page.md](../_copilot_guidelines/tom_status_page.md)
+→ [tom_status_page.md](tom_status_page.md)
 
 ### 15. Developer Utilities
 
 API info viewer, configuration printer, help system, debug logging toggle, process monitor, quick reference card.
 
-→ [IMPLEMENTATION.md](IMPLEMENTATION.md)
+→ [implementation.md](implementation.md)
 
 ---
 
@@ -350,16 +350,16 @@ tom_vscode_extension/
 │   ├── tools/                    # LM tool registry, executors, escalation
 │   └── managers/                 # todoManager and other state managers
 ├── doc/                          # Technical documentation
-│   ├── ARCHITECTURE.md           # System architecture
-│   ├── IMPLEMENTATION.md         # Implementation reference
-│   ├── PROJECT.md                # This file
 │   ├── USER_GUIDE.md             # End-user guide
 │   └── QUICK_REFERENCE.md        # Command quick reference
-├── _copilot_guidelines/          # 16 development guidelines
+├── _copilot_guidelines/          # Development guidelines + technical docs
+│   ├── architecture.md           # System architecture
+│   ├── implementation.md         # Implementation reference
+│   ├── project.md                # This file
 └── out/                          # Compiled JavaScript output
 ```
 
-See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full handler file listing and handler architecture pattern.
+See [implementation.md](implementation.md) for the full handler file listing and handler architecture pattern.
 
 ---
 
@@ -385,7 +385,7 @@ npm run watch       # Watch mode for development
 
 After compilation, install via VSIX or run in Extension Development Host (F5 in VS Code).
 
-See [reinstall_extension.md](../_copilot_guidelines/reinstall_extension.md) for the reinstall workflow.
+See [reinstall_extension.md](reinstall_extension.md) for the reinstall workflow.
 
 ### Debug Logging
 
@@ -395,9 +395,9 @@ Toggle bridge debug logging: `DartScript: Toggle Bridge Debug Logging` or enable
 
 ## See Also
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture (bridge, protocol, Dart wrappers)
-- [IMPLEMENTATION.md](IMPLEMENTATION.md) — Technical implementation reference
-- [USER_GUIDE.md](USER_GUIDE.md) — End-user guide
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) — Command quick reference
-- [vscode_extension_overview.md](../_copilot_guidelines/vscode_extension_overview.md) — Feature overview with full documentation index
-- [dartscript_extension_bridge.md](../_copilot_guidelines/dartscript_extension_bridge.md) — Complete command and bridge method reference
+- [architecture.md](architecture.md) — System architecture (bridge, protocol, Dart wrappers)
+- [implementation.md](implementation.md) — Technical implementation reference
+- [USER_GUIDE.md](../doc/USER_GUIDE.md) — End-user guide
+- [QUICK_REFERENCE.md](../doc/QUICK_REFERENCE.md) — Command quick reference
+- [vscode_extension_overview.md](vscode_extension_overview.md) — Feature overview with full documentation index
+- [dartscript_extension_bridge.md](dartscript_extension_bridge.md) — Complete command and bridge method reference

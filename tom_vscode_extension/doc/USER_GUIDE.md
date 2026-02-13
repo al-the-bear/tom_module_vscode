@@ -1199,7 +1199,7 @@ These VS Code settings serve as fallbacks. Prefer configuring via the `promptExp
 - [README.md](../README.md) - Quick reference and installation
 - [vscode_extension_overview.md](../_copilot_guidelines/vscode_extension_overview.md) - Feature overview with documentation index
 - [bridge_scripting_guide.md](../_copilot_guidelines/bridge_scripting_guide.md) - Bridge scripting guide
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture details
+- [architecture.md](../_copilot_guidelines/architecture.md) - System architecture details
 
 ---
 

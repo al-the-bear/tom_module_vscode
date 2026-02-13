@@ -151,7 +151,7 @@ Activation event: `onStartupFinished`. The `activate()` function orchestrates in
 7. Initialize AI subsystems (SendToChat, PromptExpander, BotConversation)
 8. Register Language Model Tools (14 tools)
 
-See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full 18-step activation sequence.
+See [implementation.md](implementation.md) for the full 18-step activation sequence.
 
 ### Handler Architecture
 
@@ -558,7 +558,7 @@ The 80+ helper functions in `d4rt_helpers.dart` provide shortcuts for common ope
 3. Register in `extension.ts` → `registerCommands()` or via subsystem `register*()` function
 4. Add to `package.json` → `contributes.commands`
 
-See [IMPLEMENTATION.md](IMPLEMENTATION.md) for implementation patterns with code examples.
+See [implementation.md](implementation.md) for implementation patterns with code examples.
 
 ### Adding Language Model Tools
 
@@ -568,9 +568,9 @@ Define a `SharedToolDefinition` in `tool-executors.ts` — it is automatically r
 
 ## See Also
 
-- [IMPLEMENTATION.md](IMPLEMENTATION.md) — Technical implementation reference with code patterns
-- [PROJECT.md](PROJECT.md) — Project overview, quick start, and configuration
-- [USER_GUIDE.md](USER_GUIDE.md) — End-user guide
-- [vscode_extension_overview.md](../_copilot_guidelines/vscode_extension_overview.md) — Complete 15-area feature overview with documentation index
-- [dartscript_extension_bridge.md](../_copilot_guidelines/dartscript_extension_bridge.md) — Full command and bridge method reference
+- [implementation.md](implementation.md) — Technical implementation reference with code patterns
+- [project.md](project.md) — Project overview, quick start, and configuration
+- [USER_GUIDE.md](../doc/USER_GUIDE.md) — End-user guide
+- [vscode_extension_overview.md](vscode_extension_overview.md) — Complete 15-area feature overview with documentation index
+- [dartscript_extension_bridge.md](dartscript_extension_bridge.md) — Full command and bridge method reference
 - [tom_vscode_bridge PROJECT.md](../tom_vscode_bridge/PROJECT.md) — Dart bridge project documentation

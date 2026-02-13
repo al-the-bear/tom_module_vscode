@@ -297,7 +297,7 @@ Copyright (c) 2024-2026 Tom Framework. All rights reserved.
 - [User Guide](doc/USER_GUIDE.md) - Complete guide to extension features
 - [Feature Overview](_copilot_guidelines/vscode_extension_overview.md) - All 15 feature areas with documentation index
 - [Bridge Scripting Guide](_copilot_guidelines/bridge_scripting_guide.md) - Advanced JavaScript/Dart bridge scripting
-- [Architecture](doc/ARCHITECTURE.md) - System architecture details
+- [Architecture](_copilot_guidelines/architecture.md) - System architecture details
 
 ## Resources
 

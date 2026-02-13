@@ -161,7 +161,7 @@ Future<Map<String, dynamic>> execute(
 - **[PROJECT.md](./PROJECT.md)**: Project overview and getting started
 - **[API_REFERENCE.md](./API_REFERENCE.md)**: Complete API documentation with examples
 - **[IMPLEMENTATION.md](./IMPLEMENTATION.md)**: Implementation details and architecture
-- **[ARCHITECTURE.md](../tom_vscode_extension/ARCHITECTURE.md)**: System architecture (both sides)
+- **[architecture.md](../tom_vscode_extension/_copilot_guidelines/architecture.md)**: System architecture (both sides)
 
 ## Architecture
 
