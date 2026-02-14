@@ -479,6 +479,7 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     var configErrorMsg = null;
     var configSectionName = '';
     var configFilePathStr = '';
+    var _isDragging = false;
     var GROWTH_PRIORITY = [];
     var COLUMN_LABELS = {};
     var SORTABLE_FIELDS = [
@@ -971,6 +972,7 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                 }
                 var startW = startRendered[colKey] || visCols[colIdx].minWidth;
                 handle.classList.add('dragging');
+                _isDragging = true;
                 function onMove(ev) {
                     var dx = ev.clientX - startX;
                     var desiredW = Math.max(visCols[colIdx].minWidth, startW + dx);
@@ -1000,6 +1002,7 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                     renderIssueList();
                 }
                 function onUp() {
+                    _isDragging = false;
                     handle.classList.remove('dragging');
                     document.removeEventListener('mousemove', onMove);
                     document.removeEventListener('mouseup', onUp);
@@ -1009,10 +1012,11 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
             });
         });
     }
-    // Reset manual widths on container resize
+    // Reset manual widths on container resize (skip during drag)
     var _resizeTimer = null;
     var _lastListWidth = 0;
     (new ResizeObserver(function(entries) {
+        if (_isDragging) return;
         var w = entries[0].contentRect.width;
         if (Math.abs(w - _lastListWidth) > 2) {
             _lastListWidth = w;
