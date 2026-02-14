@@ -52,21 +52,42 @@ A custom VS Code editor provides:
 5. **Generic framework** — same editor works for flow diagrams, state machines,
    ER diagrams by swapping schema + converter
 
-### Primary Design Goal
+### Primary Goals
 
-**All diagram type transformations must be expressible through the generator
-mapping configuration alone, without writing TypeScript code.** Adding a new
-diagram type should require only:
+These are the non-negotiable goals that all design decisions must serve.
+Implementation details, APIs, and schemas may change freely as long as these
+goals remain satisfied. See also the architecture document
+(`yaml_graph_architecture_design.md`) which shares the same goals list.
 
-1. A JSON Schema for the YAML source format
-2. A `*.graph-map.yaml` mapping file with declarative rules and optional
-   inline JS transforms
+**G1 — Configuration-Only Diagram Types.** All diagram type transformations
+must be expressible through the generator mapping configuration alone — JSON
+Schema + `*.graph-map.yaml` — without writing TypeScript code. Adding a new
+diagram type requires only two configuration files. No custom renderers, no
+extension rebuilds.
 
-No TypeScript code, no custom renderers, no extension rebuilds. The conversion
-engine, converter callbacks, and mapping format must be expressive enough that
-configuration-only is the standard path. Custom TypeScript renderers exist as
-a fallback for truly exotic diagram types, but the design should make them
-unnecessary for all common cases.
+**G2 — Standalone Core Library.** The core conversion engine (`yaml-graph-core`)
+has zero VS Code dependencies. It can run in Node.js, a browser, a CLI tool,
+or any TypeScript project. The library is useful on its own before any editor
+exists.
+
+**G3 — Layered Package Architecture.** The system is split into clearly
+separated layers: core library (standalone), VS Code integration (separate
+package), diagram type packages (config-only, no TypeScript), and extension
+core (minimal instantiation glue).
+
+**G4 — Comment-Preserving YAML Editing.** All edits from the tree panel and
+node editor preserve existing YAML comments. Users can freely mix tree-panel
+editing with direct YAML text editing.
+
+**G5 — Interactive Diagrams via Converter Callbacks.** The Mermaid preview is
+interactive — clicking nodes navigates to the tree and YAML source. This
+interactivity is injected through converter callbacks, not hard-coded in the
+core engine. Different host environments can provide different callback
+implementations.
+
+**G6 — Node Editor Panel.** A dedicated panel below the tree shows all editable
+fields for the selected node. It updates from any selection source (tree click,
+diagram click, YAML cursor). Always visible, no overlay complexity.
 
 ```mermaid
 flowchart LR
