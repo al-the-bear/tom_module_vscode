@@ -2010,15 +2010,191 @@ These questions were raised during the initial design and have been resolved:
 
 ### Open Questions
 
-New design questions identified for resolution during implementation:
+New design questions identified for resolution during implementation. Each
+includes a proposed answer with rationale.
 
-| # | Question | Context | Impact |
-|---|----------|---------|--------|
-| 9 | How should `mermaid.js` be bundled into the webview? Options: (a) local bundle copied into webview assets, (b) CDN link, (c) bundled via esbuild from `node_modules`. | Webview has no Node.js access — scripts must be local files or CDN URLs. CDN requires internet; local is self-contained but increases extension size. | Affects extension packaging, offline capability, and bundle size |
-| 10 | How should graph-type folders be discovered and registered? Options: (a) explicit list in `package.json` contributes, (b) auto-scan a well-known directory, (c) both. | `GraphTypeRegistry.registerFromFolder()` needs to know which folders to load. Auto-scan is convenient; explicit registration is predictable. | Affects extension activation time and third-party extensibility |
-| 11 | What happens when multiple graph types claim the same file pattern (e.g., two types both match `*.flow.yaml`)? | `GraphTypeRegistry` uses a `filePatternMap` that overwrites on collision. | Needs a conflict detection or priority mechanism |
-| 12 | How should per-diagram-type CSS styling be structured in the graph-type folder? | Resolved Q5 says CSS-based, adjustable per diagram type. The graph-type folder needs a convention: optional `style.css` file? CSS block in the mapping YAML? Separate config? | Affects graph-type folder structure and webview CSS injection |
-| 13 | Should the mapping format support versioning for forward compatibility? | As the mapping format evolves, older mapping files may become incompatible. A `version` field in `graph-map.yaml` could allow graceful migration. | Low risk initially, higher risk once third-party types exist |
-| 14 | How should the node editor form handle complex field types (arrays, nested objects)? | Current design shows simple `<input>`/`<select>` forms. Some YAML nodes may contain arrays (e.g., multiple labels) or nested objects. | Affects node editor panel complexity and the `showNode` message payload |
-| 15 | Should the `ConversionCallbacks` interface support async callbacks? | Current interface is synchronous. Some callbacks (e.g., checking if a linked file exists) might need async I/O. | Affects `ConversionEngine.convert()` signature (sync vs async) |
-| 16 | How should undo/redo work for edits made through the node editor panel? | The editor uses `WorkspaceEdit` for text changes, which integrates with VS Code's undo stack. But batched multi-field edits should ideally be a single undo step. | Affects `applyEdit` handler implementation |
+#### Q9 — How should `mermaid.js` be bundled into the webview?
+
+**Options:** (a) local bundle copied into webview assets, (b) CDN link,
+(c) bundled via esbuild from `node_modules`.
+
+**Context:** Webview has no Node.js access — scripts must be local files or CDN
+URLs. CDN requires internet; local is self-contained but increases extension
+size.
+
+**Proposal: (c) esbuild from `node_modules`.**
+The extension already needs an esbuild step to bundle the webview JavaScript
+(tree panel, node editor, postMessage glue). Adding mermaid.js to that same
+esbuild bundle is the simplest approach — one build step, one output file, and
+`mermaid` is declared as a regular npm dependency. The resulting bundle is
+~800 KB gzipped, which is acceptable for a VS Code extension. This avoids CDN
+(offline-hostile, CSP complications in webviews) and avoids a manual
+copy-to-assets step that is fragile and hard to version.
+
+---
+
+#### Q10 — How should graph-type folders be discovered and registered?
+
+**Options:** (a) explicit list in `package.json` contributes, (b) auto-scan a
+well-known directory, (c) both.
+
+**Context:** `GraphTypeRegistry.registerFromFolder()` needs to know which
+folders to load. Auto-scan is convenient; explicit registration is predictable.
+
+**Proposal: (b) auto-scan of `graph-types/` directory, with override support.**
+On activation, scan the `graph-types/` directory for subdirectories that contain
+a `*.graph-map.yaml` file. Each match is registered via
+`registerFromFolder()`. This is predictable (well-known location, clear file
+marker) while requiring zero configuration. An explicit list is unnecessary
+because the built-in types ship inside that same directory. If third-party
+extension points are added later, they can contribute additional scan paths via
+VS Code extension API, but that is out of scope for Phase 1.
+
+---
+
+#### Q11 — File pattern conflicts between graph types
+
+**Context:** `GraphTypeRegistry` uses a `filePatternMap` that overwrites on
+collision. Two types claiming `*.flow.yaml` would silently shadow each other.
+
+**Proposal: first-registered wins + warning log.**
+When `register()` detects a pattern already claimed by another type, it logs a
+warning (`GraphType '${newId}' pattern '${pattern}' conflicts with '${existingId}', keeping existing`) and skips the conflicting pattern for the new
+type. The first-registered type retains ownership. Since graph-type folders are
+scanned alphabetically, the order is deterministic. This is simple, transparent,
+and avoids silent data loss. A priority number can be added later if needed.
+
+---
+
+#### Q12 — Per-diagram-type CSS styling structure
+
+**Context:** Q5 resolved that Mermaid styling should be CSS-based and
+adjustable per diagram type. The graph-type folder needs a convention.
+
+**Proposal: optional `style.css` file in the graph-type folder.**
+Convention:
+
+```
+graph-types/
+    flowchart/
+        flowchart.schema.json
+        flowchart.graph-map.yaml
+        style.css              ← optional
+```
+
+If `style.css` exists, the webview injects it as a `<style>` block after the
+base theme CSS. The CSS can use Mermaid's own CSS class selectors (`.node rect`,
+`.edgePath`, `.label`, etc.) and VS Code theme variables
+(`var(--vscode-editor-foreground)`). No CSS block inside the mapping YAML —
+keeping styling in a real CSS file gives proper syntax highlighting, linting, and
+separation of concerns. The `GraphType` interface gains an optional
+`styleSheet?: string` field populated by `MappingLoader` when the file is found.
+
+---
+
+#### Q13 — Mapping format versioning
+
+**Context:** As the mapping format evolves, older mapping files may become
+incompatible. A `version` field in `graph-map.yaml` could allow graceful
+migration.
+
+**Proposal: add a required `version: 1` field to the `map` section from day one.**
+The mapping file already has a `map:` top-level key. Adding `version: 1` is
+trivial:
+
+```yaml
+map:
+  version: 1
+  id: flowchart
+  mermaidType: flowchart
+```
+
+`MappingLoader` checks the version and refuses to load files with an
+unrecognized version, emitting a clear error message. This costs nothing now and
+prevents painful migrations later. The `graph-map.schema.json` should include
+`version` as a required property with `const: 1` (updated when the format
+changes).
+
+---
+
+#### Q14 — Node editor handling of complex field types
+
+**Context:** Current design shows simple `<input>`/`<select>` forms. Some YAML
+nodes may contain arrays (e.g., a list of tags) or nested objects (e.g.,
+metadata sub-fields).
+
+**Proposal: support scalar fields only in Phase 1; show complex fields as
+read-only JSON.**
+The node editor panel renders `<input>` for strings/numbers, `<select>` for
+enum fields (derived from JSON Schema `enum`), and `<checkbox>` for booleans.
+For array or object fields, display the value as read-only formatted text (JSON
+or YAML snippet) with a "Edit in source" link that jumps to the corresponding
+line in the YAML text editor. This avoids building a recursive form editor
+upfront while still giving visibility into all fields. Phase 2 can add inline
+array editing (add/remove items) if the need arises.
+
+---
+
+#### Q15 — Async `ConversionCallbacks`
+
+**Context:** Current `ConversionCallbacks` interface is synchronous. Some
+callbacks (e.g., checking if a linked file exists for navigation hints) might
+need async I/O.
+
+**Proposal: keep callbacks synchronous; pre-compute async data before
+conversion.**
+The conversion engine runs on every keystroke (debounced). Making it async adds
+complexity (cancellation, stale results, race conditions) for a marginal
+benefit. Instead, the VS Code host should pre-compute any async data (e.g., a
+`Set<string>` of existing file paths) and pass it into the callback closure via
+captured variables. The callback itself remains a pure synchronous function.
+Example:
+
+```typescript
+// Before conversion — async work done here
+const existingFiles = new Set(await workspace.findFiles('**/*.flow.yaml'));
+
+// Callback closure captures the pre-computed set
+const callbacks: ConversionCallbacks = {
+    onNodeEmit(id, node, lines) {
+        const target = String(node.fields['link'] ?? '');
+        if (existingFiles.has(target)) {
+            return [`click ${id} call navigateTo("${target}")`];
+        }
+        return [];
+    }
+};
+
+// Synchronous conversion
+const result = engine.convert(yamlText, graphType, callbacks);
+```
+
+This keeps the engine simple, testable, and fast.
+
+---
+
+#### Q16 — Undo/redo for node editor edits
+
+**Context:** The editor uses `WorkspaceEdit` for text changes, which integrates
+with VS Code's undo stack. But a single node editor "Save" may touch multiple
+YAML fields, producing multiple `WorkspaceEdit` operations that should be undone
+as one step.
+
+**Proposal: use a single `WorkspaceEdit` with multiple text edits, applied in
+one `workspace.applyEdit()` call.**
+The `applyEdit` message from the webview sends all changed fields at once:
+`{ nodeId, changes: { label: 'New', type: 'decision' } }`. The extension host
+computes all YAML AST mutations, collects the resulting text replacements, and
+creates one `WorkspaceEdit` containing all of them. A single
+`workspace.applyEdit(edit)` call produces one undo step in VS Code's native
+undo stack. No custom undo manager needed.
+
+```typescript
+// In the applyEdit handler:
+const edit = new vscode.WorkspaceEdit();
+for (const [field, value] of Object.entries(changes)) {
+    const range = computeYamlRange(document, nodeId, field);
+    edit.replace(document.uri, range, serializeValue(value));
+}
+await vscode.workspace.applyEdit(edit); // single undo step
+```
