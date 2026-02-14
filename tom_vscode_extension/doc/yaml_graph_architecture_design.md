@@ -323,6 +323,16 @@ export type AstNodeTransformer = (
 
 export interface ConversionCallbacks {
     /**
+     * Called once before conversion starts. Use to pre-compute async
+     * data (file lookups, workspace queries) that synchronous emit
+     * callbacks will reference via captured state on `this`.
+     *
+     * The engine calls this from convertWithPrepare(). Callers using
+     * the synchronous convert() must call prepare() themselves.
+     */
+    prepare?: () => Promise<void>;
+
+    /**
      * Called for each emitted node. Returns additional Mermaid lines
      * to append (e.g., click directives for navigation).
      */
@@ -428,6 +438,22 @@ export class ConversionEngine {
         );
 
         return { mermaidSource, errors, nodeMap, edgeMap };
+    }
+
+    /**
+     * Async wrapper: calls callbacks.prepare() first, then runs the
+     * synchronous conversion pipeline. Use this from VS Code integration
+     * where callbacks may need pre-computed async data.
+     */
+    async convertWithPrepare(
+        yamlText: string,
+        graphType: GraphType,
+        callbacks?: ConversionCallbacks
+    ): Promise<ConversionResult> {
+        if (callbacks?.prepare) {
+            await callbacks.prepare();
+        }
+        return this.convert(yamlText, graphType, callbacks);
     }
 
     private extractElements(
@@ -1082,8 +1108,9 @@ export class YamlGraphEditorProvider implements vscode.CustomTextEditorProvider 
         webview: WebviewManager
     ): void {
         const yamlText = document.getText();
-        const result = this.engine.convert(yamlText, graphType, this.callbacks);
-        webview.update(yamlText, result);
+        // Use convertWithPrepare to allow async pre-computation
+        this.engine.convertWithPrepare(yamlText, graphType, this.callbacks)
+            .then(result => webview.update(yamlText, result));
     }
 }
 ```
@@ -1091,13 +1118,28 @@ export class YamlGraphEditorProvider implements vscode.CustomTextEditorProvider 
 ### VsCodeCallbacks (src/vscode-callbacks.ts)
 
 ```typescript
+import * as vscode from 'vscode';
 import { ConversionCallbacks, NodeData, EdgeData } from 'yaml-graph-core';
 
 /**
  * VS Code-specific callback implementations that inject interactive
  * behavior into the Mermaid output.
+ *
+ * The prepare() method pre-computes async data (e.g., workspace file
+ * existence) that the synchronous emit callbacks reference via `this`.
  */
 export class VsCodeCallbacks implements ConversionCallbacks {
+    private existingGraphFiles = new Set<string>();
+
+    async prepare(): Promise<void> {
+        const files = await vscode.workspace.findFiles(
+            '**/*.{flow,state,er}.yaml'
+        );
+        this.existingGraphFiles = new Set(
+            files.map(f => vscode.workspace.asRelativePath(f))
+        );
+    }
+
     onNodeEmit(
         nodeId: string,
         _nodeData: NodeData,
@@ -1818,6 +1860,216 @@ The custom editor uses a single webview split into regions:
 All communication uses `postMessage`. The webview never directly accesses the
 file system or VS Code API. See Section 11 for the protocol definition.
 
+### Node Editor — Schema-Driven Form Architecture
+
+The node editor panel is a **key challenge** of the project. It must be able to
+edit any data structure that occurs in any graph type — scalars, enums, arrays,
+nested objects, and combinations thereof. Associated metadata in graph types can
+contain arbitrarily complex sub-structures (e.g., ER diagram attributes are
+arrays of objects, state machines have nested composite states).
+
+The solution is a **recursive, JSON Schema-driven form renderer**.
+
+#### Design Principle
+
+Given a JSON Schema sub-tree and a YAML value, the node editor renders the
+appropriate editor widget. For compound types (array, object), it recurses into
+child schemas. Every form element tracks its **JSON pointer path** relative to
+the node root (e.g., `attributes[2].name`), so edits produce precise
+`{ path, value }` pairs that map directly to `Document.setIn()` calls on the
+YAML AST.
+
+#### Schema-to-Widget Mapping
+
+| JSON Schema Type | Widget | Notes |
+|-----------------|--------|-------|
+| `string` | `<input type="text">` | Multi-line if `format: 'multiline'` → `<textarea>` |
+| `string` + `enum` | `<select>` | Options derived from schema `enum` array |
+| `number` / `integer` | `<input type="number">` | Respects `minimum`, `maximum` from schema |
+| `boolean` | `<input type="checkbox">` | |
+| `array` of scalars | Tag-list widget | Inline chips with add/remove |
+| `array` of objects | Expandable item list | Each item rendered as collapsible fieldset |
+| `object` | Collapsible fieldset | Child properties rendered recursively |
+| `object` + `additionalProperties` | Key-value table | Free-form key + typed value editor |
+
+#### Recursive Rendering Architecture
+
+```
+NodeEditorPanel
+├── renderFieldGroup(schema, value, basePath)
+│   └── for each property in schema.properties:
+│       └── renderField(propSchema, propValue, basePath + "." + propName)
+│
+├── renderField(schema, value, path)   ← dispatch
+│   ├── if schema.enum           → renderEnum(schema, value, path)
+│   ├── if schema.type=string    → renderScalar('text', value, path)
+│   ├── if schema.type=number    → renderScalar('number', value, path)
+│   ├── if schema.type=boolean   → renderScalar('checkbox', value, path)
+│   ├── if schema.type=array     → renderArray(schema, value, path)
+│   └── if schema.type=object    → renderObject(schema, value, path)
+│
+├── renderArray(schema, value, path)
+│   ├── Header: "field-name (3 items)" [+ Add]
+│   └── for each item at index i:
+│       ├── [▲ ▼ ✕] reorder/delete controls
+│       └── renderField(schema.items, value[i], path + "[" + i + "]")
+│
+└── renderObject(schema, value, path)
+    ├── Collapsible header: "field-name" [▾]
+    └── renderFieldGroup(schema, value, path)
+```
+
+#### Example: ER Diagram Entity
+
+When a user selects an entity node in an ER diagram, the node editor receives:
+
+```yaml
+# YAML source (entity 'user')
+user:
+  attributes:
+    - name: id
+      type: integer
+      key: PK
+      nullable: false
+    - name: email
+      type: varchar(255)
+      key: UK
+      nullable: false
+  description: Main user account table
+```
+
+The schema-driven renderer produces:
+
+```
+┌─────────────────────────────────────┐
+│ Node: user                          │
+├─────────────────────────────────────┤
+│ description  [Main user account ta] │
+│                                     │
+│ ▾ attributes (2 items)        [+]   │
+│   ┌─ [0] ──────────── [▲ ▼ ✕] ──┐  │
+│   │ name      [id               ] │  │
+│   │ type      [integer          ] │  │
+│   │ key       [PK ▾             ] │  │
+│   │ nullable  [ ]                 │  │
+│   └───────────────────────────────┘  │
+│   ┌─ [1] ──────────── [▲ ▼ ✕] ──┐  │
+│   │ name      [email            ] │  │
+│   │ type      [varchar(255)     ] │  │
+│   │ key       [UK ▾             ] │  │
+│   │ nullable  [ ]                 │  │
+│   └───────────────────────────────┘  │
+├─────────────────────────────────────┤
+│           [Apply]  [Reset]          │
+└─────────────────────────────────────┘
+```
+
+#### FieldSchema Types (recursive)
+
+These replace the flat `FieldDefinition` interface:
+
+```typescript
+/** A schema-driven field descriptor for the node editor form. */
+type FieldSchema =
+    | ScalarFieldSchema
+    | EnumFieldSchema
+    | ArrayFieldSchema
+    | ObjectFieldSchema;
+
+interface BaseFieldSchema {
+    /** JSON pointer path relative to node root, e.g. "label", "metadata.priority" */
+    path: string;
+    label: string;
+    required: boolean;
+    description?: string;
+}
+
+interface ScalarFieldSchema extends BaseFieldSchema {
+    fieldType: 'string' | 'number' | 'boolean';
+    multiline?: boolean;  // string with format: 'multiline'
+    minimum?: number;     // number constraints
+    maximum?: number;
+}
+
+interface EnumFieldSchema extends BaseFieldSchema {
+    fieldType: 'enum';
+    options: string[];
+}
+
+interface ArrayFieldSchema extends BaseFieldSchema {
+    fieldType: 'array';
+    /** Schema for each array item (recursive) */
+    itemSchema: FieldSchema;
+    minItems?: number;
+    maxItems?: number;
+}
+
+interface ObjectFieldSchema extends BaseFieldSchema {
+    fieldType: 'object';
+    /** Child field schemas (recursive) */
+    properties: FieldSchema[];
+    /** Whether to allow free-form additional properties */
+    allowAdditional?: boolean;
+}
+```
+
+#### Schema Resolution Pipeline
+
+Before sending field schemas to the webview, the extension host must:
+
+1. **Resolve `$ref` references** — JSON Schema `$ref` pointers are resolved
+   against `$defs` to produce a self-contained schema tree. This happens once
+   per graph type at registration time.
+2. **Extract node sub-schema** — for a given node, extract the relevant object
+   schema from the graph type's full schema (using `nodeShapes.sourcePath`).
+3. **Build `FieldSchema[]` tree** — walk the resolved sub-schema recursively,
+   creating the `FieldSchema` tree that the webview renderer consumes.
+4. **Send via `showNode`** — the `FieldSchema[]` tree is sent once per node
+   selection; the webview caches it until the graph type changes.
+
+#### YAML AST Integration for Nested Edits
+
+The webview sends edits as `{ path, value }` pairs where `path` is a JSON
+pointer (e.g., `attributes[1].name`). The extension host translates this to
+`yaml` npm AST operations:
+
+```typescript
+// JSON pointer "attributes[1].name" → YAML setIn path
+function jsonPointerToYamlPath(
+    basePath: string, pointer: string
+): (string | number)[] {
+    // "nodes.user" + "attributes[1].name"
+    // → ['nodes', 'user', 'attributes', 1, 'name']
+    const parts: (string | number)[] = basePath.split('.');
+    for (const segment of pointer.split('.')) {
+        const arrayMatch = segment.match(/^(.+)\[(\d+)\]$/);
+        if (arrayMatch) {
+            parts.push(arrayMatch[1], Number(arrayMatch[2]));
+        } else {
+            parts.push(segment);
+        }
+    }
+    return parts;
+}
+
+// Usage:
+const yamlPath = jsonPointerToYamlPath(
+    'entities.user', 'attributes[1].name'
+);
+document.setIn(yamlPath, 'email_address');
+```
+
+#### Key Challenges
+
+| Challenge | Approach |
+|-----------|----------|
+| `$ref` resolution before webview | One-time resolver at graph type registration; store resolved schema on `GraphType` |
+| Array item reordering in YAML | Delete item at old index, insert at new index via AST. Comments on the moved item may be lost — document this limitation. |
+| Deep nesting usability | Collapsible sections with depth indicator. Limit initial expansion to 2 levels; deeper levels collapsed by default. |
+| `additionalProperties: true` | Show key-value table with "+ Add property" button. Keys are free-text `<input>`. |
+| Large arrays (50+ items) | Virtual scrolling — render only visible items. Show total count in header. |
+| Schema changes between graph types | Rebuild form completely on graph type switch. Cache `FieldSchema[]` per graph type. |
+
 ---
 
 ## 11. PostMessage Protocol
@@ -1829,11 +2081,16 @@ file system or VS Code API. See Section 11 for the protocol definition.
 type WebviewMessage =
     | { type: 'nodeClicked'; nodeId: string }
     | { type: 'treeNodeSelected'; nodeId: string }
-    | { type: 'applyEdit'; nodeId: string; changes: Record<string, unknown> }
+    | { type: 'applyEdit'; nodeId: string;
+        edits: Array<{ path: string; value: unknown }> }
     | { type: 'addNode'; parentPath: string; nodeType: string; nodeId: string }
     | { type: 'deleteNode'; nodeId: string }
     | { type: 'addEdge'; from: string; to: string; label?: string }
     | { type: 'deleteEdge'; index: number }
+    | { type: 'reorderArrayItem'; nodeId: string; path: string;
+        fromIndex: number; toIndex: number }
+    | { type: 'addArrayItem'; nodeId: string; path: string }
+    | { type: 'deleteArrayItem'; nodeId: string; path: string; index: number }
     | { type: 'requestExportSvg' }
     | { type: 'changeDirection'; direction: 'TD' | 'LR' | 'BT' | 'RL' };
 ```
@@ -1847,8 +2104,8 @@ type ExtensionMessage =
         treeData: TreeNode[]; errors: ValidationError[] }
     | { type: 'selectNode'; nodeId: string }
     | { type: 'highlightMermaidNode'; nodeId: string }
-    | { type: 'showNode'; nodeId: string; nodeData: Record<string, unknown>;
-        schemaFields: FieldDefinition[] }
+    | { type: 'showNode'; nodeId: string; nodeData: unknown;
+        schema: FieldSchema[] }
     | { type: 'showErrors'; errors: ValidationError[] }
     | { type: 'clearNodeEditor' };
 
@@ -1861,13 +2118,8 @@ interface TreeNode {
     expanded?: boolean;
 }
 
-interface FieldDefinition {
-    name: string;
-    type: 'text' | 'select' | 'array' | 'number' | 'boolean';
-    label: string;
-    required: boolean;
-    readOnly?: boolean;
-    options?: string[];  // for select fields
+// FieldSchema types are defined in Section 10 — Node Editor
+// (ScalarFieldSchema, EnumFieldSchema, ArrayFieldSchema, ObjectFieldSchema)
 }
 ```
 
@@ -1995,7 +2247,7 @@ test/fixtures/
 
 ### Resolved Questions
 
-These questions were raised during the initial design and have been resolved:
+These questions were raised during the design process and have been resolved:
 
 | # | Question | Decision | Notes |
 |---|----------|----------|-------|
@@ -2007,100 +2259,106 @@ These questions were raised during the initial design and have been resolved:
 | 6 | Should the graph-type folders support an optional `README.md` or metadata file? | **Not needed initially** | Nice for discoverability, can add later |
 | 7 | How should the build process bundle `yaml-graph-core` into the extension? | **npm workspace** | The repository will be structured as an npm workspace with `yaml_graph_core` and `yaml_graph_vscode` as workspace packages. This simplifies dependency resolution, shared tooling, and `tsc --build` usage. |
 | 8 | Should `AstNodeTransformerRuntime` use `vm.runInContext` instead of `new Function` for better sandboxing? | **`new Function`** for simplicity | Mapping files are authored by the user, not loaded from untrusted sources. Sandboxing can be revisited if the threat model changes. |
+| 9 | How should `mermaid.js` be bundled into the webview? | **esbuild from `node_modules`** | Single build step, one output file, offline-friendly. Avoids CDN (CSP issues, requires internet) and manual copy-to-assets. Bundle is ~800 KB gzipped, acceptable for a VS Code extension. |
+| 10 | How should graph-type folders be discovered and registered? | **Auto-scan `graph-types/`** for subdirectories containing `*.graph-map.yaml` | Zero configuration, deterministic. Third-party scan paths can be added later via VS Code extension API. |
+| 12 | Per-diagram-type CSS styling structure in graph-type folders? | **Optional `style.css` file** per graph-type folder | Injected as `<style>` block after base theme CSS. Real CSS file gives syntax highlighting and linting. `GraphType` gains optional `styleSheet?: string` field. |
+| 14 | How should the node editor form handle complex field types? | **Schema-driven recursive form renderer** | Full design in Section 10 — Node Editor subsection. Handles scalars, enums, arrays of objects, nested objects, and `additionalProperties`. |
+| 15 | Should `ConversionCallbacks` support async operations? | **`prepare()` method** on `ConversionCallbacks` | Async `prepare()` runs once before conversion. Emit callbacks remain synchronous, reading pre-computed data from `this`. Engine provides `convertWithPrepare()` async wrapper. See updated types in Section 3. |
+| 16 | How should undo/redo work for node editor edits? | **Single `WorkspaceEdit`** with all field changes | One `workspace.applyEdit()` call per "Apply" action produces one native undo step. Webview sends `edits: Array<{ path, value }>` in the `applyEdit` message. |
 
 ### Open Questions
 
-New design questions identified for resolution during implementation. Each
-includes a proposed answer with rationale.
-
-#### Q9 — How should `mermaid.js` be bundled into the webview?
-
-**Options:** (a) local bundle copied into webview assets, (b) CDN link,
-(c) bundled via esbuild from `node_modules`.
-
-**Context:** Webview has no Node.js access — scripts must be local files or CDN
-URLs. CDN requires internet; local is self-contained but increases extension
-size.
-
-**Proposal: (c) esbuild from `node_modules`.**
-The extension already needs an esbuild step to bundle the webview JavaScript
-(tree panel, node editor, postMessage glue). Adding mermaid.js to that same
-esbuild bundle is the simplest approach — one build step, one output file, and
-`mermaid` is declared as a regular npm dependency. The resulting bundle is
-~800 KB gzipped, which is acceptable for a VS Code extension. This avoids CDN
-(offline-hostile, CSP complications in webviews) and avoids a manual
-copy-to-assets step that is fragile and hard to version.
-
----
-
-#### Q10 — How should graph-type folders be discovered and registered?
-
-**Options:** (a) explicit list in `package.json` contributes, (b) auto-scan a
-well-known directory, (c) both.
-
-**Context:** `GraphTypeRegistry.registerFromFolder()` needs to know which
-folders to load. Auto-scan is convenient; explicit registration is predictable.
-
-**Proposal: (b) auto-scan of `graph-types/` directory, with override support.**
-On activation, scan the `graph-types/` directory for subdirectories that contain
-a `*.graph-map.yaml` file. Each match is registered via
-`registerFromFolder()`. This is predictable (well-known location, clear file
-marker) while requiring zero configuration. An explicit list is unnecessary
-because the built-in types ship inside that same directory. If third-party
-extension points are added later, they can contribute additional scan paths via
-VS Code extension API, but that is out of scope for Phase 1.
-
----
+Design questions requiring further discussion:
 
 #### Q11 — File pattern conflicts between graph types
 
-**Context:** `GraphTypeRegistry` uses a `filePatternMap` that overwrites on
-collision. Two types claiming `*.flow.yaml` would silently shadow each other.
+**Context:** `GraphTypeRegistry` uses a `filePatternMap` that maps file
+patterns to graph types. Two types claiming `*.flow.yaml` would silently shadow
+each other.
 
-**Proposal: first-registered wins + warning log.**
-When `register()` detects a pattern already claimed by another type, it logs a
-warning (`GraphType '${newId}' pattern '${pattern}' conflicts with '${existingId}', keeping existing`) and skips the conflicting pattern for the new
-type. The first-registered type retains ownership. Since graph-type folders are
-scanned alphabetically, the order is deterministic. This is simple, transparent,
-and avoids silent data loss. A priority number can be added later if needed.
+**Proposal: fail loudly with a visible error — not just a log message.**
+
+When `register()` detects a pattern already claimed by another type:
+
+1. **Reject the conflicting registration** — the conflicting graph type is
+   *not* registered at all (not just the overlapping pattern).
+2. **Show a VS Code error notification** — `vscode.window.showErrorMessage()`
+   with the message: `Graph type '${newId}' conflicts with '${existingId}' on
+   pattern '${pattern}'. The type '${newId}' was not loaded.`
+3. **Add to Problems pane** — create a diagnostic on the conflicting
+   `*.graph-map.yaml` file so it appears in the VS Code Problems panel.
+4. **Log full details** — output channel logging for debugging.
+
+The first-registered type retains ownership. Since graph-type folders are
+scanned alphabetically, the order is deterministic. This ensures developers
+notice conflicts immediately rather than getting mysterious wrong-diagram-type
+behavior.
+
+In `yaml-graph-core` (which has no VS Code dependency), the `register()` method
+throws a `GraphTypeConflictError`. The `yaml-graph-vscode` layer catches it and
+translates to the VS Code-specific error notifications described above.
+
+```typescript
+// In yaml-graph-core:
+export class GraphTypeConflictError extends Error {
+    constructor(
+        public readonly newTypeId: string,
+        public readonly existingTypeId: string,
+        public readonly pattern: string
+    ) {
+        super(
+            `Graph type '${newTypeId}' conflicts with '${existingTypeId}' ` +
+            `on pattern '${pattern}'`
+        );
+        this.name = 'GraphTypeConflictError';
+    }
+}
+
+// In GraphTypeRegistry.register():
+register(graphType: GraphType): void {
+    for (const pattern of graphType.filePatterns) {
+        const existing = this.filePatternMap.get(pattern);
+        if (existing) {
+            throw new GraphTypeConflictError(
+                graphType.id, existing.id, pattern
+            );
+        }
+    }
+    this.types.set(graphType.id, graphType);
+    for (const pattern of graphType.filePatterns) {
+        this.filePatternMap.set(pattern, graphType);
+    }
+}
+
+// In yaml-graph-vscode activation:
+try {
+    await registry.registerFromFolder(folderPath);
+} catch (e) {
+    if (e instanceof GraphTypeConflictError) {
+        vscode.window.showErrorMessage(e.message);
+        // Add diagnostic to Problems pane
+        diagnosticCollection.set(mappingFileUri, [
+            new vscode.Diagnostic(
+                new vscode.Range(0, 0, 0, 0),
+                e.message,
+                vscode.DiagnosticSeverity.Error
+            )
+        ]);
+    }
+}
+```
 
 ---
 
-#### Q12 — Per-diagram-type CSS styling structure
-
-**Context:** Q5 resolved that Mermaid styling should be CSS-based and
-adjustable per diagram type. The graph-type folder needs a convention.
-
-**Proposal: optional `style.css` file in the graph-type folder.**
-Convention:
-
-```
-graph-types/
-    flowchart/
-        flowchart.schema.json
-        flowchart.graph-map.yaml
-        style.css              ← optional
-```
-
-If `style.css` exists, the webview injects it as a `<style>` block after the
-base theme CSS. The CSS can use Mermaid's own CSS class selectors (`.node rect`,
-`.edgePath`, `.label`, etc.) and VS Code theme variables
-(`var(--vscode-editor-foreground)`). No CSS block inside the mapping YAML —
-keeping styling in a real CSS file gives proper syntax highlighting, linting, and
-separation of concerns. The `GraphType` interface gains an optional
-`styleSheet?: string` field populated by `MappingLoader` when the file is found.
-
----
-
-#### Q13 — Mapping format versioning
+#### Q13 — Mapping format versioning and version coexistence
 
 **Context:** As the mapping format evolves, older mapping files may become
-incompatible. A `version` field in `graph-map.yaml` could allow graceful
-migration.
+incompatible. Different graph-type authors may update at different speeds.
 
-**Proposal: add a required `version: 1` field to the `map` section from day one.**
-The mapping file already has a `map:` top-level key. Adding `version: 1` is
-trivial:
+**Proposal: required `version: 1` field + version coexistence strategy.**
+
+**Part A — Version field from day one.** The mapping file has a required
+`version` field in the `map:` section:
 
 ```yaml
 map:
@@ -2110,91 +2368,74 @@ map:
 ```
 
 `MappingLoader` checks the version and refuses to load files with an
-unrecognized version, emitting a clear error message. This costs nothing now and
-prevents painful migrations later. The `graph-map.schema.json` should include
-`version` as a required property with `const: 1` (updated when the format
-changes).
+unrecognized version, emitting a clear error message. The
+`graph-map.schema.json` includes `version` as a required property with
+`const: 1` (updated when the format changes).
+
+**Part B — Supporting two versions simultaneously.** When the mapping format
+evolves from v1 to v2, the system must support both during the transition
+period:
+
+1. **Version-specific loaders.** `MappingLoader` maintains an internal registry
+   of version normalizers:
+
+   ```typescript
+   private normalizers = new Map<number, MappingNormalizer>([
+       [1, new MappingNormalizerV1()],
+       [2, new MappingNormalizerV2()],
+   ]);
+   ```
+
+   Each normalizer converts the raw parsed YAML into the internal
+   `GraphMapping` TypeScript interface. The internal interface always reflects
+   the latest version. Older normalizers transform the v1 structure into the
+   current internal representation (upward migration).
+
+2. **Schema per version.** Each mapping format version has its own JSON Schema:
+   - `graph-map.v1.schema.json`
+   - `graph-map.v2.schema.json`
+
+   `MappingLoader` selects the schema based on the `version` field before
+   validation.
+
+3. **Graph types are not duplicated.** A single graph type folder contains one
+   `*.graph-map.yaml` file at one version. There is no need for two flowchart
+   folders — the normalizer handles the difference.
+
+4. **Deprecation cycle.** When v2 is released:
+   - Built-in graph types are updated to v2.
+   - v1 normalizer remains functional with a deprecation warning.
+   - After two minor releases, v1 support is removed.
+
+5. **Error on unknown version.** If the `version` field contains a value with
+   no registered normalizer, `MappingLoader` throws a typed error:
+
+   ```typescript
+   export class UnsupportedMappingVersionError extends Error {
+       constructor(
+           public readonly version: number,
+           public readonly supportedVersions: number[]
+       ) {
+           super(
+               `Mapping format version ${version} is not supported. ` +
+               `Supported: ${supportedVersions.join(', ')}`
+           );
+       }
+   }
+   ```
+
+This approach keeps the internal engine working against a single `GraphMapping`
+interface while gracefully handling mapping files at any supported version.
 
 ---
 
-#### Q14 — Node editor handling of complex field types
+### Further Open Questions
 
-**Context:** Current design shows simple `<input>`/`<select>` forms. Some YAML
-nodes may contain arrays (e.g., a list of tags) or nested objects (e.g.,
-metadata sub-fields).
+These are smaller items that emerged from the recent design expansion:
 
-**Proposal: support scalar fields only in Phase 1; show complex fields as
-read-only JSON.**
-The node editor panel renders `<input>` for strings/numbers, `<select>` for
-enum fields (derived from JSON Schema `enum`), and `<checkbox>` for booleans.
-For array or object fields, display the value as read-only formatted text (JSON
-or YAML snippet) with a "Edit in source" link that jumps to the corresponding
-line in the YAML text editor. This avoids building a recursive form editor
-upfront while still giving visibility into all fields. Phase 2 can add inline
-array editing (add/remove items) if the need arises.
-
----
-
-#### Q15 — Async `ConversionCallbacks`
-
-**Context:** Current `ConversionCallbacks` interface is synchronous. Some
-callbacks (e.g., checking if a linked file exists for navigation hints) might
-need async I/O.
-
-**Proposal: keep callbacks synchronous; pre-compute async data before
-conversion.**
-The conversion engine runs on every keystroke (debounced). Making it async adds
-complexity (cancellation, stale results, race conditions) for a marginal
-benefit. Instead, the VS Code host should pre-compute any async data (e.g., a
-`Set<string>` of existing file paths) and pass it into the callback closure via
-captured variables. The callback itself remains a pure synchronous function.
-Example:
-
-```typescript
-// Before conversion — async work done here
-const existingFiles = new Set(await workspace.findFiles('**/*.flow.yaml'));
-
-// Callback closure captures the pre-computed set
-const callbacks: ConversionCallbacks = {
-    onNodeEmit(id, node, lines) {
-        const target = String(node.fields['link'] ?? '');
-        if (existingFiles.has(target)) {
-            return [`click ${id} call navigateTo("${target}")`];
-        }
-        return [];
-    }
-};
-
-// Synchronous conversion
-const result = engine.convert(yamlText, graphType, callbacks);
-```
-
-This keeps the engine simple, testable, and fast.
-
----
-
-#### Q16 — Undo/redo for node editor edits
-
-**Context:** The editor uses `WorkspaceEdit` for text changes, which integrates
-with VS Code's undo stack. But a single node editor "Save" may touch multiple
-YAML fields, producing multiple `WorkspaceEdit` operations that should be undone
-as one step.
-
-**Proposal: use a single `WorkspaceEdit` with multiple text edits, applied in
-one `workspace.applyEdit()` call.**
-The `applyEdit` message from the webview sends all changed fields at once:
-`{ nodeId, changes: { label: 'New', type: 'decision' } }`. The extension host
-computes all YAML AST mutations, collects the resulting text replacements, and
-creates one `WorkspaceEdit` containing all of them. A single
-`workspace.applyEdit(edit)` call produces one undo step in VS Code's native
-undo stack. No custom undo manager needed.
-
-```typescript
-// In the applyEdit handler:
-const edit = new vscode.WorkspaceEdit();
-for (const [field, value] of Object.entries(changes)) {
-    const range = computeYamlRange(document, nodeId, field);
-    edit.replace(document.uri, range, serializeValue(value));
-}
-await vscode.workspace.applyEdit(edit); // single undo step
-```
+| # | Question | Context | Impact |
+|---|----------|---------|--------|
+| 17 | Should `FieldSchema` support `oneOf` / `anyOf` JSON Schema combinators? | Some schemas use `oneOf` for polymorphic fields (e.g., a field that is either a string or an object). The recursive renderer needs a strategy for these. | May need a "variant selector" widget in the node editor |
+| 18 | How should the node editor handle YAML anchors and aliases? | YAML anchors (`&anchor`) and aliases (`*anchor`) create shared references. Editing an aliased value should warn that it affects multiple nodes. | Affects YAML AST edit logic and user communication |
+| 19 | Should the schema-driven form support custom widget hints in the JSON Schema? | Graph type authors may want to hint at a specific widget (e.g., `"x-widget": "color-picker"` for a color string field). A `x-widget` extension keyword in the schema could enable this. | Nice-to-have for rich editors; can start with standard types only |
+| 20 | How should validation errors be displayed for nested fields in the node editor? | Schema validation returns paths like `/entities/user/attributes/0/type`. The node editor needs to map these back to form fields and show inline error indicators. | Affects form rendering and error propagation from extension host to webview |
