@@ -30,6 +30,7 @@ interface IssuePanelConfig {
     provider: string;
     repos: string[];
     additionalRepos: string[];
+    additionalRepoPrefix: string;
     statuses: string[];
     labels: string[];
 }
@@ -39,6 +40,7 @@ function loadPanelConfig(section: string): IssuePanelConfig {
         provider: 'github',
         repos: [],
         additionalRepos: [],
+        additionalRepoPrefix: '',
         statuses: ['open', 'in_triage', 'assigned', 'closed'],
         labels: ['quicklabel=Flaky', 'quicklabel=Regression', 'quicklabel=Blocked'],
     };
@@ -52,6 +54,7 @@ function loadPanelConfig(section: string): IssuePanelConfig {
             provider: typeof cfg.provider === 'string' ? cfg.provider : defaults.provider,
             repos: Array.isArray(cfg.repos) ? cfg.repos : [],
             additionalRepos: Array.isArray(cfg.additionalRepos) ? cfg.additionalRepos : [],
+            additionalRepoPrefix: typeof cfg.additionalRepoPrefix === 'string' ? cfg.additionalRepoPrefix : defaults.additionalRepoPrefix,
             statuses: Array.isArray(cfg.statuses) && cfg.statuses.length > 0 ? cfg.statuses : defaults.statuses,
             labels: Array.isArray(cfg.labels) ? cfg.labels : defaults.labels,
         };
@@ -185,8 +188,10 @@ export function getIssuesCss(): string {
     position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
     padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.3px; pointer-events: none;
-    background: #ffffff; color: #000000; border: 1px solid #cccccc;
+    background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); border: 1px solid var(--vscode-contrastBorder, transparent);
 }
+.icon-btn.active-indicator { background: var(--vscode-button-background); color: var(--vscode-button-foreground); opacity: 1; border-radius: 3px; }
+.icon-btn.active-indicator:hover { background: var(--vscode-button-hoverBackground); }
 
 /* ---- Picker overlays ---- */
 .picker-overlay {
@@ -199,6 +204,8 @@ export function getIssuesCss(): string {
 .picker-option:hover { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }
 .picker-option .check-box { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .picker-option .check-box .codicon { font-size: 14px; }
+.picker-section-header { padding: 6px 10px 3px 10px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); }
+.picker-section-header:first-child { border-top: none; }
 .picker-option .sort-number {
     display: inline-flex; align-items: center; justify-content: center;
     width: 18px; height: 18px; border-radius: 50%;
@@ -235,7 +242,7 @@ export function getIssuesCss(): string {
 }
 .issue-title-bar { flex: 1; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toolbar-icons { display: flex; gap: 2px; align-items: center; }
-.status-select { padding: 1px 4px; height: 20px; background: #ffffff; color: #000000; border: 1px solid #cccccc; border-radius: 3px; font-size: 11px; cursor: pointer; }
+.status-select { padding: 1px 4px; height: 20px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); border-radius: 3px; font-size: 11px; cursor: pointer; }
 
 /* Comment history */
 .comment-history { flex: 1; overflow-y: auto; padding: 8px; min-height: 40px; }
@@ -303,6 +310,8 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     var isNewIssueMode = false;
     var attachments = [];
     var activeFilters = ['open'];
+    var activeLabelFilters = {};
+    var labelSections = {};
     var sortFields = ['updatedAt'];
     var SORTABLE_FIELDS = [
         { key: 'number', label: 'Number' },
@@ -353,6 +362,16 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                 repos = msg.repos || [];
                 configStatuses = msg.statuses || ['open', 'in_triage', 'assigned', 'closed'];
                 configLabels = msg.labels || [];
+                labelSections = {};
+                for (var li = 0; li < configLabels.length; li++) {
+                    var eqi = configLabels[li].indexOf('=');
+                    if (eqi > 0) {
+                        var lkey = configLabels[li].substring(0, eqi);
+                        var lval = configLabels[li].substring(eqi + 1);
+                        if (!labelSections[lkey]) labelSections[lkey] = [];
+                        labelSections[lkey].push(lval);
+                    }
+                }
                 renderRepoDropdown();
                 break;
 
@@ -418,8 +437,25 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
 
     // ---- Filter & Sort ----
     function applyFilterAndSort() {
-        if (activeFilters.length === 0) { issues = allIssues.slice(); }
-        else { issues = allIssues.filter(function(iss) { return activeFilters.indexOf(getEffectiveStatus(iss)) >= 0; }); }
+        issues = allIssues.filter(function(iss) {
+            // Status section: empty = any
+            if (activeFilters.length > 0) {
+                if (activeFilters.indexOf(getEffectiveStatus(iss)) < 0) return false;
+            }
+            // Label sections: each section with selections must match
+            var lkeys = Object.keys(activeLabelFilters);
+            for (var lk = 0; lk < lkeys.length; lk++) {
+                var vals = activeLabelFilters[lkeys[lk]];
+                if (!vals || vals.length === 0) continue;
+                var matched = false;
+                var issLabels = iss.labels || [];
+                for (var lv = 0; lv < vals.length; lv++) {
+                    if (issLabels.indexOf(lkeys[lk] + '=' + vals[lv]) >= 0) { matched = true; break; }
+                }
+                if (!matched) return false;
+            }
+            return true;
+        });
         if (sortFields.length > 0) {
             issues.sort(function(a, b) {
                 for (var i = 0; i < sortFields.length; i++) {
@@ -505,27 +541,64 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     function renderFilterPicker() {
         var presentStatuses = {};
         for (var i = 0; i < allIssues.length; i++) { presentStatuses[getEffectiveStatus(allIssues[i])] = true; }
-        var html = '';
+        var html = '<div class="picker-section-header">Status</div>';
         for (var j = 0; j < configStatuses.length; j++) {
             var st = configStatuses[j];
             if (!presentStatuses[st]) continue;
             var checked = activeFilters.indexOf(st) >= 0;
-            html += '<div class="picker-option" data-status="' + escapeHtml(st) + '">';
+            html += '<div class="picker-option" data-section="status" data-value="' + escapeHtml(st) + '">';
             html += '<span class="check-box">' + (checked ? '<span class="codicon codicon-check"></span>' : '') + '</span>';
             html += '<span>' + escapeHtml(formatStatusLabel(st)) + '</span></div>';
+        }
+        var sectionKeys = Object.keys(labelSections);
+        for (var sk = 0; sk < sectionKeys.length; sk++) {
+            var secKey = sectionKeys[sk];
+            var secVals = labelSections[secKey];
+            html += '<div class="picker-section-header">' + escapeHtml(formatStatusLabel(secKey)) + '</div>';
+            var secFilters = activeLabelFilters[secKey] || [];
+            for (var sv = 0; sv < secVals.length; sv++) {
+                var lChecked = secFilters.indexOf(secVals[sv]) >= 0;
+                html += '<div class="picker-option" data-section="' + escapeHtml(secKey) + '" data-value="' + escapeHtml(secVals[sv]) + '">';
+                html += '<span class="check-box">' + (lChecked ? '<span class="codicon codicon-check"></span>' : '') + '</span>';
+                html += '<span>' + escapeHtml(secVals[sv]) + '</span></div>';
+            }
         }
         filterPicker.innerHTML = html;
         filterPicker.querySelectorAll('.picker-option').forEach(function(el) {
             el.addEventListener('click', function(e) {
                 e.stopPropagation();
-                var s = el.dataset.status;
-                var idx = activeFilters.indexOf(s);
-                if (idx >= 0) { activeFilters.splice(idx, 1); } else { activeFilters.push(s); }
+                var section = el.dataset.section;
+                var value = el.dataset.value;
+                if (section === 'status') {
+                    var idx = activeFilters.indexOf(value);
+                    if (idx >= 0) { activeFilters.splice(idx, 1); } else { activeFilters.push(value); }
+                } else {
+                    if (!activeLabelFilters[section]) activeLabelFilters[section] = [];
+                    var lidx = activeLabelFilters[section].indexOf(value);
+                    if (lidx >= 0) { activeLabelFilters[section].splice(lidx, 1); } else { activeLabelFilters[section].push(value); }
+                }
                 applyFilterAndSort();
                 renderIssueList();
                 renderFilterPicker();
+                updateFilterBtnState();
             });
         });
+    }
+    function updateFilterBtnState() {
+        var isDefault = (activeFilters.length === 1 && activeFilters[0] === 'open');
+        if (isDefault) {
+            var lkeys = Object.keys(activeLabelFilters);
+            for (var i = 0; i < lkeys.length; i++) {
+                if (activeLabelFilters[lkeys[i]] && activeLabelFilters[lkeys[i]].length > 0) { isDefault = false; break; }
+            }
+        } else { isDefault = false; }
+        if (isDefault) { filterBtn.classList.remove('active-indicator'); }
+        else { filterBtn.classList.add('active-indicator'); }
+    }
+    function updateSortBtnState() {
+        var isDefault = (sortFields.length === 1 && sortFields[0] === 'updatedAt');
+        if (isDefault) { sortBtn.classList.remove('active-indicator'); }
+        else { sortBtn.classList.add('active-indicator'); }
     }
 
     // ---- Sort picker ----
@@ -566,6 +639,7 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
         $e('sortOk').addEventListener('click', function(e) {
             e.stopPropagation(); sortFields = pendingSortFields.slice();
             sortPicker.style.display = 'none'; applyFilterAndSort(); renderIssueList();
+            updateSortBtnState();
         });
     }
 
@@ -681,7 +755,7 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
 
     // ---- Open in browser ----
     openBrowserBtn.addEventListener('click', function() {
-        if (selectedIssue && selectedIssue.url) { vscode.postMessage({ type: 'openExternal', url: selectedIssue.url }); }
+        if (selectedIssue && selectedIssue.url) { vscode.postMessage({ type: 'openExternal', url: selectedIssue.url, panelMode: _mode }); }
     });
 
     // ---- Labels picker ----
@@ -832,12 +906,19 @@ export async function handleIssuesPanelMessage(msg: any, webview: vscode.Webview
             const provider = getProvider();
             let repos: IssueProviderRepo[];
             if (includeWorkspaceRepos) {
-                repos = provider.discoverRepos();
-                const additional: IssueProviderRepo[] = config.additionalRepos.map(r => ({ id: r, displayName: r }));
-                const seen = new Set(repos.map(r => r.id));
-                for (const r of additional) { if (!seen.has(r.id)) { repos.push(r); seen.add(r.id); } }
+                const wsRepos = provider.discoverRepos();
+                wsRepos.sort((a, b) => a.displayName.localeCompare(b.displayName));
+                const prefix = config.additionalRepoPrefix;
+                const additional: IssueProviderRepo[] = config.additionalRepos.map(r => ({
+                    id: r,
+                    displayName: prefix ? `${prefix}: ${r}` : r,
+                }));
+                const additionalIds = new Set(config.additionalRepos);
+                const filtered = wsRepos.filter(r => !additionalIds.has(r.id));
+                repos = [...additional, ...filtered];
             } else {
                 repos = config.repos.map(r => ({ id: r, displayName: r }));
+                repos.sort((a, b) => a.displayName.localeCompare(b.displayName));
             }
             webview.postMessage({ type: 'issuesInit', repos, statuses: config.statuses, labels: config.labels, panelMode: mode });
             break;
