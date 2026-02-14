@@ -1,8 +1,23 @@
-# Tom VS Code Extension Project Guidelines - Index
+# Tom VS Code Extension Project Guidelines
 
-This folder contains project-specific guidelines for the `tom_vscode_extension` package.
+**Project:** `tom_vscode_extension`  
+**Type:** TypeScript Extension
 
-## Files
+## Global Guidelines
+
+| Document | Purpose |
+|----------|---------|
+| [Documentation Guidelines](/_copilot_guidelines/documentation_guidelines.md) | Where to place user docs vs development docs |
+
+## Dart Guidelines
+
+| Document | Purpose |
+|----------|---------|
+| [Coding Guidelines](/_copilot_guidelines/dart/coding_guidelines.md) | Naming conventions, error handling, patterns |
+| [Unit Tests](/_copilot_guidelines/dart/unit_tests.md) | Test structure, matchers, mocking patterns |
+| [Examples](/_copilot_guidelines/dart/examples.md) | Example file creation guidelines |
+
+## Project-Specific Guidelines
 
 | File | Description |
 |------|-------------|
@@ -38,7 +53,6 @@ These files in `doc/` provide additional user documentation:
 
 ## Quick Reference
 
-**Package:** `tom_vscode_extension`  
 **Purpose:** VS Code extension for Tom development
 
 **Key Components:**

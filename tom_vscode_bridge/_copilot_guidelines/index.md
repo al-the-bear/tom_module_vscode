@@ -1,8 +1,23 @@
-# Tom VS Code Bridge Project Guidelines - Index
+# Tom VS Code Bridge Project Guidelines
 
-This folder contains project-specific guidelines for the `tom_vscode_bridge` package.
+**Project:** `tom_vscode_bridge`  
+**Type:** Dart Package
 
-## Files
+## Global Guidelines
+
+| Document | Purpose |
+|----------|---------|
+| [Documentation Guidelines](/_copilot_guidelines/documentation_guidelines.md) | Where to place user docs vs development docs |
+
+## Dart Guidelines
+
+| Document | Purpose |
+|----------|---------|
+| [Coding Guidelines](/_copilot_guidelines/dart/coding_guidelines.md) | Naming conventions, error handling, patterns |
+| [Unit Tests](/_copilot_guidelines/dart/unit_tests.md) | Test structure, matchers, mocking patterns |
+| [Examples](/_copilot_guidelines/dart/examples.md) | Example file creation guidelines |
+
+## Project-Specific Guidelines
 
 | File | Description |
 |------|-------------|
@@ -11,7 +26,6 @@ This folder contains project-specific guidelines for the `tom_vscode_bridge` pac
 
 ## Quick Reference
 
-**Package:** `tom_vscode_bridge`  
 **Purpose:** Dart bridge for VS Code extension API
 
 **Key Components:**
