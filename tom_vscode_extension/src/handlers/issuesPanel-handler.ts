@@ -37,49 +37,130 @@ function parseStatusEntry(raw: string): ParsedStatus {
     return { name: raw, color: 'grey' };
 }
 
+interface ColumnDef {
+    key: string;
+    minWidth: number;
+    maxWidth: number;
+    required: boolean;
+}
+
+function parseColumnDef(raw: string): ColumnDef | null {
+    const m = raw.match(/^(\w+)\[(\d+),(\d+)\](\*)?$/);
+    if (!m) { return null; }
+    return { key: m[1], minWidth: parseInt(m[2], 10), maxWidth: parseInt(m[3], 10), required: !!m[4] };
+}
+
 interface IssuePanelConfig {
     provider: string;
-    repos: string[];
+    scanWorkspace: boolean;
+    allReposOption: boolean;
+    excludeRepos: string[];
     additionalRepos: string[];
     statuses: string[];
     statusColors: Record<string, string>;
+    defaultColumns: string[];
+    availableColumns: ColumnDef[];
     labels: string[];
+    configError: string | null;
 }
 
-function loadPanelConfig(section: string): IssuePanelConfig {
+function getPanelName(mode: PanelMode): string {
+    return mode === 'issues' ? 'issueKit' : 'testkit';
+}
+
+const DEFAULT_AVAILABLE_COLUMNS: ColumnDef[] = [
+    { key: 'statusDot', minWidth: 20, maxWidth: 20, required: true },
+    { key: 'id', minWidth: 32, maxWidth: 32, required: true },
+    { key: 'title', minWidth: 150, maxWidth: 400, required: true },
+    { key: 'repository', minWidth: 80, maxWidth: 150, required: false },
+    { key: 'repositoryOwner', minWidth: 80, maxWidth: 150, required: false },
+    { key: 'status', minWidth: 60, maxWidth: 120, required: false },
+    { key: 'author', minWidth: 60, maxWidth: 150, required: false },
+    { key: 'commentCount', minWidth: 20, maxWidth: 20, required: false },
+    { key: 'creationTimestamp', minWidth: 70, maxWidth: 70, required: false },
+    { key: 'updateTimestamp', minWidth: 70, maxWidth: 70, required: false },
+];
+
+function loadPanelConfig(mode: PanelMode): IssuePanelConfig {
+    const panelName = getPanelName(mode);
     const defaultStatuses = ['open[green]', 'in_triage[yellow]', 'assigned[red]', 'closed[grey]'];
     const defaults: IssuePanelConfig = {
         provider: 'github',
-        repos: [],
+        scanWorkspace: mode === 'issues',
+        allReposOption: mode === 'issues',
+        excludeRepos: [],
         additionalRepos: [],
         statuses: defaultStatuses.map(s => parseStatusEntry(s).name),
         statusColors: Object.fromEntries(defaultStatuses.map(s => { const p = parseStatusEntry(s); return [p.name, p.color]; })),
+        defaultColumns: ['author', 'commentCount', 'creationTimestamp', 'updateTimestamp'],
+        availableColumns: [...DEFAULT_AVAILABLE_COLUMNS],
         labels: ['quicklabel=Flaky', 'quicklabel=Regression', 'quicklabel=Blocked'],
+        configError: null,
     };
     try {
         const configPath = getConfigPath();
         if (!configPath || !fs.existsSync(configPath)) { return defaults; }
         const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        const cfg = raw[section];
+        const panels = raw['issuePanels'];
+        if (!panels || typeof panels !== 'object') { return defaults; }
+        const cfg = panels[panelName];
         if (!cfg) { return defaults; }
+
+        // Parse statuses
+        const rawStatuses: string[] = Array.isArray(cfg.statuses) && cfg.statuses.length > 0 ? cfg.statuses : defaultStatuses;
+        const statuses = rawStatuses.map((s: string) => parseStatusEntry(s).name);
+        const statusColors: Record<string, string> = {};
+        for (const s of rawStatuses) { const p = parseStatusEntry(s); statusColors[p.name] = p.color; }
+
+        // Parse availableColumns
+        let availableColumns: ColumnDef[] = [...DEFAULT_AVAILABLE_COLUMNS];
+        let configError: string | null = null;
+        if (Array.isArray(cfg.availableColumns) && cfg.availableColumns.length > 0) {
+            const parsed: ColumnDef[] = [];
+            for (let i = 0; i < cfg.availableColumns.length; i++) {
+                const col = parseColumnDef(cfg.availableColumns[i]);
+                if (!col) {
+                    configError = `Invalid column definition at index ${i}: "${cfg.availableColumns[i]}". ` +
+                        `Expected format: "columnName[minWidth,maxWidth]" or "columnName[minWidth,maxWidth]*" for required columns. ` +
+                        `Section: issuePanels.${panelName}.availableColumns`;
+                    break;
+                }
+                parsed.push(col);
+            }
+            if (!configError) { availableColumns = parsed; }
+        }
+
+        // Parse defaultColumns
+        let defaultCols: string[] = defaults.defaultColumns;
+        if (typeof cfg.defaultColumns === 'string' && cfg.defaultColumns.trim().length > 0) {
+            defaultCols = cfg.defaultColumns.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+            // Validate that each default column exists in available and is not required
+            const availableKeys = new Set(availableColumns.map(c => c.key));
+            for (const dc of defaultCols) {
+                if (!availableKeys.has(dc)) {
+                    configError = `defaultColumns references unknown column "${dc}". ` +
+                        `Available columns: ${availableColumns.map(c => c.key).join(', ')}. ` +
+                        `Section: issuePanels.${panelName}.defaultColumns`;
+                    break;
+                }
+            }
+        }
+
         return {
             provider: typeof cfg.provider === 'string' ? cfg.provider : defaults.provider,
-            repos: Array.isArray(cfg.repos) ? cfg.repos : [],
+            scanWorkspace: typeof cfg.scanWorkspace === 'boolean' ? cfg.scanWorkspace : defaults.scanWorkspace,
+            allReposOption: typeof cfg.allReposOption === 'boolean' ? cfg.allReposOption : defaults.allReposOption,
+            excludeRepos: Array.isArray(cfg.excludeRepos) ? cfg.excludeRepos : [],
             additionalRepos: Array.isArray(cfg.additionalRepos) ? cfg.additionalRepos : [],
-            statuses: (() => {
-                const raw = Array.isArray(cfg.statuses) && cfg.statuses.length > 0 ? cfg.statuses : defaultStatuses;
-                return raw.map((s: string) => parseStatusEntry(s).name);
-            })(),
-            statusColors: (() => {
-                const raw = Array.isArray(cfg.statuses) && cfg.statuses.length > 0 ? cfg.statuses : defaultStatuses;
-                const map: Record<string, string> = {};
-                for (const s of raw) { const p = parseStatusEntry(s); map[p.name] = p.color; }
-                return map;
-            })(),
+            statuses,
+            statusColors,
+            defaultColumns: defaultCols,
+            availableColumns,
             labels: Array.isArray(cfg.labels) ? cfg.labels : defaults.labels,
+            configError,
         };
-    } catch {
-        return defaults;
+    } catch (e: any) {
+        return { ...defaults, configError: `Failed to parse config: ${e.message}` };
     }
 }
 
@@ -188,37 +269,61 @@ export function getIssuesCss(): string {
 .issue-list {
     flex: 1;
     overflow-y: auto;
+    position: relative;
 }
-.issue-item {
+/* Table rows */
+.issue-row {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 6px;
     cursor: pointer;
     border-bottom: 1px solid var(--vscode-panel-border);
     font-size: 12px;
     line-height: 1.4;
     overflow: hidden;
 }
-.issue-item:hover { background: var(--vscode-list-hoverBackground); }
-.issue-item.selected {
+.issue-row:hover { background: var(--vscode-list-hoverBackground); }
+.issue-row.selected {
     background: var(--vscode-list-activeSelectionBackground);
     color: var(--vscode-list-activeSelectionForeground);
 }
-.issue-number { color: var(--vscode-descriptionForeground); font-size: 11px; min-width: 32px; flex-shrink: 0; }
-.issue-item-title { width: 300px; min-width: 60px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
-.issue-state-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.issue-col { color: var(--vscode-descriptionForeground); font-size: 11px; white-space: nowrap; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; padding-left: 4px; }
-.issue-col.col-author { max-width: 80px; }
-.issue-col.col-labels { max-width: 100px; }
-.issue-col.col-commentCount { max-width: 30px; text-align: center; }
-.issue-col.col-createdAt { max-width: 80px; }
-.issue-col.col-updatedAt { max-width: 80px; }
-.issue-status-stamp {
-    padding: 1px 5px; border-radius: 8px; font-size: 9px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.3px; pointer-events: none; flex-shrink: 0;
-    background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); border: 1px solid var(--vscode-contrastBorder, transparent);
+/* Table cells */
+.issue-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 3px 4px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    flex-grow: 0;
+    font-size: 11px;
+    border-right: 1px solid var(--vscode-panel-border);
 }
+.issue-cell:last-child { border-right: none; }
+.issue-cell.cell-statusDot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.issue-cell.cell-id { color: var(--vscode-descriptionForeground); }
+.issue-cell.cell-title { font-size: 12px; }
+.issue-cell.cell-commentCount { text-align: center; }
+.issue-cell.cell-creationTimestamp,
+.issue-cell.cell-updateTimestamp { color: var(--vscode-descriptionForeground); font-size: 10px; }
+.issue-cell.cell-author,
+.issue-cell.cell-repository,
+.issue-cell.cell-repositoryOwner,
+.issue-cell.cell-status,
+.issue-cell.cell-labels { color: var(--vscode-descriptionForeground); }
+.issue-state-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+/* Column resize handles */
+.col-resize-handles { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 10; }
+.col-resize-handle { position: absolute; top: 0; bottom: 0; width: 5px; cursor: col-resize; pointer-events: auto; background: transparent; }
+.col-resize-handle:hover, .col-resize-handle.dragging { background: var(--vscode-focusBorder); }
+/* Config error */
+.config-error { padding: 16px; font-size: 12px; color: var(--vscode-errorForeground); }
+.config-error h3 { margin: 0 0 8px 0; font-size: 13px; }
+.config-error code { background: var(--vscode-textCodeBlock-background); padding: 1px 4px; border-radius: 3px; font-family: var(--vscode-editor-font-family); font-size: 11px; }
+.config-error a { color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: underline; }
 .icon-btn.active-indicator { background: var(--vscode-button-background); color: var(--vscode-button-foreground); opacity: 1; border-radius: 3px; }
 .icon-btn.active-indicator:hover { background: var(--vscode-button-hoverBackground); }
 .column-picker-overlay { position: fixed; left: 0; top: 0; }
@@ -345,15 +450,21 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     var activeLabelFilters = {};
     var labelSections = {};
     var sortFields = [];
-    var COLUMN_ORDER = ['author', 'labels', 'commentCount', 'createdAt', 'updatedAt'];
-    var AVAILABLE_COLUMNS = [
-        { key: 'author', label: 'Author' },
-        { key: 'labels', label: 'Labels' },
-        { key: 'commentCount', label: 'Comments' },
-        { key: 'createdAt', label: 'Created' },
-        { key: 'updatedAt', label: 'Updated' }
-    ];
-    var visibleColumns = ['author', 'labels', 'commentCount', 'createdAt', 'updatedAt'];
+    // Column system
+    var columnDefs = [];
+    var visibleColumns = [];
+    var manualWidths = {};
+    var allReposOption = true;
+    var configErrorMsg = null;
+    var configSectionName = '';
+    var configFilePathStr = '';
+    var GROWTH_PRIORITY = ['title', 'author', 'repository', 'status', 'repositoryOwner'];
+    var COLUMN_LABELS = {
+        statusDot: '', id: 'ID', title: 'Title', repository: 'Repository',
+        repositoryOwner: 'Owner', status: 'Status', author: 'Author',
+        commentCount: '#', creationTimestamp: 'Created', updateTimestamp: 'Updated',
+        labels: 'Labels'
+    };
     var SORTABLE_FIELDS = [
         { key: 'number', label: 'Number' },
         { key: 'title', label: 'Title' },
@@ -404,6 +515,19 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                 configStatuses = msg.statuses || ['open', 'in_triage', 'assigned', 'closed'];
                 statusColors = msg.statusColors || {};
                 configLabels = msg.labels || [];
+                columnDefs = msg.columnDefs || [];
+                allReposOption = msg.allReposOption !== false;
+                configErrorMsg = msg.configError || null;
+                configSectionName = msg.configSection || '';
+                configFilePathStr = msg.configFilePath || '';
+                // Initialize visibleColumns from required + defaultColumns
+                var defCols = msg.defaultColumns || [];
+                visibleColumns = [];
+                for (var ci = 0; ci < columnDefs.length; ci++) {
+                    if (columnDefs[ci].required || defCols.indexOf(columnDefs[ci].key) >= 0) {
+                        visibleColumns.push(columnDefs[ci].key);
+                    }
+                }
                 labelSections = {};
                 for (var li = 0; li < configLabels.length; li++) {
                     var eqi = configLabels[li].indexOf('=');
@@ -414,7 +538,9 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                         labelSections[lkey].push(lval);
                     }
                 }
-                renderRepoDropdown();
+                manualWidths = {};
+                if (configErrorMsg) { showConfigError(); }
+                else { renderRepoDropdown(); }
                 break;
 
             case 'issues':
@@ -526,17 +652,19 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     // ---- Repo dropdown ----
     function renderRepoDropdown() {
         var html = '<option value="">-- Select Repo --</option>';
-        html += '<option value="__all__">All Repos</option>';
+        if (allReposOption) { html += '<option value="__all__">All Repos</option>'; }
         for (var i = 0; i < repos.length; i++) {
             html += '<option value="' + escapeHtml(repos[i].id) + '">' + escapeHtml(repos[i].displayName) + '</option>';
         }
         repoSelect.innerHTML = html;
-        // Auto-select: first additional repo (marked with ':') or 'All Repos' for issues, none for tests
+        // Preselect: first additional repo (has ': ' in name), else All Repos if available, else first repo
         var preselected = '';
         for (var j = 0; j < repos.length; j++) {
             if (repos[j].displayName.indexOf(': ') >= 0) { preselected = repos[j].id; break; }
         }
-        if (!preselected && _mode === 'issues' && repos.length > 0) { preselected = '__all__'; }
+        if (!preselected && repos.length > 0) {
+            preselected = allReposOption ? '__all__' : repos[0].id;
+        }
         if (preselected) {
             repoSelect.value = preselected;
             repoSelect.dispatchEvent(new Event('change'));
@@ -695,77 +823,179 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
         });
     }
 
-    // ---- Issue list ----
+    // ---- Issue list - Column system ----
     function getStatusColor(status) {
         return statusColors[status] || 'grey';
     }
-    function formatColumnValue(issue, col) {
-        switch (col) {
+    function getColumnValue(issue, colKey) {
+        var effStatus = getEffectiveStatus(issue);
+        switch (colKey) {
+            case 'statusDot': return { type: 'dot', color: getStatusColor(effStatus) };
+            case 'id': return '#' + issue.number;
+            case 'title': return issue.title || '';
+            case 'repository': {
+                var rid = issue._repoId || '';
+                var slash = rid.lastIndexOf('/');
+                return slash >= 0 ? rid.substring(slash + 1) : rid;
+            }
+            case 'repositoryOwner': {
+                var rid2 = issue._repoId || '';
+                var slash2 = rid2.indexOf('/');
+                return slash2 >= 0 ? rid2.substring(0, slash2) : '';
+            }
+            case 'status': return formatStatusLabel(effStatus);
             case 'author': return issue.author ? issue.author.name : '';
-            case 'createdAt': return 'C: ' + formatDateShort(issue.createdAt);
-            case 'updatedAt': return 'U: ' + formatDateShort(issue.updatedAt);
             case 'commentCount': return (issue.commentCount || 0) + '';
-            case 'labels':
+            case 'creationTimestamp': return formatDateYYMMDD(issue.createdAt);
+            case 'updateTimestamp': return formatDateYYMMDD(issue.updatedAt);
+            case 'labels': {
                 var lbls = (issue.labels || []).map(function(l) {
                     var eq = l.indexOf('=');
                     return eq > 0 ? l.substring(eq + 1) : l;
                 });
                 return lbls.join(', ');
+            }
             default: return '';
         }
     }
-    function getOrderedVisibleColumns() {
-        return COLUMN_ORDER.filter(function(k) { return visibleColumns.indexOf(k) >= 0; });
+    function getVisibleColumnDefs() {
+        return columnDefs.filter(function(cd) { return visibleColumns.indexOf(cd.key) >= 0; });
+    }
+    function calculateColumnWidths(containerWidth) {
+        var visCols = getVisibleColumnDefs();
+        var totalBorders = Math.max(0, visCols.length - 1);
+        var available = containerWidth - totalBorders;
+        var widths = {};
+        var remaining = available;
+        for (var i = 0; i < visCols.length; i++) {
+            var w = manualWidths[visCols[i].key] || visCols[i].minWidth;
+            widths[visCols[i].key] = w;
+            remaining -= w;
+        }
+        if (remaining > 0) {
+            for (var gi = 0; gi < GROWTH_PRIORITY.length && remaining > 0; gi++) {
+                var gk = GROWTH_PRIORITY[gi];
+                var col = null;
+                for (var ci = 0; ci < visCols.length; ci++) {
+                    if (visCols[ci].key === gk) { col = visCols[ci]; break; }
+                }
+                if (!col || manualWidths[gk]) continue;
+                var canGrow = col.maxWidth - widths[gk];
+                if (canGrow <= 0) continue;
+                var give = Math.min(canGrow, remaining);
+                widths[gk] += give;
+                remaining -= give;
+            }
+        }
+        return widths;
     }
     function renderIssueList() {
+        if (configErrorMsg) { showConfigError(); return; }
         if (issues.length === 0) { issueListEl.innerHTML = '<div class="empty-state">No issues found</div>'; return; }
+        var cw = issueListEl.clientWidth || 280;
+        var widths = calculateColumnWidths(cw);
+        var visCols = getVisibleColumnDefs();
         var html = '';
         for (var i = 0; i < issues.length; i++) {
             var issue = issues[i];
             var sel = selectedIssue && selectedIssue.id === issue.id ? ' selected' : '';
-            var effStatus = getEffectiveStatus(issue);
-            var dotColor = getStatusColor(effStatus);
-            html += '<div class="issue-item' + sel + '" data-idx="' + i + '">';
-            html += '<span class="issue-state-dot" style="background:' + escapeHtml(dotColor) + ';"></span>';
-            html += '<span class="issue-number">#' + issue.number + '</span>';
-            html += '<span class="issue-item-title">' + escapeHtml(issue.title) + '</span>';
-            var ordCols = getOrderedVisibleColumns();
-            for (var ci = 0; ci < ordCols.length; ci++) {
-                var colKey = ordCols[ci];
-                var cv = formatColumnValue(issue, colKey);
-                var colMeta = AVAILABLE_COLUMNS.filter(function(c){return c.key===colKey;})[0];
-                html += '<span class="issue-col col-' + colKey + '" title="' + escapeHtml(colMeta ? colMeta.label : colKey) + '">' + escapeHtml(cv) + '</span>';
+            html += '<div class="issue-row' + sel + '" data-idx="' + i + '">';
+            for (var ci = 0; ci < visCols.length; ci++) {
+                var cd = visCols[ci];
+                var w = widths[cd.key] || cd.minWidth;
+                var val = getColumnValue(issue, cd.key);
+                if (cd.key === 'statusDot') {
+                    html += '<span class="issue-cell cell-statusDot" style="width:' + w + 'px"><span class="issue-state-dot" style="background:' + escapeHtml(val.color) + ';"></span></span>';
+                } else {
+                    var text = typeof val === 'string' ? val : '';
+                    var label = COLUMN_LABELS[cd.key] || cd.key;
+                    html += '<span class="issue-cell cell-' + cd.key + '" style="width:' + w + 'px" title="' + escapeHtml(label + ': ' + text) + '">' + escapeHtml(text) + '</span>';
+                }
             }
-            if (effStatus !== 'open') { html += '<span class="issue-status-stamp">' + escapeHtml(formatStatusLabel(effStatus)) + '</span>'; }
             html += '</div>';
         }
+        html += '<div class="col-resize-handles">';
+        var cumX = 0;
+        for (var ri = 0; ri < visCols.length - 1; ri++) {
+            cumX += (widths[visCols[ri].key] || visCols[ri].minWidth) + 1;
+            html += '<div class="col-resize-handle" data-col-idx="' + ri + '" style="left:' + (cumX - 3) + 'px"></div>';
+        }
+        html += '</div>';
         issueListEl.innerHTML = html;
-        issueListEl.querySelectorAll('.issue-item').forEach(function(el) {
+        issueListEl.querySelectorAll('.issue-row').forEach(function(el) {
             el.addEventListener('click', function() { selectIssue(issues[parseInt(el.dataset.idx)]); });
             el.addEventListener('contextmenu', function(e) { e.preventDefault(); showColumnPicker(e.clientX, e.clientY); });
         });
+        setupResizeHandles();
     }
+    function setupResizeHandles() {
+        issueListEl.querySelectorAll('.col-resize-handle').forEach(function(handle) {
+            handle.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var colIdx = parseInt(handle.dataset.colIdx);
+                var visCols = getVisibleColumnDefs();
+                if (colIdx >= visCols.length) return;
+                var colKey = visCols[colIdx].key;
+                var startX = e.clientX;
+                var startW = manualWidths[colKey] || visCols[colIdx].minWidth;
+                var firstRow = issueListEl.querySelector('.issue-row');
+                if (firstRow) {
+                    var cells = firstRow.querySelectorAll('.issue-cell');
+                    if (cells[colIdx]) startW = cells[colIdx].offsetWidth;
+                }
+                handle.classList.add('dragging');
+                function onMove(ev) {
+                    var dx = ev.clientX - startX;
+                    var newW = Math.max(visCols[colIdx].minWidth, Math.min(startW + dx, visCols[colIdx].maxWidth));
+                    manualWidths[colKey] = newW;
+                    renderIssueList();
+                }
+                function onUp() {
+                    handle.classList.remove('dragging');
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                }
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+        });
+    }
+    // Reset manual widths on container resize
+    var _resizeTimer = null;
+    var _lastListWidth = 0;
+    (new ResizeObserver(function(entries) {
+        var w = entries[0].contentRect.width;
+        if (Math.abs(w - _lastListWidth) > 2) {
+            _lastListWidth = w;
+            if (Object.keys(manualWidths).length > 0) {
+                manualWidths = {};
+                clearTimeout(_resizeTimer);
+                _resizeTimer = setTimeout(function() { renderIssueList(); }, 50);
+            }
+        }
+    })).observe(issueListEl);
     function showColumnPicker(x, y) {
         var picker = $e('columnPicker');
         if (!picker) return;
+        var optionalCols = columnDefs.filter(function(cd) { return !cd.required; });
         var html = '<div class="picker-section-header">Columns</div>';
-        for (var i = 0; i < AVAILABLE_COLUMNS.length; i++) {
-            var col = AVAILABLE_COLUMNS[i];
+        for (var i = 0; i < optionalCols.length; i++) {
+            var col = optionalCols[i];
             var checked = visibleColumns.indexOf(col.key) >= 0;
+            var label = COLUMN_LABELS[col.key] || col.key;
             html += '<div class="picker-option" data-col="' + col.key + '">';
             html += '<span class="check-box">' + (checked ? '<span class="codicon codicon-check"></span>' : '') + '</span>';
-            html += '<span>' + escapeHtml(col.label) + '</span></div>';
+            html += '<span>' + escapeHtml(label) + '</span></div>';
         }
         picker.innerHTML = html;
         picker.style.display = '';
         picker.style.left = x + 'px';
         picker.style.top = y + 'px';
-        // Adjust if picking off-screen
         requestAnimationFrame(function() {
             var rect = picker.getBoundingClientRect();
-            var parent = picker.offsetParent ? picker.offsetParent.getBoundingClientRect() : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
-            if (rect.right > parent.right) picker.style.left = Math.max(0, x - rect.width) + 'px';
-            if (rect.bottom > parent.bottom) picker.style.top = Math.max(0, y - rect.height) + 'px';
+            if (rect.right > window.innerWidth) picker.style.left = Math.max(0, x - rect.width) + 'px';
+            if (rect.bottom > window.innerHeight) picker.style.top = Math.max(0, y - rect.height) + 'px';
         });
         picker.querySelectorAll('.picker-option').forEach(function(el) {
             el.addEventListener('click', function(e) {
@@ -773,10 +1003,30 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                 var colKey = el.dataset.col;
                 var idx = visibleColumns.indexOf(colKey);
                 if (idx >= 0) { visibleColumns.splice(idx, 1); } else { visibleColumns.push(colKey); }
+                manualWidths = {};
                 showColumnPicker(x, y);
                 renderIssueList();
             });
         });
+    }
+    function showConfigError() {
+        var html = '<div class="config-error">';
+        html += '<h3>Configuration Error</h3>';
+        html += '<p>' + escapeHtml(configErrorMsg) + '</p>';
+        html += '<p>Fix the configuration in section <code>' + escapeHtml(configSectionName) + '</code></p>';
+        if (configFilePathStr) {
+            html += '<p>Config file: <a class="config-file-link" href="#">' + escapeHtml(configFilePathStr) + '</a></p>';
+        }
+        html += '<p style="margin-top:8px;font-size:11px;color:var(--vscode-descriptionForeground)">Column format: <code>columnName[minWidth,maxWidth]</code> or <code>columnName[minWidth,maxWidth]*</code> for required columns.</p>';
+        html += '</div>';
+        issueListEl.innerHTML = html;
+        var link = issueListEl.querySelector('.config-file-link');
+        if (link) {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                vscode.postMessage({ type: 'openConfigFile', panelMode: _mode });
+            });
+        }
     }
     // Close column picker on outside click
     document.addEventListener('click', function() {
@@ -994,7 +1244,21 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     // ---- Utility ----
     function escapeHtml(str) { if (!str) return ''; return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
     function formatDate(iso) { try { var d = new Date(iso); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch(e) { return iso; } }
-    function formatDateShort(iso) { try { var d = new Date(iso); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch(e) { return iso; } }
+    function formatDateYYMMDD(iso) {
+        if (!iso) return '';
+        try {
+            var d = new Date(iso);
+            var yy = String(d.getFullYear()).substring(2);
+            var mm = String(d.getMonth() + 1).padStart(2, '0');
+            var dd = String(d.getDate()).padStart(2, '0');
+            var result = yy + mm + dd;
+            var hh = d.getHours(); var min = d.getMinutes();
+            if (hh !== 0 || min !== 0 || d.getSeconds() !== 0) {
+                result += ' ' + String(hh).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+            }
+            return result;
+        } catch(e) { return iso; }
+    }
     function formatStatusLabel(st) { return st.replace(/_/g, ' ').replace(/\\b[a-z]/g, function(c) { return c.toUpperCase(); }); }
     function showError(msg) {
         var div = document.createElement('div'); div.className = 'empty-state'; div.style.color = 'var(--vscode-errorForeground)'; div.textContent = msg;
@@ -1012,9 +1276,7 @@ export async function handleIssuesPanelMessage(msg: any, webview: vscode.Webview
     const mode: PanelMode = msg.panelMode;
     if (!mode) { return; }
 
-    const configSection = mode === 'issues' ? 'tomIssues' : 'tomTests';
-    const includeWorkspaceRepos = mode === 'issues';
-    const config = loadPanelConfig(configSection);
+    const config = loadPanelConfig(mode);
 
     function getProvider(): IssueProvider {
         const provider = getIssueProvider(config.provider);
@@ -1024,29 +1286,48 @@ export async function handleIssuesPanelMessage(msg: any, webview: vscode.Webview
 
     switch (msg.type) {
         case 'issuesReady': {
+            const configFilePath = getConfigPath() || '';
+            const panelName = getPanelName(mode);
+            // If config has errors, send them to client
+            if (config.configError) {
+                webview.postMessage({
+                    type: 'issuesInit', repos: [], statuses: config.statuses, statusColors: config.statusColors,
+                    labels: config.labels, panelMode: mode,
+                    columnDefs: config.availableColumns, defaultColumns: config.defaultColumns,
+                    allReposOption: config.allReposOption,
+                    configError: config.configError, configSection: `issuePanels.${panelName}`, configFilePath,
+                });
+                break;
+            }
             const provider = getProvider();
             let repos: IssueProviderRepo[];
-            if (includeWorkspaceRepos) {
+            const excludeSet = new Set(config.excludeRepos);
+            // Parse additionalRepos: "Prefix:owner/repo" or just "owner/repo"
+            const additional: IssueProviderRepo[] = config.additionalRepos.map(r => {
+                const colonIdx = r.indexOf(':');
+                if (colonIdx > 0) {
+                    const prefix = r.substring(0, colonIdx);
+                    const repoId = r.substring(colonIdx + 1);
+                    return { id: repoId, displayName: `${prefix}: ${repoId}` };
+                }
+                return { id: r, displayName: r };
+            });
+            const additionalIds = new Set(additional.map(a => a.id));
+            if (config.scanWorkspace) {
                 const wsRepos = provider.discoverRepos();
                 wsRepos.sort((a, b) => a.displayName.localeCompare(b.displayName));
-                // additionalRepos format: "Prefix:owner/repo" or just "owner/repo"
-                const additional: IssueProviderRepo[] = config.additionalRepos.map(r => {
-                    const colonIdx = r.indexOf(':');
-                    if (colonIdx > 0) {
-                        const prefix = r.substring(0, colonIdx);
-                        const repoId = r.substring(colonIdx + 1);
-                        return { id: repoId, displayName: `${prefix}: ${repoId}` };
-                    }
-                    return { id: r, displayName: r };
-                });
-                const additionalIds = new Set(additional.map(a => a.id));
-                const filtered = wsRepos.filter(r => !additionalIds.has(r.id));
+                const filtered = wsRepos.filter(r => !additionalIds.has(r.id) && !excludeSet.has(r.id));
                 repos = [...additional, ...filtered];
             } else {
-                repos = config.repos.map(r => ({ id: r, displayName: r }));
-                repos.sort((a, b) => a.displayName.localeCompare(b.displayName));
+                repos = [...additional];
             }
-            webview.postMessage({ type: 'issuesInit', repos, statuses: config.statuses, statusColors: config.statusColors, labels: config.labels, panelMode: mode });
+            webview.postMessage({
+                type: 'issuesInit', repos, statuses: config.statuses, statusColors: config.statusColors,
+                labels: config.labels, panelMode: mode,
+                columnDefs: config.availableColumns, defaultColumns: config.defaultColumns,
+                allReposOption: config.allReposOption,
+                configError: null, configSection: `issuePanels.${panelName}`, configFilePath,
+            });
             break;
         }
 
@@ -1123,6 +1404,15 @@ export async function handleIssuesPanelMessage(msg: any, webview: vscode.Webview
 
         case 'openExternal': {
             if (msg.url) { vscode.env.openExternal(vscode.Uri.parse(msg.url)); }
+            break;
+        }
+
+        case 'openConfigFile': {
+            const filePath = getConfigPath();
+            if (filePath) {
+                const uri = vscode.Uri.file(filePath);
+                vscode.window.showTextDocument(uri);
+            }
             break;
         }
 
