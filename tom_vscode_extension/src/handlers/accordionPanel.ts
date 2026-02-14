@@ -126,6 +126,7 @@ var vscode = acquireVsCodeApi();
 var sectionsConfig = ${sectionsJson};
 var sectionContents = ${contentsJson};
 var state = { expanded: ['${defaultExpanded}'], pinned: [] };
+var _rendered = false;
 
 function loadState() {
     try {
@@ -169,31 +170,85 @@ function getSectionContent(id) {
     return sectionContents[id] || '<div class="sample-content">Unknown section</div>';
 }
 
+/**
+ * Render the accordion.
+ * First call: builds full DOM via innerHTML (sections + content).
+ * Subsequent calls: only toggles expanded/collapsed classes, updates pin
+ * buttons and resize handles — section content DOM is preserved.
+ */
 function render() {
     var container = document.getElementById('container');
-    var html = '';
-    function findExpandedLeft(i) { for (var j = i - 1; j >= 0; j--) { if (isExpanded(sectionsConfig[j].id)) return sectionsConfig[j].id; } return null; }
-    function findExpandedRight(i) { for (var j = i + 1; j < sectionsConfig.length; j++) { if (isExpanded(sectionsConfig[j].id)) return sectionsConfig[j].id; } return null; }
-    sectionsConfig.forEach(function(sec, idx) {
-        var exp = isExpanded(sec.id);
-        var pin = isPinned(sec.id);
-        if (exp) { var leftExp = findExpandedLeft(idx); if (leftExp) html += '<div class="resize-handle" data-resize-left="' + leftExp + '" data-resize-right="' + sec.id + '"></div>'; }
-        else { var leftExp = findExpandedLeft(idx); var rightExp = findExpandedRight(idx); if (leftExp && rightExp) html += '<div class="resize-handle" data-resize-left="' + leftExp + '" data-resize-right="' + rightExp + '"></div>'; }
-        html += '<div class="accordion-section ' + (exp ? 'expanded' : 'collapsed') + '" data-section="' + sec.id + '">';
-        html += '<div class="header-expanded" data-toggle="' + sec.id + '"><span class="arrow"><span class="codicon codicon-chevron-right"></span></span><span class="icon">' + sec.icon + '</span><span class="title">' + sec.title + '</span><button class="pin-btn ' + (pin ? 'pinned' : '') + '" data-pin="' + sec.id + '" title="' + (pin ? 'Unpin' : 'Pin') + '"><span class="codicon ' + (pin ? 'codicon-pinned' : 'codicon-pin') + '"></span></button></div>';
-        html += '<div class="header-collapsed" data-toggle="' + sec.id + '"><span class="arrow"><span class="codicon codicon-chevron-down"></span></span><span class="icon">' + sec.icon + '</span><span class="title">' + sec.title + '</span></div>';
-        html += '<div class="section-content">' + getSectionContent(sec.id) + '</div></div>';
-    });
-    container.innerHTML = html;
-    attachEventListeners();
-    if (typeof onRenderComplete === 'function') onRenderComplete();
+    if (!_rendered) {
+        // --- Initial render: build full DOM ---
+        var html = '';
+        sectionsConfig.forEach(function(sec, idx) {
+            var exp = isExpanded(sec.id);
+            var pin = isPinned(sec.id);
+            html += '<div class="accordion-section ' + (exp ? 'expanded' : 'collapsed') + '" data-section="' + sec.id + '">';
+            html += '<div class="header-expanded" data-toggle="' + sec.id + '"><span class="arrow"><span class="codicon codicon-chevron-right"></span></span><span class="icon">' + sec.icon + '</span><span class="title">' + sec.title + '</span><button class="pin-btn ' + (pin ? 'pinned' : '') + '" data-pin="' + sec.id + '" title="' + (pin ? 'Unpin' : 'Pin') + '"><span class="codicon ' + (pin ? 'codicon-pinned' : 'codicon-pin') + '"></span></button></div>';
+            html += '<div class="header-collapsed" data-toggle="' + sec.id + '"><span class="arrow"><span class="codicon codicon-chevron-down"></span></span><span class="icon">' + sec.icon + '</span><span class="title">' + sec.title + '</span></div>';
+            html += '<div class="section-content">' + getSectionContent(sec.id) + '</div></div>';
+        });
+        container.innerHTML = html;
+        _rendered = true;
+        attachEventListeners();
+        updateResizeHandles();
+        if (typeof onRenderComplete === 'function') onRenderComplete();
+    } else {
+        // --- Subsequent renders: preserve DOM, toggle classes only ---
+        sectionsConfig.forEach(function(sec) {
+            var el = container.querySelector('[data-section="' + sec.id + '"]');
+            if (!el) return;
+            var exp = isExpanded(sec.id);
+            var pin = isPinned(sec.id);
+            // Toggle expanded/collapsed
+            if (exp) { el.classList.remove('collapsed'); el.classList.add('expanded'); el.style.flex = ''; }
+            else { el.classList.remove('expanded'); el.classList.add('collapsed'); el.style.flex = ''; }
+            // Update pin button
+            var pinBtn = el.querySelector('[data-pin="' + sec.id + '"]');
+            if (pinBtn) {
+                if (pin) { pinBtn.classList.add('pinned'); pinBtn.title = 'Unpin'; }
+                else { pinBtn.classList.remove('pinned'); pinBtn.title = 'Pin'; }
+                var pinIcon = pinBtn.querySelector('.codicon');
+                if (pinIcon) {
+                    pinIcon.classList.remove('codicon-pin', 'codicon-pinned');
+                    pinIcon.classList.add(pin ? 'codicon-pinned' : 'codicon-pin');
+                }
+            }
+        });
+        updateResizeHandles();
+        if (typeof onRenderComplete === 'function') onRenderComplete();
+    }
+}
+
+/**
+ * Manage resize handles between expanded sections.
+ * Removes old handles and inserts new ones at the correct positions.
+ */
+function updateResizeHandles() {
+    var container = document.getElementById('container');
+    // Remove existing resize handles
+    container.querySelectorAll('.resize-handle').forEach(function(h) { h.remove(); });
+    // Insert resize handles between adjacent expanded sections
+    var expandedIds = [];
+    sectionsConfig.forEach(function(sec) { if (isExpanded(sec.id)) expandedIds.push(sec.id); });
+    for (var i = 1; i < expandedIds.length; i++) {
+        var rightEl = container.querySelector('[data-section="' + expandedIds[i] + '"]');
+        if (rightEl) {
+            var handle = document.createElement('div');
+            handle.className = 'resize-handle';
+            handle.dataset.resizeLeft = expandedIds[i - 1];
+            handle.dataset.resizeRight = expandedIds[i];
+            container.insertBefore(handle, rightEl);
+            handle.addEventListener('mousedown', function(e) { startResize(e, this); });
+        }
+    }
 }
 
 function attachEventListeners() {
     document.querySelectorAll('[data-toggle]').forEach(function(el) { el.addEventListener('click', function() { toggleSection(el.dataset.toggle); }); });
     document.querySelectorAll('[data-pin]').forEach(function(el) { el.addEventListener('click', function(e) { togglePin(el.dataset.pin, e); }); });
     document.querySelectorAll('[data-action]').forEach(function(el) { el.addEventListener('click', function() { handleAction(el.dataset.action, el.dataset.id); }); });
-    document.querySelectorAll('.resize-handle').forEach(function(handle) { handle.addEventListener('mousedown', function(e) { startResize(e, handle); }); });
 }
 
 var resizing = null;

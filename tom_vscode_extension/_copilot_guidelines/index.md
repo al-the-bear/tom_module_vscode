@@ -20,6 +20,7 @@ This folder contains project-specific guidelines for the `tom_vscode_extension` 
 | [tom_status_page.md](tom_status_page.md) | Status & configuration page (8 sections) |
 | [explorer_notes.md](explorer_notes.md) | VS Code Notes & Workspace Notes explorer sidebar views |
 | [bottom_panel_accordion.md](bottom_panel_accordion.md) | Reusable accordion component for bottom panels |
+| [tab_navigation.md](tab_navigation.md) | Reusable tab navigation component for panels |
 | [reinstall_extension.md](reinstall_extension.md) | Extension reinstallation workflow |
 | [restart_debugging_flow.backup.md](restart_debugging_flow.backup.md) | Debugging flow reference (backup) |
 | [architecture.md](architecture.md) | System architecture (bridge, extension, protocol) |
