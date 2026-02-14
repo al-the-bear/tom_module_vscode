@@ -717,20 +717,66 @@ export class GraphTypeRegistry {
 
     /**
      * Auto-scan a directory of graph-type folders and register them all.
-     * Used by the VS Code activation code.
+     * Each subdirectory is expected to contain version subfolders (v1/, v2/).
+     * On error, shows a prominent VS Code error message, adds a diagnostic
+     * to the Problems pane, and continues with the remaining folders.
      */
     async registerAllFromDirectory(
         dirPath: string,
         diagnostics?: { set(uri: any, diags: any[]): void }
     ): Promise<void> {
-        // Scan dirPath for subdirectories, call registerFromFolder on each.
-        // Catch GraphTypeConflictError and report via diagnostics parameter.
-        // ... implementation
+        const entries = await readdir(dirPath, { withFileTypes: true });
+
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const folderPath = join(dirPath, entry.name);
+
+            try {
+                await this.registerFromFolder(folderPath);
+
+                // Report any non-fatal warnings from the loader
+                for (const warning of this.loader.consumeWarnings()) {
+                    if (diagnostics) {
+                        // Add warning-level diagnostic to Problems pane
+                        diagnostics.set(Uri.file(folderPath), [
+                            new Diagnostic(
+                                new Range(0, 0, 0, 0),
+                                warning,
+                                DiagnosticSeverity.Warning
+                            ),
+                        ]);
+                    }
+                }
+            } catch (err) {
+                // Prominent error — show notification + Problems pane, continue
+                const message = err instanceof Error
+                    ? `Graph type '${entry.name}': ${err.message}`
+                    : `Graph type '${entry.name}': unknown error`;
+
+                // VS Code error notification (extension layer injects this)
+                if (typeof vscode !== 'undefined') {
+                    vscode.window.showErrorMessage(message);
+                }
+
+                if (diagnostics) {
+                    diagnostics.set(Uri.file(folderPath), [
+                        new Diagnostic(
+                            new Range(0, 0, 0, 0),
+                            message,
+                            DiagnosticSeverity.Error
+                        ),
+                    ]);
+                }
+                // Continue with next folder
+            }
+        }
     }
 
     /**
      * Look up graph type by file extension/pattern.
-     * Returns the highest version by default.
+     * Returns the highest registered version. Convenience method for
+     * programmatic use — the editor itself always uses getForFileVersion()
+     * because meta.graph-version is required.
      */
     getForFile(filename: string): GraphType | undefined {
         for (const [pattern, type] of this.filePatternMap) {
@@ -743,7 +789,8 @@ export class GraphTypeRegistry {
 
     /**
      * Look up a specific version of a graph type for a file.
-     * Used when YAML meta.graph-version requests a specific version.
+     * Primary lookup method — used by resolveGraphType() since
+     * meta.graph-version is required in all data files.
      */
     getForFileVersion(filename: string, version: number): GraphType | undefined {
         for (const [pattern, versions] of this.versionedPatternMap) {
@@ -775,7 +822,7 @@ export class GraphTypeRegistry {
 ### MappingLoader (src/mapping-loader.ts)
 
 ```typescript
-import { readFile } from 'fs/promises';
+import { readFile, readdir } from 'fs/promises';
 import { join, basename } from 'path';
 import { parse as parseYaml } from 'yaml';
 import { GraphType, GraphMapping } from './types.js';
@@ -783,6 +830,18 @@ import { SchemaValidator } from './schema-validator.js';
 
 export class MappingLoader {
     private validator = new SchemaValidator();
+    private warnings: string[] = [];
+
+    /**
+     * Return and clear accumulated warnings from the last load operation.
+     * Called by the registry after registerFromFolder() to surface
+     * non-fatal issues to the UI.
+     */
+    consumeWarnings(): string[] {
+        const result = this.warnings;
+        this.warnings = [];
+        return result;
+    }
 
     /**
      * Load all versions of a graph type from a folder containing
@@ -851,14 +910,46 @@ export class MappingLoader {
 
     /**
      * Find version subfolders (v1/, v2/, etc.) and return them sorted
-     * by version number ascending.
+     * by version number ascending. Entries that don't match the v{number}
+     * pattern or that are missing required files are skipped with a
+     * warning — processing continues with whatever is valid.
      */
     private async findVersionSubfolders(
         folderPath: string
     ): Promise<Array<{ version: number; path: string }>> {
-        // Scan for directories matching v{number}
-        // Returns e.g. [{ version: 1, path: '.../flowchart/v1' }]
-        // ... implementation using readdir + filter
+        const entries = await readdir(folderPath, { withFileTypes: true });
+        const versionPattern = /^v(\d+)$/;
+        const results: Array<{ version: number; path: string }> = [];
+
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const match = entry.name.match(versionPattern);
+            if (!match) {
+                // Not a version folder — skip silently (could be docs, etc.)
+                continue;
+            }
+
+            const version = parseInt(match[1], 10);
+            const versionPath = join(folderPath, entry.name);
+
+            // Verify required files exist
+            try {
+                await this.findFile(versionPath, '.graph-map.yaml');
+                await this.findFile(versionPath, '.schema.json');
+            } catch (err) {
+                // Missing required files — report prominent warning, skip
+                this.warnings.push(
+                    `Skipping ${versionPath}: ${(err as Error).message}`
+                );
+                continue;
+            }
+
+            results.push({ version, path: versionPath });
+        }
+
+        // Sort ascending by version number
+        results.sort((a, b) => a.version - b.version);
+        return results;
     }
 
     /**
@@ -1260,24 +1351,40 @@ export class YamlGraphEditorProvider implements vscode.CustomTextEditorProvider 
     }
 
     /**
-     * Resolve the graph type for a document. Checks the YAML meta section
-     * for an explicit graph-version request; otherwise uses the highest
-     * available version.
+     * Resolve the graph type for a document. The `meta.graph-version` field
+     * is **required** in every YAML data file — the editor will show an error
+     * if it is missing or if the requested version is not available.
      */
     private resolveGraphType(document: vscode.TextDocument): GraphType | undefined {
-        // Quick parse to check for meta.graph-version
         try {
             const text = document.getText();
             const data = parseYaml(text);
             const requestedVersion = data?.meta?.['graph-version'];
-            if (typeof requestedVersion === 'number') {
-                return this.registry.getForFileVersion(
-                    document.fileName, requestedVersion
+
+            if (typeof requestedVersion !== 'number') {
+                vscode.window.showErrorMessage(
+                    `Missing required 'meta.graph-version' field in ${document.fileName}. ` +
+                    `Add a numeric graph-version to the meta section.`
+                );
+                return undefined;
+            }
+
+            const graphType = this.registry.getForFileVersion(
+                document.fileName, requestedVersion
+            );
+            if (!graphType) {
+                vscode.window.showErrorMessage(
+                    `No graph type version ${requestedVersion} registered ` +
+                    `for ${document.fileName}.`
                 );
             }
-        } catch { /* parse error — fall through to default */ }
-
-        return this.registry.getForFile(document.fileName);
+            return graphType;
+        } catch (err) {
+            vscode.window.showErrorMessage(
+                `Failed to parse ${document.fileName}: ${(err as Error).message}`
+            );
+            return undefined;
+        }
     }
 }
 ```
@@ -1493,8 +1600,9 @@ graph-types/
             style.css
 ```
 
-Both versions are loaded simultaneously by `MappingLoader`. See Q13 in
-Section 14 for version coexistence details.
+Both versions are loaded simultaneously by `MappingLoader`. The
+`meta.graph-version` field in YAML data files determines which version is used.
+See Q13 (resolved) in Section 14 for version coexistence details.
 
 ### flowchart/
 
@@ -1531,7 +1639,7 @@ file format.
     "properties": {
         "meta": {
             "type": "object",
-            "required": ["id", "title"],
+            "required": ["id", "title", "graph-version"],
             "properties": {
                 "id": {
                     "type": "string",
@@ -1539,6 +1647,11 @@ file format.
                     "description": "Unique diagram identifier"
                 },
                 "title": { "type": "string" },
+                "graph-version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Mapping format version (must match a v{n}/ subfolder)"
+                },
                 "version": { "type": "integer", "minimum": 1, "default": 1 },
                 "direction": {
                     "type": "string",
@@ -1614,13 +1727,18 @@ file format.
     "properties": {
         "meta": {
             "type": "object",
-            "required": ["id", "title"],
+            "required": ["id", "title", "graph-version"],
             "properties": {
                 "id": {
                     "type": "string",
                     "pattern": "^[a-z][a-z0-9-]*$"
                 },
                 "title": { "type": "string" },
+                "graph-version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Mapping format version (must match a v{n}/ subfolder)"
+                },
                 "version": { "type": "integer", "minimum": 1, "default": 1 },
                 "description": { "type": "string" }
             }
@@ -1685,13 +1803,18 @@ file format.
     "properties": {
         "meta": {
             "type": "object",
-            "required": ["id", "title"],
+            "required": ["id", "title", "graph-version"],
             "properties": {
                 "id": {
                     "type": "string",
                     "pattern": "^[a-z][a-z0-9-]*$"
                 },
                 "title": { "type": "string" },
+                "graph-version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Mapping format version (must match a v{n}/ subfolder)"
+                },
                 "version": { "type": "integer", "minimum": 1, "default": 1 },
                 "description": { "type": "string" }
             }
@@ -2476,12 +2599,14 @@ These questions were raised during the design process and have been resolved:
 | 18 | How should the node editor handle YAML anchors and aliases? | **Not allowed** in graph YAML files | YAML anchors (`&anchor`) and aliases (`*anchor`) create shared references that complicate AST editing and make node-level edits unpredictable. Graph YAML files must use explicit values only. The schema validator should reject files containing aliases. If the `yaml` npm parser encounters an alias, it is resolved during parsing — the node editor always works with resolved values. |
 | 19 | Should the schema-driven form support custom widget hints? | **Yes — `x-widget` extension keyword** in JSON Schema | Graph type authors can add `"x-widget": "color-picker"` (or `"code"`, `"url"`, `"date"`, etc.) to schema properties. The node editor checks for `x-widget` and renders a specialized widget if available. Unknown widget hints fall back to the default widget for that type. See Section 10 Node Editor. |
 | 20 | How should validation errors be displayed for nested fields? | **Inline error indicators** mapped from schema paths | The extension host sends `showErrors` messages containing validation error paths (e.g., `/attributes/0/type`). The webview maps each path to the corresponding form field's `path` attribute and renders a red border + error tooltip on that field. Parent collapsible sections show a red badge count if they contain errors. The status bar shows total error count. |
+| 21 | How should `MappingLoader` discover and validate version subfolders? | **Scan `v\d+` pattern**, warn & skip on error, continue | Scan all subdirectories matching `/^v(\d+)$/`. Directories missing required files (`*.graph-map.yaml`, `*.schema.json`) produce a prominent warning (VS Code notification + Problems pane) and are skipped — loading continues with valid folders. Non-matching directories are silently ignored. See `MappingLoader.findVersionSubfolders()`. |
+| 22 | Should `meta.graph-version` be required or optional in YAML data files? | **Required** | Every YAML data file must declare `meta.graph-version` as a number. Missing or non-numeric values produce an error message; the editor refuses to render. This avoids silent behavior changes when new mapping versions are deployed. |
+| 23 | How should a graph type with only a v2 subfolder (no v1) be handled? | **Accept any version numbering** — non-sequential is fine | Version numbers need not be sequential. v1 and v2 are essentially independent graph types sharing a name. If only v2 exists, files requesting `graph-version: 1` produce an error. There are no third-party graph types — all types are bundled with the extension. |
+| 13 | How should mapping format versioning and version coexistence work? | **Versioned subfolders** (`v1/`, `v2/`) with no auto-migration | Each graph-type folder contains `v{n}/` subfolders. Each version is independent (own schema, parser, mapping, style). `meta.graph-version` is required in data files. No migration between versions. Full design below. |
 
-### Open Questions
+All questions have been resolved. No open questions remain.
 
-Design questions requiring further discussion:
-
-#### Q13 — Mapping format versioning and version coexistence
+### Resolved: Q13 — Version Coexistence Design (Reference)
 
 **Context:** As the mapping format evolves, older mapping files may become
 incompatible. Different graph-type authors may update at different speeds.
@@ -2528,8 +2653,14 @@ map:
 **Part B — How `MappingLoader` handles versions.**
 
 1. **Scan version subfolders.** When `registerFromFolder('graph-types/flowchart')`
-   is called, the loader scans for subdirectories matching `v\d+/`. Each
-   subfolder that contains a `*.graph-map.yaml` is loaded independently.
+   is called, the loader scans the folder for subdirectories matching the
+   pattern `v\d+` (e.g., `v1`, `v2`, `v17`). Non-matching directories are
+   silently skipped. Matching directories that are missing required files
+   (`*.graph-map.yaml`, `*.schema.json`) are reported as a **prominent warning**
+   (VS Code warning notification + Problems pane) and skipped — the loader
+   continues with whatever is valid. Version numbers do not need to be
+   sequential: a graph type with only a `v2/` subfolder (and no `v1/`) is
+   perfectly valid. See `MappingLoader.findVersionSubfolders()` in Section 3.
 
 2. **Version-specific schemas.** Each version subfolder has its own JSON Schema
    for the mapping file format. `MappingLoader` validates the mapping file
@@ -2560,25 +2691,33 @@ map:
    `GraphMapping` interface may evolve, but both parsers produce valid instances
    of whatever the current `GraphMapping` interface looks like.
 
-4. **Version selection at runtime.** When a YAML data file (e.g.,
-   `login.flow.yaml`) is opened, the engine determines which version to use:
+4. **Version selection at runtime — `meta.graph-version` is required.** Every
+   YAML data file must declare which mapping version it uses via the
+   `meta.graph-version` field:
 
-   - **Highest available version** is preferred by default. If both `v1/` and
-     `v2/` exist for `flowchart`, v2 is used.
-   - **User override** via a `graph-version` field in the YAML file's `meta`
-     section:
-     ```yaml
-     meta:
-       id: login-flow
-       title: Login Flow
-       graph-version: 1    # force v1 mapping
-     ```
-   - If no version subfolder exists for the requested version, show an error.
+   ```yaml
+   meta:
+     id: login-flow
+     title: Login Flow
+     graph-version: 1    # required — specifies mapping version
+   ```
 
-5. **Both versions are fully functional.** The v1 parser, v1 schema, and v1
-   mapping files are not degraded or deprecated — they continue to work exactly
-   as before. The only difference is that new graph types or updated built-in
-   types may ship with v2 subfolders.
+   If the field is missing or not a number, the editor shows a prominent error
+   message and refuses to render. If the requested version is not available
+   (e.g., user says `graph-version: 3` but only `v1/` and `v2/` exist), the
+   editor shows an error naming the available versions. See
+   `resolveGraphType()` in Section 4.
+
+   **Rationale:** Making the version required avoids silent behavior changes
+   when a new mapping version is deployed. Users always know exactly which
+   mapping format their file targets.
+
+5. **Each version is independent.** v1 and v2 of a graph type are essentially
+   two independent graph types that share a name. Each has its own parser,
+   schema, mapping file, and optional style. There is no fall-through or
+   inheritance between versions. If v1 is not available but v2 is, then files
+   requesting `graph-version: 1` will produce an error — they need to be
+   updated to target v2, or a v1 subfolder needs to be created.
 
 **Part C — Error on unknown version.**
 
@@ -2602,13 +2741,3 @@ When a version is retired:
 - A deprecation warning is shown for one release cycle.
 - The version subfolder and its parser are removed in the next major release.
 - Built-in graph types always ship with the latest version subfolder.
-
-### Further Open Questions
-
-These are smaller items that emerged from the recent design expansion:
-
-| # | Question | Context | Impact |
-|---|----------|---------|--------|
-| 21 | How should `MappingLoader` discover and validate version subfolders? | The auto-scan (Q10) now needs to scan `graph-types/{type}/v{n}/` instead of `graph-types/{type}/`. Need to define the exact scan algorithm and error handling for malformed version folders. | Affects activation code and error reporting |
-| 22 | Should the `meta.graph-version` field be required or optional in YAML data files? | If optional, the engine defaults to the highest version. If required, users must always specify. Optional is friendlier but may surprise users when a v2 mapping produces different output than v1. | Affects user experience and backward compatibility |
-| 23 | How should the extension handle a graph type that has only a v2 subfolder (no v1)? | A third-party graph type might skip v1 entirely. The engine should accept any version subfolder without requiring sequential numbering. | Affects version scanning logic |
