@@ -18,8 +18,10 @@ with a live Mermaid preview.
 - [5. Generic Framework Design](#5-generic-framework-design)
 - [6. YAML Schema Examples](#6-yaml-schema-examples)
 - [7. YAML → Mermaid Conversion](#7-yaml--mermaid-conversion)
-- [8. Mermaid Capabilities Overview](#8-mermaid-capabilities-overview)
-- [9. Implementation Plan](#9-implementation-plan)
+- [8. YAML Direct-Edit Flow](#8-yaml-direct-edit-flow)
+- [9. Interactive Diagrams](#9-interactive-diagrams)
+- [10. Mermaid Capabilities Overview](#10-mermaid-capabilities-overview)
+- [11. Implementation Plan](#11-implementation-plan)
 
 ---
 
@@ -83,26 +85,34 @@ flowchart LR
 
 ### Component Diagram
 
+**Legend:** Pale green = exists, needs no modification. Yellow = exists, needs
+wrapper/adapter. Blue = needs to be built. Orange = configuration files we author.
+
 ```mermaid
 flowchart TD
-    subgraph VSCode["VS Code"]
-        CE["CustomTextEditorProvider<br/>(processFlow, stateMachine, ...)"]
-        DOC["TextDocument<br/>(*.flow.yaml)"]
+    subgraph VSCode["VS Code Integration Layer"]
+        CE["CustomTextEditorProvider"]
+        DOC["TextDocument"]
         WV["Webview Panel"]
     end
 
     subgraph Webview["Webview Content"]
         TREE["Tree Component"]
-        MERMAID["Mermaid Renderer"]
+        MERMAID["Mermaid.js Renderer"]
         TOOLBAR["Toolbar"]
         SPLIT["Split Pane"]
     end
 
-    subgraph ExtHost["Extension Host"]
+    subgraph Core["yaml-graph-core Library"]
         PARSER["YAML Parser<br/>(comment-preserving)"]
-        SCHEMA["Schema Validator"]
-        CONV["Mermaid Converter"]
+        SCHEMA["JSON Schema Validator"]
+        CONV["Mermaid Converter Engine"]
         REG["Graph Type Registry"]
+    end
+
+    subgraph Config["Configuration Files"]
+        GSCHEMA["Graph JSON Schema<br/>(flow, state, ER, ...)"]
+        MAPPING["Conversion Mapping<br/>(*.graph-map.yaml)"]
     end
 
     CE --> DOC
@@ -114,16 +124,37 @@ flowchart TD
 
     DOC -- "onDidChangeTextDocument" --> PARSER
     PARSER --> SCHEMA
+    SCHEMA -. "validates against" .-> GSCHEMA
     PARSER --> CONV
+    CONV -. "uses mapping" .-> MAPPING
+    MAPPING -. "references" .-> GSCHEMA
     CONV -- "postMessage" --> MERMAID
     PARSER -- "postMessage" --> TREE
 
     TREE -- "postMessage (edit)" --> CE
     CE -- "WorkspaceEdit" --> DOC
 
+    MERMAID -- "node click" --> CE
+    CE -- "reveal in tree" --> TREE
+    CE -- "reveal in YAML" --> DOC
+
     REG --> PARSER
     REG --> CONV
     REG --> SCHEMA
+
+    style PARSER fill:#e8d44d,stroke:#b8a41d,color:#333
+    style SCHEMA fill:#e8d44d,stroke:#b8a41d,color:#333
+    style MERMAID fill:#a8e6a1,stroke:#5cb85c,color:#333
+    style DOC fill:#a8e6a1,stroke:#5cb85c,color:#333
+    style CE fill:#4a90d9,stroke:#357abd,color:#fff
+    style WV fill:#a8e6a1,stroke:#5cb85c,color:#333
+    style TREE fill:#4a90d9,stroke:#357abd,color:#fff
+    style TOOLBAR fill:#4a90d9,stroke:#357abd,color:#fff
+    style SPLIT fill:#4a90d9,stroke:#357abd,color:#fff
+    style CONV fill:#4a90d9,stroke:#357abd,color:#fff
+    style REG fill:#4a90d9,stroke:#357abd,color:#fff
+    style GSCHEMA fill:#f0ad4e,stroke:#d49430,color:#333
+    style MAPPING fill:#f0ad4e,stroke:#d49430,color:#333
 ```
 
 ### Data Flow
@@ -198,6 +229,53 @@ sequenceDiagram
 ├────────────────────────┴────────────────────────────────┤
 │ ⚠ 1 validation issue: edge 'x→y' references unknown... │
 └─────────────────────────────────────────────────────────┘
+```
+
+### Tree Node Icons by Type
+
+### Editor Layout (Mermaid)
+
+```mermaid
+flowchart TD
+    subgraph Editor["YAML Graph Editor"]
+        subgraph Toolbar["Toolbar"]
+            direction LR
+            BTN1["+ Node"]
+            BTN2["+ Edge"]
+            BTN3["Delete"]
+            BTN4["Validate"]
+            BTN5["Toggle Text"]
+            BTN6["Export SVG"]
+            BTN7["Layout TD/LR"]
+        end
+
+        subgraph MainArea["Main Area (split pane, resizable)"]
+            subgraph TreePanel["Tree Panel"]
+                META["**meta**<br/>id, title, direction"]
+                NODES["**nodes**<br/>start, validate,<br/>check_email, ..."]
+                EDGES["**edges**<br/>start to validate,<br/>validate to check_email, ..."]
+            end
+
+            subgraph Preview["Mermaid Preview"]
+                DIAGRAM["Live rendered<br/>flowchart / state diagram /<br/>ER diagram"]
+                CLICK["Click node to select<br/>in tree and YAML"]
+            end
+        end
+
+        subgraph StatusBar["Status Bar"]
+            ISSUES["Validation issues and warnings"]
+        end
+    end
+
+    Toolbar --> MainArea
+    MainArea --> StatusBar
+    META --> NODES --> EDGES
+    DIAGRAM --- CLICK
+
+    style Toolbar fill:#2d4a63,stroke:#48a,color:#fff
+    style TreePanel fill:#1a3a2c,stroke:#4a8,color:#fff
+    style Preview fill:#3a3a1a,stroke:#aa4,color:#fff
+    style StatusBar fill:#4a2a2a,stroke:#a44,color:#fff
 ```
 
 ### Tree Node Icons by Type
@@ -624,19 +702,28 @@ transitions:
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
-    Idle --> Pending_Payment : place order
-    Pending_Payment --> Paid : payment received
-    Pending_Payment --> Cancelled : cancel
+    Idle --> PendingPayment : place order
+    PendingPayment --> Paid : payment received
+    PendingPayment --> Cancelled : cancel
     Paid --> Shipped : warehouse dispatch
     Shipped --> Delivered : delivery confirmed
     Delivered --> [*]
     Cancelled --> [*]
 
-    Pending_Payment : entry / reserve inventory
-    Paid : entry / notify warehouse
-    Shipped : entry / send tracking
+    state "Pending Payment" as PendingPayment
 
-    note right of Cancelled : Guard: within cancellation window
+    note right of PendingPayment
+        entry / reserve inventory
+    end note
+    note right of Paid
+        entry / notify warehouse
+    end note
+    note right of Shipped
+        entry / send tracking
+    end note
+    note right of Cancelled
+        guard - within cancellation window
+    end note
 ```
 
 ### ER Diagram (*.er.yaml)
@@ -727,74 +814,365 @@ erDiagram
 
 ## 7. YAML → Mermaid Conversion
 
-Each graph type provides a converter. Examples:
+### Approach: Configurable Mapping vs Coded Renderers
 
-### Flowchart Converter Logic
+Two approaches for converting YAML graph data to Mermaid syntax:
 
-```
-For each node:
-  switch (node.type):
-    start/end  → id(["label"])
-    process    → id["label"]
-    decision   → id{"label"}
-    subprocess → id[["label"]]
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Coded renderers** (one per diagram type) | Full flexibility, handles complex logic like nesting | More code to maintain, adding a new type requires TypeScript |
+| **Mapping configuration** (YAML-driven) | New diagram types without code, easily editable, Copilot-generatable | Complex features (subgraphs, nesting) hard to express declaratively |
 
-For each edge:
-  if edge.label:
-    → from -->|"label"| to
-  else:
-    → from --> to
+**Recommendation: Mapping-driven with escape hatches.** A `*.graph-map.yaml`
+file defines the conversion rules for each diagram type. The conversion engine
+reads the mapping and generates Mermaid output. For advanced cases that cannot
+be expressed declaratively, the mapping references a named "transform plugin"
+written in TypeScript.
 
-For status-based styling:
-  implemented → green fill
-  planned     → yellow fill
-  deprecated  → grey fill
-```
+This means:
+- Adding a new simple diagram type = writing a mapping file (no TS code)
+- Complex diagram types = mapping file + optional transform plugin
+- The mapping file itself can be validated with a JSON Schema
 
-### State Machine Converter Logic
+### Conversion Architecture
 
-```
-For initial states:
-  → [*] --> StateName
+```mermaid
+flowchart LR
+    YAML["Source YAML<br/>(*.flow.yaml)"] --> ENGINE["Conversion Engine"]
+    MAP["Mapping File<br/>(*.graph-map.yaml)"] --> ENGINE
+    PLUGIN["Transform Plugin<br/>(optional TS)"] -.-> ENGINE
+    ENGINE --> MERMAID["Mermaid Source"]
 
-For final states:
-  → StateName --> [*]
-
-For transitions:
-  if guard:
-    → From --> To : event\n[guard]
-  else:
-    → From --> To : event
-
-For entry/exit actions:
-  → state Name { entry: action }
+    style YAML fill:#a8e6a1,stroke:#5cb85c,color:#333
+    style MAP fill:#f0ad4e,stroke:#d49430,color:#333
+    style PLUGIN fill:#e8d44d,stroke:#b8a41d,color:#333
+    style ENGINE fill:#4a90d9,stroke:#357abd,color:#fff
+    style MERMAID fill:#a8e6a1,stroke:#5cb85c,color:#333
 ```
 
-### ER Diagram Converter Logic
+### Mapping File Format (*.graph-map.yaml)
+
+The mapping file defines how YAML data maps to Mermaid syntax. It uses a
+simple, declarative structure:
+
+```yaml
+# flowchart.graph-map.yaml
+# yaml-language-server: $schema=../../.tom/json-schema/graph-map.schema.json
+
+map:
+  id: flowchart
+  mermaid-type: flowchart
+  direction-field: meta.direction   # YAML path to the direction value
+  default-direction: TD
+
+# How to map source YAML nodes to Mermaid node shapes
+node-shapes:
+  source-path: nodes               # YAML path to the nodes map
+  id-field: _key                    # _key = the YAML map key itself
+  label-field: label
+  type-field: type
+  shapes:
+    start:    "([{label}])"         # stadium shape
+    end:      "([{label}])"
+    process:  "[{label}]"           # rectangle
+    decision: "{{{label}}}"         # rhombus (escaped braces)
+    subprocess: "[[{label}]]"       # double rectangle
+
+# How to map source YAML edges to Mermaid links
+edge-links:
+  source-path: edges                # YAML path to the edges list
+  from-field: from
+  to-field: to
+  label-field: label                # optional
+  link-styles:
+    default: "-->"                   # solid arrow
+    dotted:  "-.->"
+    thick:   "==>"
+  label-template: '-->|"{label}"|'   # when label is present
+
+# Style mapping based on field values
+style-rules:
+  field: status
+  rules:
+    implemented:
+      fill: "#27632d"
+      stroke: "#4a8"
+      color: "#fff"
+    planned:
+      fill: "#5a5a1a"
+      stroke: "#aa4"
+      color: "#fff"
+    deprecated:
+      fill: "#666"
+      stroke: "#999"
+      color: "#ccc"
+```
+
+### State Machine Mapping Example
+
+```yaml
+# state-machine.graph-map.yaml
+
+map:
+  id: stateMachine
+  mermaid-type: stateDiagram-v2
+
+node-shapes:
+  source-path: states
+  id-field: _key
+  label-field: label
+  type-field: type
+  shapes:
+    initial:  "[*]"                  # Mermaid start marker
+    final:    "[*]"                  # Mermaid end marker
+    state:    "{id}"                 # plain state name
+
+  # Special: initial states get "[*] --> StateName" prefix
+  initial-connector: "[*] --> {id}"
+  # Special: final states get "StateName --> [*]" suffix
+  final-connector: "{id} --> [*]"
+
+edge-links:
+  source-path: transitions
+  from-field: from
+  to-field: to
+  label-field: event
+  label-template: '{from} --> {to} : {event}'
+
+# Additional text to append to state descriptions
+annotations:
+  source-field: entry-action
+  template: 'note right of {id}\n    entry / {entry-action}\nend note'
+```
+
+### Conversion Engine Pseudocode
 
 ```
-For each entity:
-  → EntityName {
-       type name key(if any)
-     }
+function convert(yamlDoc, mapping):
+    output = [mapping.mermaid-type + " " + direction]
 
-For each relationship:
-  map type to Mermaid notation:
-    one-to-one   → ||--||
-    one-to-many  → ||--o{
-    many-to-one  → }o--||
-    many-to-many → }o--o{
-  → From notation To : label
+    // Render nodes
+    for each node in yamlDoc[mapping.node-shapes.source-path]:
+        id = node[mapping.id-field]
+        label = node[mapping.label-field]
+        type = node[mapping.type-field]
+        shape = mapping.node-shapes.shapes[type]
+        output.add( id + shape.replace("{label}", label) )
+
+    // Render edges
+    for each edge in yamlDoc[mapping.edge-links.source-path]:
+        from = edge[mapping.from-field]
+        to = edge[mapping.to-field]
+        label = edge[mapping.label-field]
+        if label:
+            output.add( mapping.label-template with {from, to, label} )
+        else:
+            output.add( from + " " + mapping.link-styles.default + " " + to )
+
+    // Apply styles
+    for each node where style-rules.field matches:
+        rule = matching style rule
+        output.add( "style " + id + " fill:... " )
+
+    // Apply transform plugin if registered
+    if mapping has transform plugin:
+        output = plugin.transform(output, yamlDoc)
+
+    return output.join("\n")
+```
+
+### Adding a New Diagram Type
+
+To add support for a new YAML graph type, you create:
+
+1. **A JSON Schema** (e.g., `sequence-diagram.schema.json`) — validates the YAML
+2. **A mapping file** (e.g., `sequence.graph-map.yaml`) — defines YAML → Mermaid rules
+3. **Optionally a transform plugin** — for features the mapping cannot express
+
+No TypeScript code changes required for simple types. Register the new files
+in the Graph Type Registry and the editor automatically supports them.
+
+```mermaid
+flowchart LR
+    subgraph NewType["Adding a New Diagram Type"]
+        S1["1. Write JSON Schema"]
+        S2["2. Write Mapping File"]
+        S3["3. Register in Registry"]
+        S4["4. Optional: Transform Plugin"]
+    end
+
+    S1 --> S2 --> S3
+    S3 -.-> S4
+
+    style S1 fill:#f0ad4e,stroke:#d49430,color:#333
+    style S2 fill:#f0ad4e,stroke:#d49430,color:#333
+    style S3 fill:#4a90d9,stroke:#357abd,color:#fff
+    style S4 fill:#e8d44d,stroke:#b8a41d,color:#333
 ```
 
 ---
 
-## 8. Mermaid Capabilities Overview
+## 8. YAML Direct-Edit Flow
+
+When the user edits the YAML file directly (either in the custom editor's
+underlying text document, or by switching to the standard text editor), changes
+must propagate to both the tree panel and the Mermaid preview.
+
+### How It Works
+
+VS Code's `CustomTextEditorProvider` is backed by a normal `TextDocument`.
+The extension host listens to `onDidChangeTextDocument` events. Any text change
+— whether from the tree panel's `WorkspaceEdit` or from the user typing
+directly — triggers the same pipeline:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant TextEditor as Text Editor
+    participant Doc as TextDocument
+    participant Ext as Extension Host
+    participant Tree as Tree Panel
+    participant Preview as Mermaid Preview
+
+    User->>TextEditor: Type YAML changes
+    TextEditor->>Doc: applyEdit
+    Doc->>Ext: onDidChangeTextDocument
+
+    Ext->>Ext: Parse YAML (comment-preserving)
+    Ext->>Ext: Validate against JSON Schema
+
+    alt Valid YAML
+        Ext->>Tree: postMessage(updateTree, newModel)
+        Ext->>Ext: Run conversion engine + mapping
+        Ext->>Preview: postMessage(updateDiagram, mermaidSrc)
+        Tree->>Tree: Re-render tree view
+        Preview->>Preview: Re-render Mermaid SVG
+    else Invalid YAML
+        Ext->>Tree: postMessage(showErrors, parseErrors)
+        Note over Preview: Keep last valid diagram
+    end
+```
+
+### Key Behaviors
+
+| Scenario | Behavior |
+|----------|----------|
+| Valid change | Tree and preview update immediately (debounced ~300ms) |
+| Syntax error mid-typing | Tree shows error indicator, preview keeps last valid state |
+| Schema violation | Tree updates but shows validation warning in status bar |
+| Adding a new node | Tree expands to show it, preview re-renders with new node |
+| Deleting a node with edges | Edges to deleted node highlighted as errors |
+| Switching to text editor | Custom editor disposes, standard editor opens same document |
+| Switching back to custom editor | Full re-parse and re-render from current document state |
+
+### Debouncing Strategy
+
+Direct typing generates many rapid `onDidChangeTextDocument` events. The
+extension debounces these with a ~300ms delay before re-parsing. This prevents
+flickering and wasted computation while still feeling responsive.
+
+---
+
+## 9. Interactive Diagrams
+
+### Can Mermaid Diagrams Be Interactive?
+
+Yes, partially. Mermaid supports `click` events on nodes, and since the
+diagram renders as SVG inside our webview, we have full control.
+
+### Click-to-Navigate Implementation
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant SVG as Mermaid SVG
+    participant WV as Webview Script
+    participant Ext as Extension Host
+    participant Tree as Tree Panel
+    participant Doc as TextDocument
+
+    User->>SVG: Click on node
+    SVG->>WV: click event (node ID)
+    WV->>Ext: postMessage(nodeClicked, nodeId)
+
+    par Update tree
+        Ext->>Tree: postMessage(selectNode, nodeId)
+        Tree->>Tree: Scroll to + highlight node
+    and Reveal in YAML
+        Ext->>Ext: Look up node position in YAML AST
+        Ext->>Doc: editor.revealRange(nodeRange)
+    end
+```
+
+### What Can Be Interactive
+
+| Feature | Feasible? | How |
+|---------|-----------|-----|
+| Click node → select in tree | Yes | Mermaid `click` callback + postMessage |
+| Click node → jump to YAML line | Yes | YAML AST tracks source positions |
+| Hover node → show metadata | Yes | SVG title/tooltip or custom overlay |
+| Click edge → select in tree | Partial | Edges have SVG paths but no built-in click handler; requires custom SVG event binding |
+| Drag node to reorder | No | Mermaid SVG is read-only; must edit via tree panel |
+| Double-click to edit label | Possible | Show inline input overlay positioned over SVG node |
+
+### Mermaid Click Syntax
+
+The conversion engine automatically adds click handlers to generated Mermaid:
+
+```
+flowchart TD
+    validate["Validate input"]
+    click validate callback "validate"
+```
+
+In the webview, a global callback function receives the node ID and posts it
+to the extension host:
+
+```javascript
+// In webview script
+window.mermaidCallback = function(nodeId) {
+    vscode.postMessage({ type: 'nodeClicked', nodeId: nodeId });
+};
+```
+
+### Selection Synchronization
+
+Selection sync works bidirectionally:
+
+```mermaid
+flowchart LR
+    subgraph Sources["Selection Sources"]
+        T["Tree Panel<br/>click node"]
+        M["Mermaid Preview<br/>click shape"]
+        Y["YAML Editor<br/>cursor position"]
+    end
+
+    subgraph Sync["Sync Engine"]
+        SE["Selection<br/>Coordinator"]
+    end
+
+    subgraph Targets["All Update"]
+        T2["Tree: highlight"]
+        M2["Mermaid: highlight node"]
+        Y2["YAML: reveal range"]
+    end
+
+    T --> SE
+    M --> SE
+    Y --> SE
+    SE --> T2
+    SE --> M2
+    SE --> Y2
+```
+
+---
+
+## 10. Mermaid Capabilities Overview
 
 Mermaid supports a wide range of diagram types. Below is a reference of what
 is available, with sample diagrams for each type.
 
-### 8.1 Flowchart
+### 10.1 Flowchart
 
 The most common diagram type. Supports directions (TD, LR, BT, RL),
 subgraphs, various node shapes, and link styles.
@@ -843,7 +1221,7 @@ flowchart LR
     F --x|Cross end| G
 ```
 
-### 8.2 State Diagram
+### 10.2 State Diagram
 
 Models state machines with transitions, guards, nested states, forks/joins,
 and concurrent regions.
@@ -890,7 +1268,7 @@ stateDiagram-v2
     end note
 ```
 
-### 8.3 Sequence Diagram
+### 10.3 Sequence Diagram
 
 Shows interactions between actors/systems over time. Supports activation,
 loops, alternatives, notes, and parallel blocks.
@@ -933,7 +1311,7 @@ sequenceDiagram
     end
 ```
 
-### 8.4 Entity Relationship Diagram
+### 10.4 Entity Relationship Diagram
 
 Models database schemas with entities, attributes, and relationships.
 
@@ -975,7 +1353,7 @@ erDiagram
     PRODUCT ||--o{ ORDER_ITEM : "is in"
 ```
 
-### 8.5 Class Diagram
+### 10.5 Class Diagram
 
 Models classes, interfaces, relationships, and inheritance.
 
@@ -1021,7 +1399,7 @@ classDiagram
     TelegramNotifier --> ChatChannel : uses
 ```
 
-### 8.6 Gantt Chart
+### 10.6 Gantt Chart
 
 Timeline-based project planning.
 
@@ -1051,7 +1429,7 @@ gantt
         Testing                  :         test,    after style,  3d
 ```
 
-### 8.7 Pie Chart
+### 10.7 Pie Chart
 
 Simple proportional data display.
 
@@ -1064,7 +1442,7 @@ pie title Node Types in a Typical Flow
     "Parallel" : 8
 ```
 
-### 8.8 Journey (User Journey)
+### 10.8 Journey (User Journey)
 
 User experience mapping with satisfaction scores.
 
@@ -1084,7 +1462,7 @@ journey
         Account activated     : 5 : User, System
 ```
 
-### 8.9 Mindmap
+### 10.9 Mindmap
 
 Hierarchical idea organization.
 
@@ -1113,7 +1491,7 @@ mindmap
             Sequence Diagram
 ```
 
-### 8.10 Timeline
+### 10.10 Timeline
 
 Chronological event display.
 
@@ -1132,7 +1510,7 @@ timeline
             : ER Diagram Editor
 ```
 
-### 8.11 Quadrant Chart
+### 10.11 Quadrant Chart
 
 Two-axis evaluation.
 
@@ -1149,7 +1527,7 @@ quadrantChart
     bigUML GLSP: [0.1, 0.6]
 ```
 
-### 8.12 Gitgraph
+### 10.12 Gitgraph
 
 Git branching visualization.
 
@@ -1171,7 +1549,7 @@ gitGraph
     commit id: "release v1"
 ```
 
-### 8.13 Block Diagram (beta)
+### 10.13 Block Diagram (beta)
 
 Block-based system architecture.
 
@@ -1192,7 +1570,7 @@ flowchart TD
     Orders --> DB
 ```
 
-### 8.14 Sankey Diagram
+### 10.14 Sankey Diagram
 
 Flow/quantity visualization.
 
@@ -1233,14 +1611,17 @@ Flowchart, State Diagram, ER Diagram, Class Diagram, Mindmap.
 
 ---
 
-## 9. Implementation Plan
+## 11. Implementation Plan
 
-### Phase 1 — Foundation (Schema + Converter)
+### Phase 1 — Foundation (yaml-graph-core library)
 
+- Create standalone TypeScript/npm package `yaml-graph-core`
 - Define JSON schemas for flowchart and state machine
-- Build YAML → Mermaid converters (one per graph type)
+- Define mapping file format and JSON Schema for `*.graph-map.yaml`
+- Build mapping-driven conversion engine
 - Comment-preserving YAML parser wrapper using `yaml` npm CST
-- Can be used standalone (CLI or Copilot-driven) before the editor exists
+- Write flowchart and state machine mapping files
+- Can be used standalone (Node.js, CLI, or any TS project) before the editor exists
 
 ### Phase 2 — Custom Editor Scaffold
 
