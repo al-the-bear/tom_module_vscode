@@ -67,7 +67,6 @@ export { telegramTestHandler, telegramToggleHandler, telegramConfigureHandler, d
 export { registerDsNotesViews } from './dsNotes-handler';
 export { registerUnifiedNotepad } from './unifiedNotepad-handler';
 export { registerT3Panel } from './t3Panel-handler';
-export { registerIssuePanels } from './issuesPanel-handler';
 export { toggleTrail, setTrailEnabled, isTrailEnabled, loadTrailConfig } from './trailLogger-handler';
 export { showStatusPageHandler, toggleTrailHandler } from './statusPage-handler';
 export { getCliServerStatus } from './cliServer-handler';

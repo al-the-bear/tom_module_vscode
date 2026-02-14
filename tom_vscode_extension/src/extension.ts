@@ -59,7 +59,6 @@ import {
     registerDsNotesViews,
     registerUnifiedNotepad,
     registerT3Panel,
-    registerIssuePanels,
     telegramTestHandler,
     telegramToggleHandler,
     telegramConfigureHandler,
@@ -116,11 +115,8 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register Unified Notepad (T2) panel
     registerUnifiedNotepad(context);
 
-    // Register T3 test panel
+    // Register T3 panel (includes Issues and Tests tabs)
     registerT3Panel(context);
-
-    // Register TOM Issues and TOM Tests panels
-    registerIssuePanels(context);
 
     // Check for test reinstall marker and send reload prompt to Copilot Chat
     checkTestReinstallMarker();

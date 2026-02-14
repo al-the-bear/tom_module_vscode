@@ -396,18 +396,6 @@
           "id": "dartscript.t3Panel",
           "name": "TOM",
           "icon": "$(beaker)"
-        },
-        {
-          "type": "webview",
-          "id": "dartscript.tomIssues",
-          "name": "TOM ISSUES",
-          "icon": "$(issues)"
-        },
-        {
-          "type": "webview",
-          "id": "dartscript.tomTests",
-          "name": "TOM TESTS",
-          "icon": "$(beaker)"
         }
       ],
       "explorer": [
