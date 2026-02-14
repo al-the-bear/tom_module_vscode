@@ -1,0 +1,43 @@
+meta:
+  id: order-lifecycle
+  title: Order Lifecycle
+  graph-version: 1
+
+states:
+  init:
+    type: initial
+    label: New Order
+  pending:
+    type: state
+    label: Pending Review
+  approved:
+    type: state
+    label: Approved
+  rejected:
+    type: state
+    label: Rejected
+  shipped:
+    type: state
+    label: Shipped
+  completed:
+    type: final
+    label: Completed
+
+transitions:
+  - from: init
+    to: pending
+    event: submit
+  - from: pending
+    to: approved
+    event: approve
+    guard: "amount < 1000"
+  - from: pending
+    to: rejected
+    event: reject
+    action: notifyCustomer
+  - from: approved
+    to: shipped
+    event: ship
+  - from: shipped
+    to: completed
+    event: deliver

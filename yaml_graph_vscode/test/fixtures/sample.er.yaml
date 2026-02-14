@@ -1,0 +1,62 @@
+meta:
+  id: user-management
+  title: User Management DB
+  graph-version: 1
+
+entities:
+  user:
+    attributes:
+      - name: id
+        type: integer
+        key: PK
+        nullable: false
+      - name: username
+        type: varchar(50)
+        key: UK
+        nullable: false
+      - name: email
+        type: varchar(255)
+        nullable: false
+      - name: role_id
+        type: integer
+        key: FK
+        nullable: true
+    description: Main user account table
+
+  role:
+    attributes:
+      - name: id
+        type: integer
+        key: PK
+        nullable: false
+      - name: name
+        type: varchar(100)
+        nullable: false
+    description: User roles
+
+  permission:
+    attributes:
+      - name: id
+        type: integer
+        key: PK
+        nullable: false
+      - name: name
+        type: varchar(100)
+        nullable: false
+      - name: resource
+        type: varchar(200)
+        nullable: false
+
+relationships:
+  - from: user
+    to: role
+    type: many-to-one
+    label: has role
+  - from: role
+    to: permission
+    type: many-to-many
+    label: grants
+  - from: user
+    to: permission
+    type: many-to-many
+    label: has direct
