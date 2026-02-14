@@ -825,13 +825,18 @@ Two approaches for converting YAML graph data to Mermaid syntax:
 
 **Recommendation: Mapping-driven with escape hatches.** A `*.graph-map.yaml`
 file defines the conversion rules for each diagram type. The conversion engine
-reads the mapping and generates Mermaid output. For advanced cases that cannot
-be expressed declaratively, the mapping references a named "transform plugin"
-written in TypeScript.
+reads the mapping and generates Mermaid output. Three levels of customization:
+
+1. **Declarative mapping** — covers node shapes, edges, styles, annotations
+2. **Inline JS transforms** — small JavaScript fragments embedded in the mapping
+   YAML, using an `AstNodeTransformer` signature for local fixes
+3. **Custom renderer** — a full TypeScript renderer for diagram types that need
+   complete control over Mermaid generation
 
 This means:
 - Adding a new simple diagram type = writing a mapping file (no TS code)
-- Complex diagram types = mapping file + optional transform plugin
+- Diagram types with quirks = mapping file + inline JS transforms
+- Fully custom diagram types = mapping file + custom renderer plugin
 - The mapping file itself can be validated with a JSON Schema
 
 ### Conversion Architecture
@@ -840,11 +845,13 @@ This means:
 flowchart LR
     YAML["Source YAML<br/>(*.flow.yaml)"] --> ENGINE["Conversion Engine"]
     MAP["Mapping File<br/>(*.graph-map.yaml)"] --> ENGINE
-    PLUGIN["Transform Plugin<br/>(optional TS)"] -.-> ENGINE
+    JS["Inline JS Transforms<br/>(AstNodeTransformer)"] -.-> ENGINE
+    PLUGIN["Custom Renderer<br/>(optional TS)"] -.-> ENGINE
     ENGINE --> MERMAID["Mermaid Source"]
 
     style YAML fill:#a8e6a1,stroke:#5cb85c,color:#333
     style MAP fill:#f0ad4e,stroke:#d49430,color:#333
+    style JS fill:#e8d44d,stroke:#b8a41d,color:#333
     style PLUGIN fill:#e8d44d,stroke:#b8a41d,color:#333
     style ENGINE fill:#4a90d9,stroke:#357abd,color:#fff
     style MERMAID fill:#a8e6a1,stroke:#5cb85c,color:#333
@@ -906,6 +913,31 @@ style-rules:
       fill: "#666"
       stroke: "#999"
       color: "#ccc"
+
+# Inline JS transforms (AstNodeTransformer signature)
+# Each transform receives (node, context) and returns modified Mermaid lines.
+# Signature: (node: { id, type, fields }, ctx: { allNodes, allEdges }) => string[]
+transforms:
+  # Example: add tooltip text from tags array
+  - match:
+      field: tags
+      exists: true
+    js: |
+      return [`click ${node.id} callback "${node.id}"`]
+
+  # Example: wrap nodes with status=subprocess in a subgraph
+  - match:
+      field: type
+      equals: subprocess
+    js: |
+      return [
+        `subgraph ${node.id}_sub["${node.fields.label}"]`,
+        `    ${node.id}["${node.fields.label}"]`,
+        `end`
+      ]
+
+# Optional: full custom renderer (overrides declarative mapping entirely)
+# custom-renderer: my-flowchart-renderer
 ```
 
 ### State Machine Mapping Example
@@ -943,6 +975,67 @@ edge-links:
 annotations:
   source-field: entry-action
   template: 'note right of {id}\n    entry / {entry-action}\nend note'
+
+# Inline JS transform for guard conditions on transitions
+transforms:
+  - scope: edge          # applies to edges, not nodes
+    match:
+      field: guard
+      exists: true
+    js: |
+      const label = `${edge.fields.event} [${edge.fields.guard}]`
+      return [`${edge.from} --> ${edge.to} : ${label}`]
+```
+
+### Inline JS Transforms — AstNodeTransformer
+
+The `transforms` array in a mapping file allows embedding small JavaScript
+fragments that handle cases too specific for declarative rules. Each transform
+follows the `AstNodeTransformer` signature:
+
+```typescript
+/**
+ * Inline transform signature. The JS fragment in the mapping YAML is
+ * wrapped into a function with this signature by the conversion engine.
+ */
+type AstNodeTransformer = (
+    node: {
+        id: string;
+        type: string;
+        fields: Record<string, unknown>;
+    },
+    context: {
+        allNodes: Map<string, NodeData>;
+        allEdges: EdgeData[];
+        mapping: GraphMapping;
+        output: string[];   // lines emitted so far
+    }
+) => string[];  // Mermaid lines to emit for this node/edge
+```
+
+**Execution model:**
+- The engine evaluates each transform's `match` condition against the current
+  node or edge
+- If matched, the `js` fragment executes in a sandboxed `Function()` scope
+  with `node`/`edge` and `ctx` provided as arguments
+- The returned `string[]` replaces the default Mermaid output for that element
+- If no transform matches, the declarative mapping rules apply
+
+**Customization levels:**
+
+```mermaid
+flowchart TD
+    D["Declarative Rules<br/>(shapes, edges, styles)"] -->|"covers 80%"| OK(["Output"])
+    T["Inline JS Transforms<br/>(AstNodeTransformer)"] -->|"covers 15%"| OK
+    R["Custom Renderer<br/>(full TypeScript)"] -->|"covers 5%"| OK
+
+    D -.->|"not expressive enough"| T
+    T -.->|"still too limited"| R
+
+    style D fill:#a8e6a1,stroke:#5cb85c,color:#333
+    style T fill:#e8d44d,stroke:#b8a41d,color:#333
+    style R fill:#d9534f,stroke:#c9302c,color:#fff
+    style OK fill:#4a90d9,stroke:#357abd,color:#fff
 ```
 
 ### Conversion Engine Pseudocode
@@ -974,9 +1067,17 @@ function convert(yamlDoc, mapping):
         rule = matching style rule
         output.add( "style " + id + " fill:... " )
 
-    // Apply transform plugin if registered
-    if mapping has transform plugin:
-        output = plugin.transform(output, yamlDoc)
+    // Apply inline JS transforms (AstNodeTransformer)
+    for each node/edge:
+        for each transform in mapping.transforms:
+            if transform.match matches current element:
+                lines = evaluate(transform.js, element, context)
+                replace default output for this element with lines
+                break  // first matching transform wins
+
+    // Apply custom renderer if registered (overrides everything above)
+    if mapping has custom-renderer:
+        output = customRenderer.render(yamlDoc, mapping)
 
     return output.join("\n")
 ```
@@ -986,8 +1087,10 @@ function convert(yamlDoc, mapping):
 To add support for a new YAML graph type, you create:
 
 1. **A JSON Schema** (e.g., `sequence-diagram.schema.json`) — validates the YAML
-2. **A mapping file** (e.g., `sequence.graph-map.yaml`) — defines YAML → Mermaid rules
-3. **Optionally a transform plugin** — for features the mapping cannot express
+2. **A mapping file** (e.g., `sequence.graph-map.yaml`) — defines YAML → Mermaid rules,
+   including inline JS transforms for special cases
+3. **Optionally a custom renderer** — a full TypeScript renderer for diagram types
+   that need complete control over Mermaid generation
 
 No TypeScript code changes required for simple types. Register the new files
 in the Graph Type Registry and the editor automatically supports them.
@@ -1009,6 +1112,14 @@ flowchart LR
     style S3 fill:#4a90d9,stroke:#357abd,color:#fff
     style S4 fill:#e8d44d,stroke:#b8a41d,color:#333
 ```
+
+### When to Use Each Customization Level
+
+| Level | Use When | Example |
+|-------|----------|--------|
+| Declarative only | Straightforward type→shape, field→label | Simple flowcharts, basic ER |
+| + Inline JS transforms | One-off adjustments, conditional formatting, edge-case shapes | Guard conditions on state transitions, conditional subgraphs |
+| Custom renderer | Radically different output structure, complex nesting, non-standard Mermaid | Sequence diagrams (message ordering), deeply nested state machines |
 
 ---
 
@@ -1057,7 +1168,7 @@ sequenceDiagram
 
 | Scenario | Behavior |
 |----------|----------|
-| Valid change | Tree and preview update immediately (debounced ~300ms) |
+| Valid change | Tree and preview update immediately (debounced ~1s) |
 | Syntax error mid-typing | Tree shows error indicator, preview keeps last valid state |
 | Schema violation | Tree updates but shows validation warning in status bar |
 | Adding a new node | Tree expands to show it, preview re-renders with new node |
@@ -1068,19 +1179,29 @@ sequenceDiagram
 ### Debouncing Strategy
 
 Direct typing generates many rapid `onDidChangeTextDocument` events. The
-extension debounces these with a ~300ms delay before re-parsing. This prevents
-flickering and wasted computation while still feeling responsive.
+extension debounces these with a ~1 second delay before re-parsing. This avoids
+wasted computation during active typing while keeping the preview reasonably
+responsive. One second is long enough that most intermediate invalid states
+(unclosed brackets, half-typed keys) resolve before the parse triggers, reducing
+flickering error indicators.
 
 ---
 
 ## 9. Interactive Diagrams
 
-### Can Mermaid Diagrams Be Interactive?
+### Interaction Model
 
-Yes, partially. Mermaid supports `click` events on nodes, and since the
-diagram renders as SVG inside our webview, we have full control.
+The Mermaid preview is not a passive image — it supports three primary
+interaction types that connect the diagram back to the source data:
 
-### Click-to-Navigate Implementation
+1. **Jump to tree** — click a diagram shape to select the corresponding node
+   in the tree panel
+2. **Jump to YAML line** — click a diagram shape to reveal and highlight the
+   corresponding YAML block in the text document
+3. **Editor overlay** — click or double-click a shape to open an inline editor
+   overlay showing all editable fields (label, type, status, owner, tags, etc.)
+
+### Interaction Flow
 
 ```mermaid
 sequenceDiagram
@@ -1090,54 +1211,148 @@ sequenceDiagram
     participant Ext as Extension Host
     participant Tree as Tree Panel
     participant Doc as TextDocument
+    participant Overlay as Editor Overlay
 
+    Note over User,Overlay: Single click - jump to tree + YAML
     User->>SVG: Click on node
     SVG->>WV: click event (node ID)
     WV->>Ext: postMessage(nodeClicked, nodeId)
 
-    par Update tree
+    par Jump to tree
         Ext->>Tree: postMessage(selectNode, nodeId)
-        Tree->>Tree: Scroll to + highlight node
-    and Reveal in YAML
-        Ext->>Ext: Look up node position in YAML AST
+        Tree->>Tree: Scroll to and highlight node
+    and Jump to YAML line
+        Ext->>Ext: Look up node range in YAML AST
         Ext->>Doc: editor.revealRange(nodeRange)
+        Doc->>Doc: Highlight YAML block
     end
+
+    Note over User,Overlay: Double-click - open editor overlay
+    User->>SVG: Double-click on node
+    SVG->>WV: dblclick event (node ID)
+    WV->>Ext: postMessage(nodeEdit, nodeId)
+    Ext->>Ext: Read node metadata from YAML AST
+    Ext->>Overlay: postMessage(showOverlay, nodeData)
+    Overlay->>Overlay: Show editable form at node position
+
+    User->>Overlay: Edit fields and confirm
+    Overlay->>Ext: postMessage(applyEdit, changes)
+    Ext->>Ext: Apply to YAML AST (comment-preserving)
+    Ext->>Doc: WorkspaceEdit(updated YAML)
+    Doc->>Ext: onDidChangeTextDocument
+    Ext->>Tree: Updated tree
+    Ext->>SVG: Updated Mermaid
+    Ext->>Overlay: Close overlay
 ```
 
-### What Can Be Interactive
+### 9.1 Jump to Tree
 
-| Feature | Feasible? | How |
-|---------|-----------|-----|
-| Click node → select in tree | Yes | Mermaid `click` callback + postMessage |
-| Click node → jump to YAML line | Yes | YAML AST tracks source positions |
-| Hover node → show metadata | Yes | SVG title/tooltip or custom overlay |
-| Click edge → select in tree | Partial | Edges have SVG paths but no built-in click handler; requires custom SVG event binding |
-| Drag node to reorder | No | Mermaid SVG is read-only; must edit via tree panel |
-| Double-click to edit label | Possible | Show inline input overlay positioned over SVG node |
+When the user single-clicks a shape in the Mermaid preview, the tree panel
+scrolls to and highlights the corresponding node. This uses Mermaid's built-in
+`click` callback mechanism.
 
-### Mermaid Click Syntax
-
-The conversion engine automatically adds click handlers to generated Mermaid:
-
-```
-flowchart TD
-    validate["Validate input"]
-    click validate callback "validate"
-```
-
-In the webview, a global callback function receives the node ID and posts it
-to the extension host:
+**Implementation:** The conversion engine adds `click nodeId callback "nodeId"`
+to every node in the generated Mermaid source. The webview registers a global
+callback:
 
 ```javascript
-// In webview script
+// Webview script
 window.mermaidCallback = function(nodeId) {
     vscode.postMessage({ type: 'nodeClicked', nodeId: nodeId });
 };
 ```
 
+**Assessment:** Fully feasible. Mermaid's `click` callback is well-supported.
+The only consideration is that callback registration must happen after each
+Mermaid re-render (since the SVG is regenerated). This is straightforward —
+call `mermaid.run()` and then re-register callbacks, or use event delegation
+on the SVG container.
+
+### 9.2 Jump to YAML Line
+
+Single-click also reveals the node's YAML source location. The `yaml` npm
+package's `parseDocument()` AST tracks exact source positions for every node:
+
+```typescript
+const doc = parseDocument(yamlText);
+const node = doc.getIn(['nodes', 'validate'], true); // scalar node
+const range = node.range; // [startOffset, valueEndOffset, nodeEndOffset]
+```
+
+The extension host converts the byte offset to a `vscode.Position` and calls
+`editor.revealRange(range, RevealType.InCenter)` to scroll the text editor.
+
+**Assessment:** Fully feasible. The YAML AST gives precise source positions.
+The only subtlety is that when the custom editor is active, the underlying
+`TextDocument` may not have a visible text editor — in that case, the
+extension would need to open a side-by-side text editor or store the position
+for when the user switches to text view.
+
+### 9.3 Editor Overlay
+
+Double-clicking a shape opens an inline editor overlay positioned over the
+clicked node in the Mermaid preview. The overlay shows all editable fields
+for that node as a small form.
+
+**Overlay content example for a process node:**
+
+```
+┌─────────────────────────────┐
+│  validate                   │
+├─────────────────────────────┤
+│  Label:  [Validate input ]  │
+│  Type:   [process      ▾]  │
+│  Status: [implemented  ▾]  │
+│  Owner:  [auth-service   ]  │
+│  Tags:   [validation, ...]  │
+├─────────────────────────────┤
+│  [Cancel]         [Apply]   │
+└─────────────────────────────┘
+```
+
+**Implementation:** The overlay is a DOM element in the webview, absolutely
+positioned over the clicked SVG node's bounding box. It is **not** a separate
+VS Code panel — it lives inside the Mermaid preview's webview.
+
+**Positioning:** Query the SVG node element's `getBoundingClientRect()` and
+place the overlay div accordingly. Adjust if near viewport edges.
+
+**Editing flow:**
+1. User double-clicks a node shape
+2. Webview sends `nodeEdit` message with node ID and SVG bounding rect
+3. Extension host reads full node data from YAML AST
+4. Extension host sends node fields + schema info to webview
+5. Webview renders overlay form with current values and field types
+6. User edits fields and clicks Apply
+7. Webview sends `applyEdit` with changed fields
+8. Extension host applies comment-preserving edits to TextDocument
+9. Re-render pipeline triggers (tree + preview update)
+10. Overlay closes
+
+**Assessment:** Feasible but more complex than the click-to-navigate features.
+Key challenges:
+- Positioning the overlay correctly relative to the SVG (SVG coordinates vs
+  webview viewport coordinates)
+- Building a dynamic form from schema metadata (field types, enums, etc.)
+- Handling overlay dismissal (Escape key, click outside, Apply/Cancel)
+- Ensuring the overlay doesn't interfere with Mermaid pan/zoom if enabled
+
+This should be a Phase 4 feature, after basic tree editing and click-to-navigate
+are working.
+
+### Interaction Feasibility Summary
+
+| Interaction | Feasibility | Effort | Phase |
+|-------------|-------------|--------|-------|
+| **Jump to tree** (single click) | Fully feasible | Low | 3 |
+| **Jump to YAML line** (single click) | Fully feasible | Low | 3 |
+| **Editor overlay** (double click) | Feasible, complex | Medium-High | 4 |
+| Click edge → select in tree | Partial — requires custom SVG event binding | Medium | 5 |
+| Hover → tooltip with metadata | Feasible via SVG title or overlay | Low | 3 |
+
 ### Selection Synchronization
 
-Selection sync works bidirectionally:
+Selection sync works bidirectionally across all three panes:
 
 ```mermaid
 flowchart LR
