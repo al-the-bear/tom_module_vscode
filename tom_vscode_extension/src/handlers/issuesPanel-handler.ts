@@ -191,14 +191,13 @@ export function getIssuesCss(): string {
 }
 .issue-item {
     display: flex;
-    align-items: flex-start;
-    gap: 6px;
-    padding: 6px 8px;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
     cursor: pointer;
     border-bottom: 1px solid var(--vscode-panel-border);
     font-size: 12px;
     line-height: 1.4;
-    position: relative;
     overflow: hidden;
 }
 .issue-item:hover { background: var(--vscode-list-hoverBackground); }
@@ -206,14 +205,18 @@ export function getIssuesCss(): string {
     background: var(--vscode-list-activeSelectionBackground);
     color: var(--vscode-list-activeSelectionForeground);
 }
-.issue-number { color: var(--vscode-descriptionForeground); font-size: 11px; min-width: 35px; }
-.issue-item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.issue-state-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
-.issue-col { color: var(--vscode-descriptionForeground); font-size: 10px; white-space: nowrap; flex-shrink: 0; max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+.issue-number { color: var(--vscode-descriptionForeground); font-size: 11px; min-width: 32px; flex-shrink: 0; }
+.issue-item-title { width: 300px; min-width: 60px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
+.issue-state-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.issue-col { color: var(--vscode-descriptionForeground); font-size: 11px; white-space: nowrap; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; padding-left: 4px; }
+.issue-col.col-author { max-width: 80px; }
+.issue-col.col-labels { max-width: 100px; }
+.issue-col.col-commentCount { max-width: 30px; text-align: center; }
+.issue-col.col-createdAt { max-width: 80px; }
+.issue-col.col-updatedAt { max-width: 80px; }
 .issue-status-stamp {
-    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-    padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.3px; pointer-events: none;
+    padding: 1px 5px; border-radius: 8px; font-size: 9px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.3px; pointer-events: none; flex-shrink: 0;
     background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); border: 1px solid var(--vscode-contrastBorder, transparent);
 }
 .icon-btn.active-indicator { background: var(--vscode-button-background); color: var(--vscode-button-foreground); opacity: 1; border-radius: 3px; }
@@ -342,14 +345,15 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     var activeLabelFilters = {};
     var labelSections = {};
     var sortFields = [];
+    var COLUMN_ORDER = ['author', 'labels', 'commentCount', 'createdAt', 'updatedAt'];
     var AVAILABLE_COLUMNS = [
         { key: 'author', label: 'Author' },
-        { key: 'createdAt', label: 'Created' },
-        { key: 'updatedAt', label: 'Updated' },
+        { key: 'labels', label: 'Labels' },
         { key: 'commentCount', label: 'Comments' },
-        { key: 'labels', label: 'Labels' }
+        { key: 'createdAt', label: 'Created' },
+        { key: 'updatedAt', label: 'Updated' }
     ];
-    var visibleColumns = ['updatedAt'];
+    var visibleColumns = ['author', 'labels', 'commentCount', 'createdAt', 'updatedAt'];
     var SORTABLE_FIELDS = [
         { key: 'number', label: 'Number' },
         { key: 'title', label: 'Title' },
@@ -527,6 +531,16 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
             html += '<option value="' + escapeHtml(repos[i].id) + '">' + escapeHtml(repos[i].displayName) + '</option>';
         }
         repoSelect.innerHTML = html;
+        // Auto-select: first additional repo (marked with ':') or 'All Repos' for issues, none for tests
+        var preselected = '';
+        for (var j = 0; j < repos.length; j++) {
+            if (repos[j].displayName.indexOf(': ') >= 0) { preselected = repos[j].id; break; }
+        }
+        if (!preselected && _mode === 'issues' && repos.length > 0) { preselected = '__all__'; }
+        if (preselected) {
+            repoSelect.value = preselected;
+            repoSelect.dispatchEvent(new Event('change'));
+        }
     }
     repoSelect.addEventListener('change', function() {
         var val = repoSelect.value;
@@ -688,8 +702,8 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     function formatColumnValue(issue, col) {
         switch (col) {
             case 'author': return issue.author ? issue.author.name : '';
-            case 'createdAt': return formatDateShort(issue.createdAt);
-            case 'updatedAt': return formatDateShort(issue.updatedAt);
+            case 'createdAt': return 'C: ' + formatDateShort(issue.createdAt);
+            case 'updatedAt': return 'U: ' + formatDateShort(issue.updatedAt);
             case 'commentCount': return (issue.commentCount || 0) + '';
             case 'labels':
                 var lbls = (issue.labels || []).map(function(l) {
@@ -699,6 +713,9 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                 return lbls.join(', ');
             default: return '';
         }
+    }
+    function getOrderedVisibleColumns() {
+        return COLUMN_ORDER.filter(function(k) { return visibleColumns.indexOf(k) >= 0; });
     }
     function renderIssueList() {
         if (issues.length === 0) { issueListEl.innerHTML = '<div class="empty-state">No issues found</div>'; return; }
@@ -712,9 +729,12 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
             html += '<span class="issue-state-dot" style="background:' + escapeHtml(dotColor) + ';"></span>';
             html += '<span class="issue-number">#' + issue.number + '</span>';
             html += '<span class="issue-item-title">' + escapeHtml(issue.title) + '</span>';
-            for (var ci = 0; ci < visibleColumns.length; ci++) {
-                var cv = formatColumnValue(issue, visibleColumns[ci]);
-                if (cv) { html += '<span class="issue-col" title="' + escapeHtml(AVAILABLE_COLUMNS.filter(function(c){return c.key===visibleColumns[ci];})[0].label) + '">' + escapeHtml(cv) + '</span>'; }
+            var ordCols = getOrderedVisibleColumns();
+            for (var ci = 0; ci < ordCols.length; ci++) {
+                var colKey = ordCols[ci];
+                var cv = formatColumnValue(issue, colKey);
+                var colMeta = AVAILABLE_COLUMNS.filter(function(c){return c.key===colKey;})[0];
+                html += '<span class="issue-col col-' + colKey + '" title="' + escapeHtml(colMeta ? colMeta.label : colKey) + '">' + escapeHtml(cv) + '</span>';
             }
             if (effStatus !== 'open') { html += '<span class="issue-status-stamp">' + escapeHtml(formatStatusLabel(effStatus)) + '</span>'; }
             html += '</div>';
