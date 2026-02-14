@@ -1993,15 +1993,32 @@ test/fixtures/
 
 ## 14. Open Questions
 
-These are areas where the design may evolve during implementation:
+### Resolved Questions
 
-| # | Question | Current Assumption | Impact |
-|---|----------|-------------------|--------|
-| 1 | Should the ER diagram mapping use the generic node/edge model, or does it need a separate entity/relationship model? | Use generic model with special shape templates | May need mapping format extensions |
-| 2 | How should composite/nested states be handled in the mapping format? | Inline JS transforms for nesting | Might need a `children` or `subgraph` mapping concept |
-| 3 | Should `MappingLoader` support loading from URLs (for external/shared diagram types)? | File system only for now | Easy to add later |
-| 4 | Should the webview use a framework (Lit, Svelte) or stay framework-free? | Plain DOM | Can revisit if complexity warrants it |
-| 5 | How to handle Mermaid configuration (theme, font size, etc.)? | VS Code theme CSS variables | May need per-diagram-type Mermaid config |
-| 6 | Should the graph-type folders support an optional `README.md` or metadata file? | Not needed initially | Nice for discoverability |
-| 7 | How should the build process bundle `yaml-graph-core` into the extension? | npm workspace or file dependency + copy | Needs validation during Phase 1 |
-| 8 | Should `AstNodeTransformerRuntime` use `vm.runInContext` instead of `new Function` for better sandboxing? | `new Function` for simplicity | Security consideration for untrusted mappings |
+These questions were raised during the initial design and have been resolved:
+
+| # | Question | Decision | Notes |
+|---|----------|----------|-------|
+| 1 | Should the ER diagram mapping use the generic node/edge model, or does it need a separate entity/relationship model? | **Use generic model** with special shape templates | May need mapping format extensions later, but start generic |
+| 2 | How should composite/nested states be handled in the mapping format? | **Inline JS transforms** for nesting | If a dedicated `children`/`subgraph` mapping concept proves necessary, it can be added as a mapping extension |
+| 3 | Should `MappingLoader` support loading from URLs (for external/shared diagram types)? | **File system only** for now | Easy to add URL loading later if shared diagram types become a need |
+| 4 | Should the webview use a framework (Lit, Svelte) or stay framework-free? | **Plain DOM** | Revisit if webview complexity warrants a framework |
+| 5 | How to handle Mermaid configuration (theme, font size, etc.)? | **CSS-based**, adjustable per diagram type | Each graph type can provide a CSS file or CSS variables block. The webview injects the appropriate CSS based on the active graph type. VS Code theme CSS variables serve as defaults. |
+| 6 | Should the graph-type folders support an optional `README.md` or metadata file? | **Not needed initially** | Nice for discoverability, can add later |
+| 7 | How should the build process bundle `yaml-graph-core` into the extension? | **npm workspace** | The repository will be structured as an npm workspace with `yaml_graph_core` and `yaml_graph_vscode` as workspace packages. This simplifies dependency resolution, shared tooling, and `tsc --build` usage. |
+| 8 | Should `AstNodeTransformerRuntime` use `vm.runInContext` instead of `new Function` for better sandboxing? | **`new Function`** for simplicity | Mapping files are authored by the user, not loaded from untrusted sources. Sandboxing can be revisited if the threat model changes. |
+
+### Open Questions
+
+New design questions identified for resolution during implementation:
+
+| # | Question | Context | Impact |
+|---|----------|---------|--------|
+| 9 | How should `mermaid.js` be bundled into the webview? Options: (a) local bundle copied into webview assets, (b) CDN link, (c) bundled via esbuild from `node_modules`. | Webview has no Node.js access — scripts must be local files or CDN URLs. CDN requires internet; local is self-contained but increases extension size. | Affects extension packaging, offline capability, and bundle size |
+| 10 | How should graph-type folders be discovered and registered? Options: (a) explicit list in `package.json` contributes, (b) auto-scan a well-known directory, (c) both. | `GraphTypeRegistry.registerFromFolder()` needs to know which folders to load. Auto-scan is convenient; explicit registration is predictable. | Affects extension activation time and third-party extensibility |
+| 11 | What happens when multiple graph types claim the same file pattern (e.g., two types both match `*.flow.yaml`)? | `GraphTypeRegistry` uses a `filePatternMap` that overwrites on collision. | Needs a conflict detection or priority mechanism |
+| 12 | How should per-diagram-type CSS styling be structured in the graph-type folder? | Resolved Q5 says CSS-based, adjustable per diagram type. The graph-type folder needs a convention: optional `style.css` file? CSS block in the mapping YAML? Separate config? | Affects graph-type folder structure and webview CSS injection |
+| 13 | Should the mapping format support versioning for forward compatibility? | As the mapping format evolves, older mapping files may become incompatible. A `version` field in `graph-map.yaml` could allow graceful migration. | Low risk initially, higher risk once third-party types exist |
+| 14 | How should the node editor form handle complex field types (arrays, nested objects)? | Current design shows simple `<input>`/`<select>` forms. Some YAML nodes may contain arrays (e.g., multiple labels) or nested objects. | Affects node editor panel complexity and the `showNode` message payload |
+| 15 | Should the `ConversionCallbacks` interface support async callbacks? | Current interface is synchronous. Some callbacks (e.g., checking if a linked file exists) might need async I/O. | Affects `ConversionEngine.convert()` signature (sync vs async) |
+| 16 | How should undo/redo work for edits made through the node editor panel? | The editor uses `WorkspaceEdit` for text changes, which integrates with VS Code's undo stack. But batched multi-field edits should ideally be a single undo step. | Affects `applyEdit` handler implementation |
