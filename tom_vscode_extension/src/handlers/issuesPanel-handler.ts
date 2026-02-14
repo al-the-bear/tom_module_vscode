@@ -959,7 +959,8 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                 var startX = e.clientX;
                 // Capture rendered widths for all visible columns at drag start
                 var startRendered = {};
-                var firstRow = issueListEl.querySelector('.issue-row');
+                var rows = issueListEl.querySelectorAll('.issue-row');
+                var firstRow = rows.length > 0 ? rows[0] : null;
                 if (firstRow) {
                     var cells = firstRow.querySelectorAll('.issue-cell');
                     for (var si = 0; si < visCols.length && si < cells.length; si++) {
@@ -973,14 +974,32 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                 var startW = startRendered[colKey] || visCols[colIdx].minWidth;
                 handle.classList.add('dragging');
                 _isDragging = true;
+
+                function applyWidthsToDOM(newWidths) {
+                    // Update cell widths directly in DOM without re-rendering
+                    var allRows = issueListEl.querySelectorAll('.issue-row');
+                    for (var ri2 = 0; ri2 < allRows.length; ri2++) {
+                        var cells2 = allRows[ri2].querySelectorAll('.issue-cell');
+                        for (var ci2 = 0; ci2 < visCols.length && ci2 < cells2.length; ci2++) {
+                            cells2[ci2].style.width = (newWidths[visCols[ci2].key] || visCols[ci2].minWidth) + 'px';
+                        }
+                    }
+                    // Update resize handle positions
+                    var handles2 = issueListEl.querySelectorAll('.col-resize-handle');
+                    var cumX2 = 0;
+                    for (var hi = 0; hi < visCols.length - 1 && hi < handles2.length; hi++) {
+                        cumX2 += (newWidths[visCols[hi].key] || visCols[hi].minWidth) + 1;
+                        handles2[hi].style.left = (cumX2 - 3) + 'px';
+                    }
+                }
+
                 function onMove(ev) {
                     var dx = ev.clientX - startX;
                     var desiredW = Math.max(visCols[colIdx].minWidth, startW + dx);
-                    // Reset all columns to their starting rendered widths
+                    // Build new widths from startRendered baseline
+                    var newWidths = {};
                     for (var ai = 0; ai < visCols.length; ai++) {
-                        if (startRendered[visCols[ai].key]) {
-                            manualWidths[visCols[ai].key] = startRendered[visCols[ai].key];
-                        }
+                        newWidths[visCols[ai].key] = startRendered[visCols[ai].key] || visCols[ai].minWidth;
                     }
                     var growBy = desiredW - startW;
                     if (growBy > 0) {
@@ -992,20 +1011,24 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                             var canTake = rCurW - visCols[ri].minWidth;
                             var take = Math.min(canTake, toSteal);
                             if (take > 0) {
-                                manualWidths[rKey] = rCurW - take;
+                                newWidths[rKey] = rCurW - take;
                                 toSteal -= take;
                             }
                         }
                         desiredW = startW + (growBy - toSteal);
                     }
-                    manualWidths[colKey] = desiredW;
-                    renderIssueList();
+                    newWidths[colKey] = desiredW;
+                    // Store for final commit
+                    manualWidths = newWidths;
+                    applyWidthsToDOM(newWidths);
                 }
                 function onUp() {
                     _isDragging = false;
                     handle.classList.remove('dragging');
                     document.removeEventListener('mousemove', onMove);
                     document.removeEventListener('mouseup', onUp);
+                    // Do a full re-render to sync everything
+                    renderIssueList();
                 }
                 document.addEventListener('mousemove', onMove);
                 document.addEventListener('mouseup', onUp);
