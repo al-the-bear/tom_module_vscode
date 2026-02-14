@@ -1,0 +1,83 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "flowchart.schema.json",
+    "title": "Flow Diagram",
+    "description": "YAML schema for flowchart/process-flow diagrams",
+    "type": "object",
+    "required": ["meta", "nodes", "edges"],
+    "properties": {
+        "meta": {
+            "type": "object",
+            "required": ["id", "title", "graph-version"],
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]*$",
+                    "description": "Unique diagram identifier"
+                },
+                "title": { "type": "string" },
+                "graph-version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Mapping format version (must match a v{n}/ subfolder)"
+                },
+                "version": { "type": "integer", "minimum": 1, "default": 1 },
+                "direction": {
+                    "type": "string",
+                    "enum": ["TD", "LR", "BT", "RL"],
+                    "default": "TD"
+                },
+                "description": { "type": "string" }
+            }
+        },
+        "nodes": {
+            "type": "object",
+            "additionalProperties": {
+                "$ref": "#/$defs/node"
+            },
+            "minProperties": 1
+        },
+        "edges": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/edge" },
+            "minItems": 0
+        }
+    },
+    "$defs": {
+        "node": {
+            "type": "object",
+            "required": ["type", "label"],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": ["start", "end", "process", "decision", "subprocess"]
+                },
+                "label": { "type": "string" },
+                "status": {
+                    "type": "string",
+                    "enum": ["planned", "implemented", "deprecated"]
+                },
+                "owner": { "type": "string" },
+                "tags": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                },
+                "description": { "type": "string" }
+            }
+        },
+        "edge": {
+            "type": "object",
+            "required": ["from", "to"],
+            "properties": {
+                "from": { "type": "string" },
+                "to": { "type": "string" },
+                "label": { "type": "string" },
+                "style": {
+                    "type": "string",
+                    "enum": ["default", "dotted", "thick"],
+                    "default": "default"
+                }
+            }
+        }
+    }
+}

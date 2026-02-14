@@ -1,0 +1,71 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "state-machine.schema.json",
+    "title": "State Machine",
+    "description": "YAML schema for state machine / lifecycle diagrams",
+    "type": "object",
+    "required": ["meta", "states", "transitions"],
+    "properties": {
+        "meta": {
+            "type": "object",
+            "required": ["id", "title", "graph-version"],
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "title": { "type": "string" },
+                "graph-version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Mapping format version (must match a v{n}/ subfolder)"
+                },
+                "version": { "type": "integer", "minimum": 1, "default": 1 },
+                "description": { "type": "string" }
+            }
+        },
+        "states": {
+            "type": "object",
+            "additionalProperties": {
+                "$ref": "#/$defs/state"
+            },
+            "minProperties": 1
+        },
+        "transitions": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/transition" },
+            "minItems": 0
+        }
+    },
+    "$defs": {
+        "state": {
+            "type": "object",
+            "required": ["type", "label"],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": ["initial", "state", "final", "composite"]
+                },
+                "label": { "type": "string" },
+                "entry-action": { "type": "string" },
+                "exit-action": { "type": "string" },
+                "description": { "type": "string" },
+                "tags": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                }
+            }
+        },
+        "transition": {
+            "type": "object",
+            "required": ["from", "to", "event"],
+            "properties": {
+                "from": { "type": "string" },
+                "to": { "type": "string" },
+                "event": { "type": "string" },
+                "guard": { "type": "string" },
+                "action": { "type": "string" }
+            }
+        }
+    }
+}

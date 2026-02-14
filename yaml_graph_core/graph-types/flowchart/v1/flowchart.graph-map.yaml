@@ -1,0 +1,45 @@
+map:
+  id: flowchart
+  version: 1
+  mermaid-type: flowchart
+  direction-field: meta.direction
+  default-direction: TD
+
+node-shapes:
+  source-path: nodes
+  id-field: _key
+  label-field: label
+  type-field: type
+  shapes:
+    start: '(["{label}"])'
+    end: '(["{label}"])'
+    process: '["{label}"]'
+    decision: '{"{label}"}'
+    subprocess: '[["{label}"]]'
+
+edge-links:
+  source-path: edges
+  from-field: from
+  to-field: to
+  label-field: label
+  link-styles:
+    default: "-->"
+    dotted: "-.->"
+    thick: "==>"
+  label-template: "{from} -->|\"{label}\"| {to}"
+
+style-rules:
+  field: status
+  rules:
+    implemented:
+      fill: "#d4edda"
+      stroke: "#28a745"
+      color: "#155724"
+    planned:
+      fill: "#fff3cd"
+      stroke: "#ffc107"
+      color: "#856404"
+    deprecated:
+      fill: "#f8d7da"
+      stroke: "#dc3545"
+      color: "#721c24"

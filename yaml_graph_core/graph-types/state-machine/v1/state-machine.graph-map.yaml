@@ -1,0 +1,25 @@
+map:
+  id: state-machine
+  version: 1
+  mermaid-type: stateDiagram-v2
+
+node-shapes:
+  source-path: states
+  id-field: _key
+  label-field: label
+  type-field: type
+  shapes:
+    initial: ""
+    state: ""
+    final: ""
+    composite: ""
+  initial-connector: "[*] --> {first}"
+  final-connector: "{last} --> [*]"
+
+edge-links:
+  source-path: transitions
+  from-field: from
+  to-field: to
+  label-field: event
+  link-styles:
+    default: "-->"

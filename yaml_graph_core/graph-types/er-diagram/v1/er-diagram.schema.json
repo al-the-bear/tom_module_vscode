@@ -1,0 +1,85 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "er-diagram.schema.json",
+    "title": "ER Diagram",
+    "description": "YAML schema for entity-relationship diagrams",
+    "type": "object",
+    "required": ["meta", "entities"],
+    "properties": {
+        "meta": {
+            "type": "object",
+            "required": ["id", "title", "graph-version"],
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "title": { "type": "string" },
+                "graph-version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Mapping format version (must match a v{n}/ subfolder)"
+                },
+                "version": { "type": "integer", "minimum": 1, "default": 1 },
+                "description": { "type": "string" }
+            }
+        },
+        "entities": {
+            "type": "object",
+            "additionalProperties": {
+                "$ref": "#/$defs/entity"
+            },
+            "minProperties": 1
+        },
+        "relationships": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/relationship" },
+            "default": []
+        }
+    },
+    "$defs": {
+        "entity": {
+            "type": "object",
+            "required": ["attributes"],
+            "properties": {
+                "attributes": {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/attribute" },
+                    "minItems": 1
+                },
+                "description": { "type": "string" }
+            }
+        },
+        "attribute": {
+            "type": "object",
+            "required": ["name", "type"],
+            "properties": {
+                "name": { "type": "string" },
+                "type": { "type": "string" },
+                "key": {
+                    "type": "string",
+                    "enum": ["PK", "FK", "UK"]
+                },
+                "nullable": { "type": "boolean", "default": true }
+            }
+        },
+        "relationship": {
+            "type": "object",
+            "required": ["from", "to", "type"],
+            "properties": {
+                "from": { "type": "string" },
+                "to": { "type": "string" },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "one-to-one",
+                        "one-to-many",
+                        "many-to-one",
+                        "many-to-many"
+                    ]
+                },
+                "label": { "type": "string" }
+            }
+        }
+    }
+}
