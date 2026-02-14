@@ -39,15 +39,16 @@ function parseStatusEntry(raw: string): ParsedStatus {
 
 interface ColumnDef {
     key: string;
+    style: string;
     minWidth: number;
     maxWidth: number;
     required: boolean;
 }
 
 function parseColumnDef(raw: string): ColumnDef | null {
-    const m = raw.match(/^(\w+)\[(\d+),(\d+)\](\*)?$/);
+    const m = raw.match(/^(\w+)(?:\{(\w+)\})?\[(\d+),(\d+)\](\*)?$/);
     if (!m) { return null; }
-    return { key: m[1], minWidth: parseInt(m[2], 10), maxWidth: parseInt(m[3], 10), required: !!m[4] };
+    return { key: m[1], style: m[2] || 'grey', minWidth: parseInt(m[3], 10), maxWidth: parseInt(m[4], 10), required: !!m[5] };
 }
 
 interface IssuePanelConfig {
@@ -62,23 +63,34 @@ interface IssuePanelConfig {
     availableColumns: ColumnDef[];
     labels: string[];
     configError: string | null;
+    columnLabels: Record<string, string>;
+    growthPriority: string[];
 }
 
 function getPanelName(mode: PanelMode): string {
     return mode === 'issues' ? 'issueKit' : 'testkit';
 }
 
+const DEFAULT_COLUMN_LABELS: Record<string, string> = {
+    statusDot: '', id: 'ID', title: 'Title', repository: 'Repository',
+    repositoryOwner: 'Owner', status: 'Status', author: 'Author',
+    commentCount: '# of Comments', creationTimestamp: 'Created', updateTimestamp: 'Updated',
+    labels: 'Labels',
+};
+
+const DEFAULT_GROWTH_PRIORITY: string[] = ['title', 'author', 'repository', 'status', 'repositoryOwner'];
+
 const DEFAULT_AVAILABLE_COLUMNS: ColumnDef[] = [
-    { key: 'statusDot', minWidth: 20, maxWidth: 20, required: true },
-    { key: 'id', minWidth: 32, maxWidth: 32, required: true },
-    { key: 'title', minWidth: 150, maxWidth: 400, required: true },
-    { key: 'repository', minWidth: 80, maxWidth: 150, required: false },
-    { key: 'repositoryOwner', minWidth: 80, maxWidth: 150, required: false },
-    { key: 'status', minWidth: 60, maxWidth: 120, required: false },
-    { key: 'author', minWidth: 60, maxWidth: 150, required: false },
-    { key: 'commentCount', minWidth: 20, maxWidth: 20, required: false },
-    { key: 'creationTimestamp', minWidth: 70, maxWidth: 70, required: false },
-    { key: 'updateTimestamp', minWidth: 70, maxWidth: 70, required: false },
+    { key: 'statusDot', style: 'dot', minWidth: 20, maxWidth: 20, required: true },
+    { key: 'id', style: 'grey', minWidth: 32, maxWidth: 32, required: true },
+    { key: 'title', style: 'normal', minWidth: 150, maxWidth: 400, required: true },
+    { key: 'repository', style: 'grey', minWidth: 80, maxWidth: 150, required: false },
+    { key: 'repositoryOwner', style: 'grey', minWidth: 80, maxWidth: 150, required: false },
+    { key: 'status', style: 'grey', minWidth: 60, maxWidth: 120, required: false },
+    { key: 'author', style: 'grey', minWidth: 60, maxWidth: 150, required: false },
+    { key: 'commentCount', style: 'grey', minWidth: 20, maxWidth: 20, required: false },
+    { key: 'creationTimestamp', style: 'grey', minWidth: 70, maxWidth: 70, required: false },
+    { key: 'updateTimestamp', style: 'grey', minWidth: 70, maxWidth: 70, required: false },
 ];
 
 function loadPanelConfig(mode: PanelMode): IssuePanelConfig {
@@ -96,6 +108,8 @@ function loadPanelConfig(mode: PanelMode): IssuePanelConfig {
         availableColumns: [...DEFAULT_AVAILABLE_COLUMNS],
         labels: ['quicklabel=Flaky', 'quicklabel=Regression', 'quicklabel=Blocked'],
         configError: null,
+        columnLabels: { ...DEFAULT_COLUMN_LABELS },
+        growthPriority: [...DEFAULT_GROWTH_PRIORITY],
     };
     try {
         const configPath = getConfigPath();
@@ -105,6 +119,19 @@ function loadPanelConfig(mode: PanelMode): IssuePanelConfig {
         if (!panels || typeof panels !== 'object') { return defaults; }
         const cfg = panels[panelName];
         if (!cfg) { return defaults; }
+
+        // Parse common section
+        const common = panels['common'];
+        let columnLabels = { ...DEFAULT_COLUMN_LABELS };
+        let growthPriority = [...DEFAULT_GROWTH_PRIORITY];
+        if (common && typeof common === 'object') {
+            if (common.columnLabels && typeof common.columnLabels === 'object') {
+                columnLabels = { ...columnLabels, ...common.columnLabels };
+            }
+            if (Array.isArray(common.growthPriority) && common.growthPriority.length > 0) {
+                growthPriority = common.growthPriority;
+            }
+        }
 
         // Parse statuses
         const rawStatuses: string[] = Array.isArray(cfg.statuses) && cfg.statuses.length > 0 ? cfg.statuses : defaultStatuses;
@@ -121,7 +148,7 @@ function loadPanelConfig(mode: PanelMode): IssuePanelConfig {
                 const col = parseColumnDef(cfg.availableColumns[i]);
                 if (!col) {
                     configError = `Invalid column definition at index ${i}: "${cfg.availableColumns[i]}". ` +
-                        `Expected format: "columnName[minWidth,maxWidth]" or "columnName[minWidth,maxWidth]*" for required columns. ` +
+                        `Expected format: "columnName{style}[minWidth,maxWidth]" or "columnName{style}[minWidth,maxWidth]*" for required columns. ` +
                         `Section: issuePanels.${panelName}.availableColumns`;
                     break;
                 }
@@ -158,6 +185,8 @@ function loadPanelConfig(mode: PanelMode): IssuePanelConfig {
             availableColumns,
             labels: Array.isArray(cfg.labels) ? cfg.labels : defaults.labels,
             configError,
+            columnLabels,
+            growthPriority,
         };
     } catch (e: any) {
         return { ...defaults, configError: `Failed to parse config: ${e.message}` };
@@ -299,21 +328,13 @@ export function getIssuesCss(): string {
     border-right: 1px solid var(--vscode-panel-border);
 }
 .issue-cell:last-child { border-right: none; }
-.issue-cell.cell-statusDot {
+.issue-cell.cell-style-dot {
     display: flex;
     align-items: center;
     justify-content: center;
 }
-.issue-cell.cell-id { color: var(--vscode-descriptionForeground); }
-.issue-cell.cell-title { font-size: 12px; }
-.issue-cell.cell-commentCount { text-align: center; }
-.issue-cell.cell-creationTimestamp,
-.issue-cell.cell-updateTimestamp { color: var(--vscode-descriptionForeground); font-size: 10px; }
-.issue-cell.cell-author,
-.issue-cell.cell-repository,
-.issue-cell.cell-repositoryOwner,
-.issue-cell.cell-status,
-.issue-cell.cell-labels { color: var(--vscode-descriptionForeground); }
+.issue-cell.cell-style-normal { color: var(--vscode-foreground); font-size: 12px; }
+.issue-cell.cell-style-grey { color: var(--vscode-descriptionForeground); font-size: 11px; }
 .issue-state-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 /* Column resize handles */
 .col-resize-handles { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 10; }
@@ -458,13 +479,8 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     var configErrorMsg = null;
     var configSectionName = '';
     var configFilePathStr = '';
-    var GROWTH_PRIORITY = ['title', 'author', 'repository', 'status', 'repositoryOwner'];
-    var COLUMN_LABELS = {
-        statusDot: '', id: 'ID', title: 'Title', repository: 'Repository',
-        repositoryOwner: 'Owner', status: 'Status', author: 'Author',
-        commentCount: '#', creationTimestamp: 'Created', updateTimestamp: 'Updated',
-        labels: 'Labels'
-    };
+    var GROWTH_PRIORITY = [];
+    var COLUMN_LABELS = {};
     var SORTABLE_FIELDS = [
         { key: 'number', label: 'Number' },
         { key: 'title', label: 'Title' },
@@ -520,6 +536,8 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                 configErrorMsg = msg.configError || null;
                 configSectionName = msg.configSection || '';
                 configFilePathStr = msg.configFilePath || '';
+                COLUMN_LABELS = msg.columnLabels || {};
+                GROWTH_PRIORITY = msg.growthPriority || [];
                 // Initialize visibleColumns from required + defaultColumns
                 var defCols = msg.defaultColumns || [];
                 visibleColumns = [];
@@ -905,11 +923,11 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                 var w = widths[cd.key] || cd.minWidth;
                 var val = getColumnValue(issue, cd.key);
                 if (cd.key === 'statusDot') {
-                    html += '<span class="issue-cell cell-statusDot" style="width:' + w + 'px"><span class="issue-state-dot" style="background:' + escapeHtml(val.color) + ';"></span></span>';
+                    html += '<span class="issue-cell cell-style-' + (cd.style || 'dot') + '" style="width:' + w + 'px"><span class="issue-state-dot" style="background:' + escapeHtml(val.color) + ';"></span></span>';
                 } else {
                     var text = typeof val === 'string' ? val : '';
                     var label = COLUMN_LABELS[cd.key] || cd.key;
-                    html += '<span class="issue-cell cell-' + cd.key + '" style="width:' + w + 'px" title="' + escapeHtml(label + ': ' + text) + '">' + escapeHtml(text) + '</span>';
+                    html += '<span class="issue-cell cell-style-' + (cd.style || 'grey') + '" style="width:' + w + 'px" title="' + escapeHtml(label + ': ' + text) + '">' + escapeHtml(text) + '</span>';
                 }
             }
             html += '</div>';
@@ -938,17 +956,47 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
                 if (colIdx >= visCols.length) return;
                 var colKey = visCols[colIdx].key;
                 var startX = e.clientX;
-                var startW = manualWidths[colKey] || visCols[colIdx].minWidth;
+                // Capture rendered widths for all visible columns at drag start
+                var startRendered = {};
                 var firstRow = issueListEl.querySelector('.issue-row');
                 if (firstRow) {
                     var cells = firstRow.querySelectorAll('.issue-cell');
-                    if (cells[colIdx]) startW = cells[colIdx].offsetWidth;
+                    for (var si = 0; si < visCols.length && si < cells.length; si++) {
+                        startRendered[visCols[si].key] = cells[si].offsetWidth;
+                    }
+                } else {
+                    for (var si2 = 0; si2 < visCols.length; si2++) {
+                        startRendered[visCols[si2].key] = manualWidths[visCols[si2].key] || visCols[si2].minWidth;
+                    }
                 }
+                var startW = startRendered[colKey] || visCols[colIdx].minWidth;
                 handle.classList.add('dragging');
                 function onMove(ev) {
                     var dx = ev.clientX - startX;
-                    var newW = Math.max(visCols[colIdx].minWidth, Math.min(startW + dx, visCols[colIdx].maxWidth));
-                    manualWidths[colKey] = newW;
+                    var desiredW = Math.max(visCols[colIdx].minWidth, startW + dx);
+                    // Reset all columns to their starting rendered widths
+                    for (var ai = 0; ai < visCols.length; ai++) {
+                        if (startRendered[visCols[ai].key]) {
+                            manualWidths[visCols[ai].key] = startRendered[visCols[ai].key];
+                        }
+                    }
+                    var growBy = desiredW - startW;
+                    if (growBy > 0) {
+                        // Squeeze columns to the right (down to their minWidth)
+                        var toSteal = growBy;
+                        for (var ri = colIdx + 1; ri < visCols.length && toSteal > 0; ri++) {
+                            var rKey = visCols[ri].key;
+                            var rCurW = startRendered[rKey] || visCols[ri].minWidth;
+                            var canTake = rCurW - visCols[ri].minWidth;
+                            var take = Math.min(canTake, toSteal);
+                            if (take > 0) {
+                                manualWidths[rKey] = rCurW - take;
+                                toSteal -= take;
+                            }
+                        }
+                        desiredW = startW + (growBy - toSteal);
+                    }
+                    manualWidths[colKey] = desiredW;
                     renderIssueList();
                 }
                 function onUp() {
@@ -1017,7 +1065,7 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
         if (configFilePathStr) {
             html += '<p>Config file: <a class="config-file-link" href="#">' + escapeHtml(configFilePathStr) + '</a></p>';
         }
-        html += '<p style="margin-top:8px;font-size:11px;color:var(--vscode-descriptionForeground)">Column format: <code>columnName[minWidth,maxWidth]</code> or <code>columnName[minWidth,maxWidth]*</code> for required columns.</p>';
+        html += '<p style="margin-top:8px;font-size:11px;color:var(--vscode-descriptionForeground)">Column format: <code>columnName{style}[minWidth,maxWidth]</code> or <code>columnName{style}[minWidth,maxWidth]*</code> for required columns.</p>';
         html += '</div>';
         issueListEl.innerHTML = html;
         var link = issueListEl.querySelector('.config-file-link');
@@ -1295,6 +1343,7 @@ export async function handleIssuesPanelMessage(msg: any, webview: vscode.Webview
                     labels: config.labels, panelMode: mode,
                     columnDefs: config.availableColumns, defaultColumns: config.defaultColumns,
                     allReposOption: config.allReposOption,
+                    columnLabels: config.columnLabels, growthPriority: config.growthPriority,
                     configError: config.configError, configSection: `issuePanels.${panelName}`, configFilePath,
                 });
                 break;
@@ -1326,6 +1375,7 @@ export async function handleIssuesPanelMessage(msg: any, webview: vscode.Webview
                 labels: config.labels, panelMode: mode,
                 columnDefs: config.availableColumns, defaultColumns: config.defaultColumns,
                 allReposOption: config.allReposOption,
+                columnLabels: config.columnLabels, growthPriority: config.growthPriority,
                 configError: null, configSection: `issuePanels.${panelName}`, configFilePath,
             });
             break;
