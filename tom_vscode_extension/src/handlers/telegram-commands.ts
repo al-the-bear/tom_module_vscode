@@ -16,12 +16,14 @@ import { TelegramNotifier, TelegramConfig, TelegramCommand, TelegramApiResult, p
 import { TelegramCommandRegistry, ParsedTelegramCommand } from './telegram-cmd-parser';
 import { TelegramResponseFormatter } from './telegram-cmd-response';
 import { createCommandRegistry } from './telegram-cmd-handlers';
+import { TelegramChannel } from './chat';
 
 // ============================================================================
 // State
 // ============================================================================
 
-/** Singleton notifier for standalone polling mode. */
+/** Singleton channel + notifier for standalone polling mode. */
+let standaloneChannel: TelegramChannel | null = null;
 let standaloneTelegram: TelegramNotifier | null = null;
 let isPollingActive = false;
 
@@ -91,14 +93,15 @@ export async function telegramTestHandler(): Promise<void> {
     bridgeLog(`[Telegram] Target chat ID: ${config.defaultChatId}`);
     bridgeLog(`[Telegram] Token length: ${config.botToken.length} chars`);
 
-    // Create a temporary notifier with enabled forced to true for the test
+    // Create a temporary channel and notifier with enabled forced to true for the test
     const testConfig: TelegramConfig = {
         ...config,
         enabled: true,
         // For the test, we need at least one allowed user — use a dummy if empty
         allowedUserIds: config.allowedUserIds.length > 0 ? config.allowedUserIds : [0],
     };
-    const notifier = new TelegramNotifier(testConfig);
+    const testChannel = new TelegramChannel(testConfig);
+    const notifier = new TelegramNotifier(testChannel, testConfig);
 
     const timestamp = new Date().toLocaleString();
     const testMsg = `🔔 *Telegram Test*\n\nConnection successful!\n_Sent from DartScript VS Code Extension_\n_${timestamp}_`;
@@ -133,7 +136,9 @@ export async function telegramToggleHandler(): Promise<void> {
     if (isPollingActive && standaloneTelegram) {
         // Stop polling
         standaloneTelegram.dispose();
+        standaloneChannel?.dispose();
         standaloneTelegram = null;
+        standaloneChannel = null;
         isPollingActive = false;
         vscode.window.showInformationMessage('⏹ Telegram polling stopped.');
         bridgeLog('[Telegram] Standalone polling stopped');
@@ -159,15 +164,18 @@ export async function telegramToggleHandler(): Promise<void> {
 
     // Force enabled for standalone mode
     const pollingConfig: TelegramConfig = { ...config, enabled: true };
-    standaloneTelegram = new TelegramNotifier(pollingConfig);
+    standaloneChannel = new TelegramChannel(pollingConfig);
+    standaloneTelegram = new TelegramNotifier(standaloneChannel, pollingConfig);
 
-    // Initialize command infrastructure
-    responseFormatter = new TelegramResponseFormatter(pollingConfig);
+    // Initialize command infrastructure (using the same channel for responses)
+    responseFormatter = new TelegramResponseFormatter(standaloneChannel);
     commandRegistry = createCommandRegistry(() => {
         // Stop callback — triggered by stop command
         standaloneTelegram?.sendMessage('⏹ Polling stopped via Telegram command.');
         standaloneTelegram?.dispose();
+        standaloneChannel?.dispose();
         standaloneTelegram = null;
+        standaloneChannel = null;
         isPollingActive = false;
         commandRegistry = null;
         responseFormatter = null;
@@ -362,8 +370,12 @@ export function disposeTelegramStandalone(): void {
     if (standaloneTelegram) {
         standaloneTelegram.dispose();
         standaloneTelegram = null;
-        isPollingActive = false;
     }
+    if (standaloneChannel) {
+        standaloneChannel.dispose();
+        standaloneChannel = null;
+    }
+    isPollingActive = false;
     commandRegistry = null;
     responseFormatter = null;
 }

@@ -7,13 +7,12 @@
  *  - --attach flag for forced attachment mode
  *  - Markdown conversion via telegramify-markdown (MarkdownV2)
  *
- * Uses telegramify-markdown to convert standard Markdown to Telegram MarkdownV2.
+ * Uses a ChatChannel for all sending operations, eliminating duplicate
+ * HTTP code. Uses telegramify-markdown for Markdown→MarkdownV2 conversion.
  */
 
-import * as https from 'https';
-import * as http from 'http';
+import { ChatChannel } from './chat';
 import { bridgeLog } from './handler_shared';
-import { TelegramConfig } from './telegram-notifier';
 import { TelegramCommandResult, ParsedTelegramCommand } from './telegram-cmd-parser';
 import { toTelegramMarkdownV2, escapeMarkdownV2, stripMarkdown } from './telegram-markdown';
 
@@ -35,15 +34,15 @@ const TRUNCATION_MARKER = '\n\n_... output truncated. Use --attach for full outp
 // ============================================================================
 
 export class TelegramResponseFormatter {
-    private config: TelegramConfig;
+    private channel: ChatChannel;
 
-    constructor(config: TelegramConfig) {
-        this.config = config;
+    constructor(channel: ChatChannel) {
+        this.channel = channel;
     }
 
-    /** Update config reference. */
-    updateConfig(config: TelegramConfig): void {
-        this.config = config;
+    /** Update the channel reference. */
+    updateChannel(channel: ChatChannel): void {
+        this.channel = channel;
     }
 
     /**
@@ -86,39 +85,16 @@ export class TelegramResponseFormatter {
     }
 
     /**
-     * Send a plain text message to a chat.
-     * Uses Markdown parse mode with fallback to plain text on error.
+     * Send a text message to a chat.
+     * The channel handles MarkdownV2 formatting with fallback to plain text.
      */
     async sendMessage(text: string, chatId: number): Promise<boolean> {
-        if (!this.config.botToken) { return false; }
-
         const truncated = text.length > TELEGRAM_MAX_MESSAGE
             ? text.substring(0, TELEGRAM_MAX_MESSAGE - TRUNCATION_MARKER.length) + TRUNCATION_MARKER
             : text;
 
-        // Try with MarkdownV2 first
-        const success = await this.apiCall('sendMessage', {
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            chat_id: chatId,
-            text: truncated,
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            parse_mode: 'MarkdownV2',
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            disable_web_page_preview: true,
-        });
-
-        if (!success) {
-            // Fallback: send without MarkdownV2 (strip formatting)
-            bridgeLog('[Telegram] MarkdownV2 send failed, retrying without parse_mode');
-            return this.apiCall('sendMessage', {
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                chat_id: chatId,
-                text: this.stripMarkdown(truncated),
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                disable_web_page_preview: true,
-            });
-        }
-        return true;
+        const result = await this.channel.sendMessage(truncated, chatId);
+        return result.ok;
     }
 
     /**
@@ -126,91 +102,21 @@ export class TelegramResponseFormatter {
      * Use this for acknowledgment messages that contain user input.
      */
     async sendPlainMessage(text: string, chatId: number): Promise<boolean> {
-        if (!this.config.botToken) { return false; }
-
         const truncated = text.length > TELEGRAM_MAX_MESSAGE
             ? text.substring(0, TELEGRAM_MAX_MESSAGE - TRUNCATION_MARKER.length) + TRUNCATION_MARKER
             : text;
 
-        return this.apiCall('sendMessage', {
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            chat_id: chatId,
-            text: truncated,
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            disable_web_page_preview: true,
-        });
+        const result = await this.channel.sendMessage(truncated, chatId, { plain: true });
+        return result.ok;
     }
 
     /**
      * Send a file attachment (document) to a Telegram chat.
-     * Uses multipart/form-data upload.
+     * Delegates to the channel's sendDocument method.
      */
     async sendDocument(content: Buffer, filename: string, chatId: number): Promise<boolean> {
-        if (!this.config.botToken) { return false; }
-
-        const boundary = '----TelegramBotBoundary' + Date.now().toString(36);
-
-        // Build multipart body
-        const parts: Buffer[] = [];
-
-        // chat_id field
-        parts.push(Buffer.from(
-            `--${boundary}\r\n` +
-            `Content-Disposition: form-data; name="chat_id"\r\n\r\n` +
-            `${chatId}\r\n`
-        ));
-
-        // document field (file upload)
-        parts.push(Buffer.from(
-            `--${boundary}\r\n` +
-            `Content-Disposition: form-data; name="document"; filename="${filename}"\r\n` +
-            `Content-Type: application/octet-stream\r\n\r\n`
-        ));
-        parts.push(content);
-        parts.push(Buffer.from('\r\n'));
-
-        // closing boundary
-        parts.push(Buffer.from(`--${boundary}--\r\n`));
-
-        const body = Buffer.concat(parts);
-
-        return new Promise((resolve) => {
-            const options: https.RequestOptions = {
-                hostname: 'api.telegram.org',
-                path: `/bot${this.config.botToken}/sendDocument`,
-                method: 'POST',
-                headers: {
-                    'Content-Type': `multipart/form-data; boundary=${boundary}`, // eslint-disable-line @typescript-eslint/naming-convention
-                    'Content-Length': body.length, // eslint-disable-line @typescript-eslint/naming-convention
-                },
-                timeout: 30000,
-            };
-
-            const req = https.request(options, (res: http.IncomingMessage) => {
-                let responseBody = '';
-                res.on('data', (chunk: Buffer) => { responseBody += chunk.toString(); });
-                res.on('end', () => {
-                    try {
-                        const parsed = JSON.parse(responseBody);
-                        if (!parsed.ok) {
-                            bridgeLog(`[Telegram] sendDocument error: ${parsed.description ?? 'unknown'}`);
-                        }
-                        resolve(parsed.ok === true);
-                    } catch {
-                        resolve(false);
-                    }
-                });
-            });
-
-            req.on('error', (err: Error) => {
-                bridgeLog(`[Telegram] sendDocument request error: ${err.message}`);
-                resolve(false);
-            });
-            req.on('timeout', () => { req.destroy(); resolve(false); });
-
-            req.write(body);
-            req.end();
-        });
+        const result = await this.channel.sendDocument(content, filename, chatId);
+        return result.ok;
     }
 
     // -----------------------------------------------------------------------
@@ -241,50 +147,5 @@ export class TelegramResponseFormatter {
      */
     stripMarkdown(text: string): string {
         return stripMarkdown(text);
-    }
-
-    // -----------------------------------------------------------------------
-    // API helper (duplicated from notifier for independence)
-    // -----------------------------------------------------------------------
-
-    private apiCall(method: string, body: any): Promise<boolean> {
-        return new Promise((resolve) => {
-            const data = JSON.stringify(body);
-            const options: https.RequestOptions = {
-                hostname: 'api.telegram.org',
-                path: `/bot${this.config.botToken}/${method}`,
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json', // eslint-disable-line @typescript-eslint/naming-convention
-                    'Content-Length': Buffer.byteLength(data), // eslint-disable-line @typescript-eslint/naming-convention
-                },
-                timeout: 10000,
-            };
-
-            const req = https.request(options, (res: http.IncomingMessage) => {
-                let responseBody = '';
-                res.on('data', (chunk: Buffer) => { responseBody += chunk.toString(); });
-                res.on('end', () => {
-                    try {
-                        const parsed = JSON.parse(responseBody);
-                        if (!parsed.ok) {
-                            bridgeLog(`[Telegram] API error (${method}): ${parsed.description ?? 'unknown'}`);
-                        }
-                        resolve(parsed.ok === true);
-                    } catch {
-                        resolve(false);
-                    }
-                });
-            });
-
-            req.on('error', (err: Error) => {
-                bridgeLog(`[Telegram] Request error (${method}): ${err.message}`);
-                resolve(false);
-            });
-            req.on('timeout', () => { req.destroy(); resolve(false); });
-
-            req.write(data);
-            req.end();
-        });
     }
 }

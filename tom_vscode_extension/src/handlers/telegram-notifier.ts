@@ -1,18 +1,19 @@
 /**
  * Telegram Bot integration for Bot Conversation notifications.
  *
- * Uses the Telegram Bot HTTP API directly (no npm dependency needed).
- * Supports:
- *  - Sending turn-by-turn notifications
- *  - Receiving commands: stop, halt, continue, info <text>
- *  - Explicit user ID whitelisting for security
+ * Higher-level Telegram integration that sits on top of the ChatChannel
+ * abstraction. Handles notification formatting, command parsing, and
+ * bot conversation interaction.
+ *
+ * The underlying transport (HTTP calls, polling) is handled by the
+ * ChatChannel implementation (e.g. TelegramChannel).
  *
  * Configuration lives in botConversation.telegram section of send_to_chat.json.
  */
 
-import * as https from 'https';
+import { ChatChannel, ChannelMessage, ChannelResult } from './chat';
 import { bridgeLog } from './handler_shared';
-import { escapeMarkdownV2, stripMarkdown } from './telegram-markdown';
+import { escapeMarkdownV2 } from './telegram-markdown';
 
 // ============================================================================
 // Interfaces
@@ -44,19 +45,6 @@ export interface TelegramConfig {
     pollIntervalMs: number;
 }
 
-/** Parsed Telegram update from the Bot API. */
-// eslint-disable-next-line @typescript-eslint/naming-convention
-interface TelegramUpdate {
-    update_id: number; // eslint-disable-line @typescript-eslint/naming-convention
-    message?: {
-        message_id: number; // eslint-disable-line @typescript-eslint/naming-convention
-        from: { id: number; first_name: string; username?: string }; // eslint-disable-line @typescript-eslint/naming-convention
-        chat: { id: number; type: string };
-        text?: string;
-        date: number;
-    };
-}
-
 /** A command received from Telegram. */
 export interface TelegramCommand {
     /** Command type. */
@@ -74,11 +62,8 @@ export interface TelegramCommand {
 /** Callback type for when a command is received. */
 export type TelegramCommandCallback = (command: TelegramCommand) => void;
 
-/** Result of a Telegram API call with error details. */
-export interface TelegramApiResult {
-    ok: boolean;
-    error?: string;
-}
+/** Result of a Telegram API call. Alias for ChannelResult. */
+export type TelegramApiResult = ChannelResult;
 
 // ============================================================================
 // Default config
@@ -103,72 +88,41 @@ export const TELEGRAM_DEFAULTS: TelegramConfig = {
 // ============================================================================
 
 export class TelegramNotifier {
+    private channel: ChatChannel;
     private config: TelegramConfig;
-    private lastUpdateId: number = 0;
-    private pollTimer: ReturnType<typeof setInterval> | null = null;
     private commandCallback: TelegramCommandCallback | null = null;
-    private _isPolling: boolean = false;
 
-    constructor(config: TelegramConfig) {
+    constructor(channel: ChatChannel, config: TelegramConfig) {
+        this.channel = channel;
         this.config = config;
+
+        // Subscribe to channel messages and parse into TelegramCommands
+        this.channel.onMessage((msg: ChannelMessage) => this.handleChannelMessage(msg));
     }
 
     /** Whether this notifier is properly configured and enabled. */
     get isEnabled(): boolean {
-        return this.config.enabled && !!this.config.botToken && this.config.allowedUserIds.length > 0;
+        return this.channel.isEnabled;
     }
 
-    /** Update config (e.g. after reload). */
+    /** Update config (notification settings). */
     updateConfig(config: TelegramConfig): void {
-        const wasPolling = this._isPolling;
-        if (wasPolling) { this.stopPolling(); }
         this.config = config;
-        if (wasPolling && this.isEnabled) { this.startPolling(); }
     }
 
     // -----------------------------------------------------------------------
-    // Sending messages
+    // Sending messages (delegates to channel)
     // -----------------------------------------------------------------------
 
     /** Send a text message to the default chat. */
     async sendMessage(text: string, chatId?: number): Promise<boolean> {
-        const result = await this.sendMessageWithDetails(text, chatId);
+        const result = await this.channel.sendMessage(text, chatId);
         return result.ok;
     }
 
     /** Send a text message and return detailed result (including error message). */
     async sendMessageWithDetails(text: string, chatId?: number): Promise<TelegramApiResult> {
-        if (!this.isEnabled) {
-            return { ok: false, error: 'Telegram notifier is not enabled (check botToken and allowedUserIds)' };
-        }
-
-        const targetChatId = chatId ?? this.config.defaultChatId;
-        if (!targetChatId) {
-            return { ok: false, error: 'No target chat ID configured' };
-        }
-
-        const result = await this.apiCallWithDetails('sendMessage', {
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            chat_id: targetChatId,
-            text: this.truncate(text, 4096), // Telegram max message length
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            parse_mode: 'MarkdownV2',
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            disable_web_page_preview: true,
-        });
-
-        if (!result.ok) {
-            // Fallback: send without MarkdownV2 (strip formatting)
-            bridgeLog(`[Telegram] MarkdownV2 send failed: ${result.error}, retrying without parse_mode`);
-            return this.apiCallWithDetails('sendMessage', {
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                chat_id: targetChatId,
-                text: this.truncate(stripMarkdown(text), 4096),
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                disable_web_page_preview: true,
-            });
-        }
-        return result;
+        return this.channel.sendMessage(text, chatId);
     }
 
     /** Send a conversation start notification. */
@@ -234,36 +188,17 @@ Send continue to resume or info <text> to add context\.`);
     }
 
     // -----------------------------------------------------------------------
-    // Polling for incoming commands
+    // Polling for incoming commands (delegates to channel)
     // -----------------------------------------------------------------------
 
     /** Start polling for incoming Telegram messages. */
     startPolling(): void {
-        if (this._isPolling || !this.isEnabled) { return; }
-        this._isPolling = true;
-
-        bridgeLog(`[Telegram] Starting poll loop (interval: ${this.config.pollIntervalMs}ms)`);
-
-        // Initial fetch to get current offset
-        this.fetchUpdates().catch(() => { /* ignore initial errors */ });
-
-        this.pollTimer = setInterval(async () => {
-            try {
-                await this.fetchUpdates();
-            } catch (err: any) {
-                bridgeLog(`[Telegram] Poll error: ${err.message}`);
-            }
-        }, this.config.pollIntervalMs);
+        this.channel.startListening();
     }
 
     /** Stop polling. */
     stopPolling(): void {
-        if (this.pollTimer) {
-            clearInterval(this.pollTimer);
-            this.pollTimer = null;
-        }
-        this._isPolling = false;
-        bridgeLog('[Telegram] Polling stopped');
+        this.channel.stopListening();
     }
 
     /** Register a callback for received commands. */
@@ -271,35 +206,21 @@ Send continue to resume or info <text> to add context\.`);
         this.commandCallback = callback;
     }
 
-    /** Fetch and process updates from Telegram. */
-    private async fetchUpdates(): Promise<void> {
-        const updates = await this.getUpdates(this.lastUpdateId + 1);
-        if (!updates || updates.length === 0) { return; }
+    // -----------------------------------------------------------------------
+    // Internal: channel message → TelegramCommand
+    // -----------------------------------------------------------------------
 
-        for (const update of updates) {
-            this.lastUpdateId = Math.max(this.lastUpdateId, update.update_id);
-            this.processUpdate(update);
-        }
-    }
-
-    /** Process a single Telegram update. */
-    private processUpdate(update: TelegramUpdate): void {
-        const msg = update.message;
-        if (!msg || !msg.text || !msg.from) { return; }
-
-        // Security check: only process from whitelisted users
-        if (!this.config.allowedUserIds.includes(msg.from.id)) {
-            bridgeLog(`[Telegram] Rejected message from unauthorized user: ${msg.from.id} (${msg.from.username ?? 'unknown'})`);
-            // Reply with rejection
-            this.sendMessage(`⛔ Unauthorized. Your user ID (${msg.from.id}) is not whitelisted.`, msg.chat.id);
-            return;
-        }
-
-        const text = msg.text.trim();
-        const command = this.parseCommand(text, msg.from.id, msg.chat.id, msg.from.username ?? msg.from.first_name);
+    /** Handle an incoming channel message, parse it into a TelegramCommand, and dispatch. */
+    private handleChannelMessage(msg: ChannelMessage): void {
+        const command = this.parseCommand(
+            msg.text,
+            msg.senderId as number,
+            msg.chatId as number,
+            msg.senderName,
+        );
 
         if (command && this.commandCallback) {
-            bridgeLog(`[Telegram] Command from ${msg.from.username ?? msg.from.id}: ${command.type}${command.text ? ' — ' + command.text.substring(0, 50) : ''}`);
+            bridgeLog(`[Telegram] Command from ${msg.senderName}: ${command.type}${command.text ? ' — ' + command.text.substring(0, 50) : ''}`);
             this.commandCallback(command);
         }
     }
@@ -344,159 +265,21 @@ Send continue to resume or info <text> to add context\.`);
     }
 
     // -----------------------------------------------------------------------
-    // Telegram Bot API helpers
-    // -----------------------------------------------------------------------
-
-    /** Call a Telegram Bot API method. */
-    private apiCall(method: string, body: any): Promise<boolean> {
-        return new Promise((resolve) => {
-            const data = JSON.stringify(body);
-            const options: https.RequestOptions = {
-                hostname: 'api.telegram.org',
-                path: `/bot${this.config.botToken}/${method}`,
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json', // eslint-disable-line @typescript-eslint/naming-convention
-                    'Content-Length': Buffer.byteLength(data), // eslint-disable-line @typescript-eslint/naming-convention
-                },
-                timeout: 10000,
-            };
-
-            const req = https.request(options, (res) => {
-                let responseBody = '';
-                res.on('data', (chunk: Buffer) => { responseBody += chunk.toString(); });
-                res.on('end', () => {
-                    try {
-                        const parsed = JSON.parse(responseBody);
-                        if (!parsed.ok) {
-                            bridgeLog(`[Telegram] API error (${method}): ${parsed.description ?? 'unknown'}`);
-                        }
-                        resolve(parsed.ok === true);
-                    } catch {
-                        resolve(false);
-                    }
-                });
-            });
-
-            req.on('error', (err) => {
-                bridgeLog(`[Telegram] Request error (${method}): ${err.message}`);
-                resolve(false);
-            });
-            req.on('timeout', () => {
-                req.destroy();
-                resolve(false);
-            });
-
-            req.write(data);
-            req.end();
-        });
-    }
-
-    /** Call a Telegram Bot API method and return detailed result. */
-    private apiCallWithDetails(method: string, body: any): Promise<TelegramApiResult> {
-        return new Promise((resolve) => {
-            const data = JSON.stringify(body);
-            const options: https.RequestOptions = {
-                hostname: 'api.telegram.org',
-                path: `/bot${this.config.botToken}/${method}`,
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json', // eslint-disable-line @typescript-eslint/naming-convention
-                    'Content-Length': Buffer.byteLength(data), // eslint-disable-line @typescript-eslint/naming-convention
-                },
-                timeout: 10000,
-            };
-
-            const req = https.request(options, (res) => {
-                let responseBody = '';
-                res.on('data', (chunk: Buffer) => { responseBody += chunk.toString(); });
-                res.on('end', () => {
-                    try {
-                        const parsed = JSON.parse(responseBody);
-                        if (parsed.ok === true) {
-                            resolve({ ok: true });
-                        } else {
-                            const errorMsg = parsed.description ?? 'Unknown Telegram API error';
-                            bridgeLog(`[Telegram] API error (${method}): ${errorMsg}`);
-                            resolve({ ok: false, error: errorMsg });
-                        }
-                    } catch {
-                        resolve({ ok: false, error: 'Failed to parse Telegram API response' });
-                    }
-                });
-            });
-
-            req.on('error', (err) => {
-                bridgeLog(`[Telegram] Request error (${method}): ${err.message}`);
-                resolve({ ok: false, error: `Network error: ${err.message}` });
-            });
-            req.on('timeout', () => {
-                req.destroy();
-                resolve({ ok: false, error: 'Request timed out' });
-            });
-
-            req.write(data);
-            req.end();
-        });
-    }
-
-    /** Get updates from Telegram. */
-    private getUpdates(offset: number): Promise<TelegramUpdate[]> {
-        return new Promise((resolve) => {
-            const body = JSON.stringify({
-                offset,
-                timeout: 0, // Short poll, don't long-poll in VS Code
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                allowed_updates: ['message'],
-            });
-
-            const options: https.RequestOptions = {
-                hostname: 'api.telegram.org',
-                path: `/bot${this.config.botToken}/getUpdates`,
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json', // eslint-disable-line @typescript-eslint/naming-convention
-                    'Content-Length': Buffer.byteLength(body), // eslint-disable-line @typescript-eslint/naming-convention
-                },
-                timeout: 10000,
-            };
-
-            const req = https.request(options, (res) => {
-                let responseBody = '';
-                res.on('data', (chunk: Buffer) => { responseBody += chunk.toString(); });
-                res.on('end', () => {
-                    try {
-                        const parsed = JSON.parse(responseBody);
-                        resolve(parsed.ok ? (parsed.result ?? []) : []);
-                    } catch {
-                        resolve([]);
-                    }
-                });
-            });
-
-            req.on('error', () => resolve([]));
-            req.on('timeout', () => { req.destroy(); resolve([]); });
-
-            req.write(body);
-            req.end();
-        });
-    }
-
-    // -----------------------------------------------------------------------
     // Utilities
     // -----------------------------------------------------------------------
-
-    private truncate(text: string, maxLen: number): string {
-        if (text.length <= maxLen) { return text; }
-        return text.substring(0, maxLen - 3) + '...';
-    }
 
     /** Escape MarkdownV2 special characters for Telegram. */
     private escapeMarkdown(text: string): string {
         return escapeMarkdownV2(text);
     }
 
-    /** Dispose/cleanup. */
+    /** Truncate text to a maximum length, appending '...' if truncated. */
+    private truncate(text: string, maxLen: number): string {
+        if (text.length <= maxLen) { return text; }
+        return text.substring(0, maxLen - 3) + '...';
+    }
+
+    /** Dispose/cleanup. Does NOT dispose the channel (managed by creator). */
     dispose(): void {
         this.stopPolling();
         this.commandCallback = null;

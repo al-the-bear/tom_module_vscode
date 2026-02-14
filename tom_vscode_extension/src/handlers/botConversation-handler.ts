@@ -27,6 +27,7 @@ import { resolveTemplate } from './promptTemplate';
 import { getPromptExpanderManager } from './expandPrompt-handler';
 import type { OllamaStats } from './expandPrompt-handler';
 import { TelegramNotifier, TelegramConfig, TelegramCommand, parseTelegramConfig, TELEGRAM_DEFAULTS } from './telegram-notifier';
+import { TelegramChannel } from './chat';
 import {
     clearTrail, logPrompt, logResponse, logCopilotAnswer,
     isTrailEnabled, loadTrailConfig,
@@ -315,6 +316,7 @@ const DEFAULTS: BotConversationConfig = {
 export class BotConversationManager {
     private context: vscode.ExtensionContext;
     private activeConversation: ConversationState | null = null;
+    private telegramChannel: TelegramChannel | null = null;
     private telegram: TelegramNotifier | null = null;
 
     constructor(context: vscode.ExtensionContext) {
@@ -324,6 +326,7 @@ export class BotConversationManager {
     dispose(): void {
         this.stopConversation('Manager disposed');
         this.telegram?.dispose();
+        this.telegramChannel?.dispose();
     }
 
     // -----------------------------------------------------------------------
@@ -397,9 +400,14 @@ export class BotConversationManager {
             this.telegram.dispose();
             this.telegram = null;
         }
+        if (this.telegramChannel) {
+            this.telegramChannel.dispose();
+            this.telegramChannel = null;
+        }
         if (!config.telegram.enabled) { return; }
 
-        this.telegram = new TelegramNotifier(config.telegram);
+        this.telegramChannel = new TelegramChannel(config.telegram);
+        this.telegram = new TelegramNotifier(this.telegramChannel, config.telegram);
         this.telegram.onCommand((cmd: TelegramCommand) => this.handleTelegramCommand(cmd));
         this.telegram.startPolling();
     }
