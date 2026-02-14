@@ -21,7 +21,8 @@ with a live Mermaid preview.
 - [8. YAML Direct-Edit Flow](#8-yaml-direct-edit-flow)
 - [9. Interactive Diagrams](#9-interactive-diagrams)
 - [10. Mermaid Capabilities Overview](#10-mermaid-capabilities-overview)
-- [11. Implementation Plan](#11-implementation-plan)
+- [11. Package & Integration Strategy](#11-package--integration-strategy)
+- [12. Implementation Plan](#12-implementation-plan)
 
 ---
 
@@ -50,6 +51,22 @@ A custom VS Code editor provides:
 4. **Schema validation** — inline errors, autocompletion
 5. **Generic framework** — same editor works for flow diagrams, state machines,
    ER diagrams by swapping schema + converter
+
+### Primary Design Goal
+
+**All diagram type transformations must be expressible through the generator
+mapping configuration alone, without writing TypeScript code.** Adding a new
+diagram type should require only:
+
+1. A JSON Schema for the YAML source format
+2. A `*.graph-map.yaml` mapping file with declarative rules and optional
+   inline JS transforms
+
+No TypeScript code, no custom renderers, no extension rebuilds. The conversion
+engine, converter callbacks, and mapping format must be expressive enough that
+configuration-only is the standard path. Custom TypeScript renderers exist as
+a fallback for truly exotic diagram types, but the design should make them
+unnecessary for all common cases.
 
 ```mermaid
 flowchart LR
@@ -226,6 +243,13 @@ sequenceDiagram
 │    create.. → send..   │                                │
 │    send.. → done       │                                │
 │                        │                                │
+│ ── Node Editor ─────── │                                │
+│  ID:     check-email   │                                │
+│  Label:  [Email exists?]│                               │
+│  Type:   [decision  ▾] │                                │
+│  Status: [planned   ▾] │                                │
+│  Owner:  [auth-svc   ] │                                │
+│  Tags:   [validation ] │                                │
 ├────────────────────────┴────────────────────────────────┤
 │ ⚠ 1 validation issue: edge 'x→y' references unknown... │
 └─────────────────────────────────────────────────────────┘
@@ -250,10 +274,16 @@ flowchart TD
         end
 
         subgraph MainArea["Main Area (split pane, resizable)"]
-            subgraph TreePanel["Tree Panel"]
-                META["**meta**<br/>id, title, direction"]
-                NODES["**nodes**<br/>start, validate,<br/>check_email, ..."]
-                EDGES["**edges**<br/>start to validate,<br/>validate to check_email, ..."]
+            subgraph LeftPane["Left Pane"]
+                subgraph TreePanel["Tree Panel"]
+                    META["**meta**<br/>id, title, direction"]
+                    NODES["**nodes**<br/>start, validate,<br/>check_email, ..."]
+                    EDGES["**edges**<br/>start to validate,<br/>validate to check_email, ..."]
+                end
+
+                subgraph NodeEditor["Node Editor Panel"]
+                    FIELDS["Selected node fields<br/>ID, Label, Type,<br/>Status, Owner, Tags"]
+                end
             end
 
             subgraph Preview["Mermaid Preview"]
@@ -270,10 +300,12 @@ flowchart TD
     Toolbar --> MainArea
     MainArea --> StatusBar
     META --> NODES --> EDGES
+    EDGES --> FIELDS
     DIAGRAM --- CLICK
 
     style Toolbar fill:#2d4a63,stroke:#48a,color:#fff
     style TreePanel fill:#1a3a2c,stroke:#4a8,color:#fff
+    style NodeEditor fill:#2a4a3c,stroke:#5b9,color:#fff
     style Preview fill:#3a3a1a,stroke:#aa4,color:#fff
     style StatusBar fill:#4a2a2a,stroke:#a44,color:#fff
 ```
@@ -825,7 +857,14 @@ Two approaches for converting YAML graph data to Mermaid syntax:
 
 **Recommendation: Mapping-driven with escape hatches.** A `*.graph-map.yaml`
 file defines the conversion rules for each diagram type. The conversion engine
-reads the mapping and generates Mermaid output. Three levels of customization:
+reads the mapping and generates Mermaid output.
+
+> **Primary goal:** Every diagram type conversion must be achievable through
+> the generator mapping configuration alone — JSON Schema + `*.graph-map.yaml`
+> — without writing or modifying any TypeScript code. The design must make
+> this the standard, expected path.
+
+Three levels of customization:
 
 1. **Declarative mapping** — covers node shapes, edges, styles, annotations
 2. **Inline JS transforms** — small JavaScript fragments embedded in the mapping
@@ -1082,6 +1121,93 @@ function convert(yamlDoc, mapping):
     return output.join("\n")
 ```
 
+### Converter Callbacks
+
+The conversion engine accepts a set of **callback hooks** that the host
+environment (VS Code extension, CLI tool, etc.) can provide to inject
+context-specific behavior into the generated output. This keeps the core
+engine environment-agnostic while allowing integration layers to add
+interactive features like clickable links.
+
+```typescript
+/**
+ * Callbacks the host environment provides to the conversion engine.
+ * All callbacks are optional — if omitted, the engine produces plain
+ * Mermaid output without interactive features.
+ */
+interface ConversionCallbacks {
+    /**
+     * Called for each emitted node. Returns additional Mermaid lines
+     * to append (e.g., click directives for jump-to-source).
+     */
+    onNodeEmit?: (
+        nodeId: string,
+        nodeData: { type: string; fields: Record<string, unknown> },
+        emittedLines: string[]
+    ) => string[];
+
+    /**
+     * Called for each emitted edge. Returns additional Mermaid lines
+     * to append.
+     */
+    onEdgeEmit?: (
+        edgeData: { from: string; to: string; label?: string },
+        emittedLines: string[]
+    ) => string[];
+
+    /**
+     * Called once after all nodes and edges are emitted. Returns
+     * additional Mermaid lines to append at the end (e.g., global
+     * style definitions, class definitions).
+     */
+    onComplete?: (
+        allNodeIds: string[],
+        output: string[]
+    ) => string[];
+}
+```
+
+**Primary use case — interactive links:** The VS Code integration layer
+provides an `onNodeEmit` callback that injects Mermaid `click` directives
+for every node. This enables jump-to-tree and jump-to-YAML-line without
+the core engine knowing anything about VS Code:
+
+```typescript
+// VS Code integration provides this callback
+const callbacks: ConversionCallbacks = {
+    onNodeEmit: (nodeId, nodeData, lines) => {
+        // Add click handler for jump-to-tree and jump-to-YAML
+        return [`click ${nodeId} callback "${nodeId}"`];
+    },
+    onComplete: (allNodeIds) => {
+        // Could add global class definitions for styling
+        return [];
+    }
+};
+
+const mermaidSrc = conversionEngine.convert(yamlDoc, mapping, callbacks);
+```
+
+**Why callbacks instead of mapping-only:** Link directives depend on the host
+environment (VS Code webview postMessage, browser URL navigation, CLI no-op).
+The mapping file defines the diagram structure; the callbacks inject the
+environment-specific interactive behavior. This separation is essential for
+the core library to remain standalone and reusable.
+
+```mermaid
+flowchart LR
+    MAP["Mapping File<br/>(structure)"] --> ENGINE["Conversion<br/>Engine"]
+    CB["Callbacks<br/>(interactivity)"] --> ENGINE
+    YAML["Source YAML"] --> ENGINE
+    ENGINE --> OUT["Mermaid Output<br/>(structure + links)"]
+
+    style MAP fill:#f0ad4e,stroke:#d49430,color:#333
+    style CB fill:#9b59b6,stroke:#8e44ad,color:#fff
+    style YAML fill:#a8e6a1,stroke:#5cb85c,color:#333
+    style ENGINE fill:#4a90d9,stroke:#357abd,color:#fff
+    style OUT fill:#a8e6a1,stroke:#5cb85c,color:#333
+```
+
 ### Adding a New Diagram Type
 
 To add support for a new YAML graph type, you create:
@@ -1195,11 +1321,15 @@ The Mermaid preview is not a passive image — it supports three primary
 interaction types that connect the diagram back to the source data:
 
 1. **Jump to tree** — click a diagram shape to select the corresponding node
-   in the tree panel
+   in the tree panel and populate the node editor panel
 2. **Jump to YAML line** — click a diagram shape to reveal and highlight the
    corresponding YAML block in the text document
-3. **Editor overlay** — click or double-click a shape to open an inline editor
-   overlay showing all editable fields (label, type, status, owner, tags, etc.)
+3. **Node editor panel** — the panel below the tree always shows the selected
+   node's editable fields (label, type, status, owner, tags, etc.)
+
+The node editor panel is not triggered by a separate gesture — it updates
+automatically whenever the selection changes from any source (tree click,
+diagram click, or YAML cursor move).
 
 ### Interaction Flow
 
@@ -1210,10 +1340,10 @@ sequenceDiagram
     participant WV as Webview Script
     participant Ext as Extension Host
     participant Tree as Tree Panel
+    participant NE as Node Editor Panel
     participant Doc as TextDocument
-    participant Overlay as Editor Overlay
 
-    Note over User,Overlay: Single click - jump to tree + YAML
+    Note over User,Doc: Click diagram node
     User->>SVG: Click on node
     SVG->>WV: click event (node ID)
     WV->>Ext: postMessage(nodeClicked, nodeId)
@@ -1225,24 +1355,21 @@ sequenceDiagram
         Ext->>Ext: Look up node range in YAML AST
         Ext->>Doc: editor.revealRange(nodeRange)
         Doc->>Doc: Highlight YAML block
+    and Update node editor
+        Ext->>Ext: Read node metadata from YAML AST
+        Ext->>NE: postMessage(showNode, nodeData, schemaInfo)
+        NE->>NE: Populate fields for selected node
     end
 
-    Note over User,Overlay: Double-click - open editor overlay
-    User->>SVG: Double-click on node
-    SVG->>WV: dblclick event (node ID)
-    WV->>Ext: postMessage(nodeEdit, nodeId)
-    Ext->>Ext: Read node metadata from YAML AST
-    Ext->>Overlay: postMessage(showOverlay, nodeData)
-    Overlay->>Overlay: Show editable form at node position
-
-    User->>Overlay: Edit fields and confirm
-    Overlay->>Ext: postMessage(applyEdit, changes)
+    Note over User,Doc: Edit in node editor panel
+    User->>NE: Change field value
+    NE->>Ext: postMessage(applyEdit, nodeId, changes)
     Ext->>Ext: Apply to YAML AST (comment-preserving)
     Ext->>Doc: WorkspaceEdit(updated YAML)
     Doc->>Ext: onDidChangeTextDocument
     Ext->>Tree: Updated tree
     Ext->>SVG: Updated Mermaid
-    Ext->>Overlay: Close overlay
+    Ext->>NE: Updated node data (confirms changes)
 ```
 
 ### 9.1 Jump to Tree
@@ -1251,9 +1378,9 @@ When the user single-clicks a shape in the Mermaid preview, the tree panel
 scrolls to and highlights the corresponding node. This uses Mermaid's built-in
 `click` callback mechanism.
 
-**Implementation:** The conversion engine adds `click nodeId callback "nodeId"`
-to every node in the generated Mermaid source. The webview registers a global
-callback:
+**Implementation:** The VS Code integration layer injects `click nodeId callback "nodeId"`
+directives via the `onNodeEmit` converter callback (see Section 7, Converter
+Callbacks). The webview registers a global callback:
 
 ```javascript
 // Webview script
@@ -1288,57 +1415,53 @@ The only subtlety is that when the custom editor is active, the underlying
 extension would need to open a side-by-side text editor or store the position
 for when the user switches to text view.
 
-### 9.3 Editor Overlay
+### 9.3 Node Editor Panel
 
-Double-clicking a shape opens an inline editor overlay positioned over the
-clicked node in the Mermaid preview. The overlay shows all editable fields
-for that node as a small form.
+The node editor panel sits below the tree panel in the left pane (see
+Section 3, UI Layout). It always displays the editable fields of the
+currently selected node. When no node is selected, it shows an empty
+state message.
 
-**Overlay content example for a process node:**
+**Panel content example for a process node:**
 
 ```
-┌─────────────────────────────┐
-│  validate                   │
-├─────────────────────────────┤
-│  Label:  [Validate input ]  │
-│  Type:   [process      ▾]  │
-│  Status: [implemented  ▾]  │
-│  Owner:  [auth-service   ]  │
-│  Tags:   [validation, ...]  │
-├─────────────────────────────┤
-│  [Cancel]         [Apply]   │
-└─────────────────────────────┘
+── Node Editor ──────────────────
+ID:     validate        (read-only)
+Label:  [Validate input         ]
+Type:   [process              ▾]
+Status: [implemented          ▾]
+Owner:  [auth-service           ]
+Tags:   [validation, input      ]
+─────────────────────────────────
 ```
 
-**Implementation:** The overlay is a DOM element in the webview, absolutely
-positioned over the clicked SVG node's bounding box. It is **not** a separate
-VS Code panel — it lives inside the Mermaid preview's webview.
+**Implementation:** The node editor panel is a section of the tree webview,
+rendered below the tree as a simple HTML form. It is **not** a separate
+VS Code panel or an overlay — it is part of the same webview that contains
+the tree.
 
-**Positioning:** Query the SVG node element's `getBoundingClientRect()` and
-place the overlay div accordingly. Adjust if near viewport edges.
+**Schema-driven fields:** The panel reads the JSON Schema for the current
+diagram type to determine which fields to show, their types (text, enum
+dropdown, array), and validation rules. Enum fields render as `<select>`
+dropdowns, arrays as comma-separated text inputs.
 
 **Editing flow:**
-1. User double-clicks a node shape
-2. Webview sends `nodeEdit` message with node ID and SVG bounding rect
-3. Extension host reads full node data from YAML AST
-4. Extension host sends node fields + schema info to webview
-5. Webview renders overlay form with current values and field types
-6. User edits fields and clicks Apply
-7. Webview sends `applyEdit` with changed fields
-8. Extension host applies comment-preserving edits to TextDocument
-9. Re-render pipeline triggers (tree + preview update)
-10. Overlay closes
+1. User selects a node (from tree, diagram, or YAML cursor)
+2. Extension host sends node data + field schema to the tree/panel webview
+3. Panel renders form fields with current values
+4. User edits a field and tabs out or presses Enter
+5. Panel sends `applyEdit` message with node ID and changed fields
+6. Extension host applies comment-preserving edits to TextDocument
+7. Re-render pipeline triggers (tree + preview update)
+8. Panel receives updated data (confirms changes persisted)
 
-**Assessment:** Feasible but more complex than the click-to-navigate features.
-Key challenges:
-- Positioning the overlay correctly relative to the SVG (SVG coordinates vs
-  webview viewport coordinates)
-- Building a dynamic form from schema metadata (field types, enums, etc.)
-- Handling overlay dismissal (Escape key, click outside, Apply/Cancel)
-- Ensuring the overlay doesn't interfere with Mermaid pan/zoom if enabled
+**Assessment:** Straightforward. The panel uses standard HTML form elements
+inside the existing tree webview. No positioning complexity (unlike an
+overlay). No dismissal logic needed — the panel is always visible. The
+schema-driven form generation is the same work that would be needed for
+any node editing approach.
 
-This should be a Phase 4 feature, after basic tree editing and click-to-navigate
-are working.
+This is a Phase 3 feature, built alongside tree editing.
 
 ### Interaction Feasibility Summary
 
@@ -1346,13 +1469,13 @@ are working.
 |-------------|-------------|--------|-------|
 | **Jump to tree** (single click) | Fully feasible | Low | 3 |
 | **Jump to YAML line** (single click) | Fully feasible | Low | 3 |
-| **Editor overlay** (double click) | Feasible, complex | Medium-High | 4 |
+| **Node editor panel** (always visible) | Fully feasible | Low-Medium | 3 |
 | Click edge → select in tree | Partial — requires custom SVG event binding | Medium | 5 |
-| Hover → tooltip with metadata | Feasible via SVG title or overlay | Low | 3 |
+| Hover → tooltip with metadata | Feasible via SVG title element | Low | 3 |
 
 ### Selection Synchronization
 
-Selection sync works bidirectionally across all three panes:
+Selection sync works bidirectionally across all four panes:
 
 ```mermaid
 flowchart LR
@@ -1370,6 +1493,7 @@ flowchart LR
         T2["Tree: highlight"]
         M2["Mermaid: highlight node"]
         Y2["YAML: reveal range"]
+        NE2["Node Editor: show fields"]
     end
 
     T --> SE
@@ -1378,6 +1502,7 @@ flowchart LR
     SE --> T2
     SE --> M2
     SE --> Y2
+    SE --> NE2
 ```
 
 ---
@@ -1826,44 +1951,286 @@ Flowchart, State Diagram, ER Diagram, Class Diagram, Mindmap.
 
 ---
 
-## 11. Implementation Plan
+## 11. Package & Integration Strategy
+
+### Design Principles
+
+The YAML graph editor is split into layered packages to maximize reuse:
+
+- **The core converter library has zero VS Code dependencies** — it can run
+  in Node.js, a browser, a CLI tool, or any TypeScript project
+- **VS Code integration is a separate package** — wraps the core library
+  with `CustomTextEditorProvider`, webview plumbing, and postMessage protocol
+- **Each diagram type is a separate folder/package** — contains only the
+  JSON Schema and mapping file, no TypeScript code
+- **The extension itself does minimal work** — just instantiation and
+  dependency injection from the packages above
+
+### Package Architecture
+
+```mermaid
+flowchart TD
+    subgraph Core["yaml-graph-core (standalone npm package)"]
+        ENGINE["Conversion Engine"]
+        PARSER["YAML Parser Wrapper<br/>(comment-preserving)"]
+        VALIDATOR["Schema Validator"]
+        LOADER["Mapping Loader"]
+        TRANSFORM["AstNodeTransformer Runtime"]
+        CALLBACKS["ConversionCallbacks Interface"]
+        REGISTRY["GraphTypeRegistry"]
+    end
+
+    subgraph VSCode["yaml-graph-vscode (VS Code integration package)"]
+        PROVIDER["CustomTextEditorProvider"]
+        WEBVIEW["Webview Manager<br/>(Mermaid + Tree + Node Editor)"]
+        SYNC["Selection Coordinator"]
+        MSG["PostMessage Protocol"]
+        CB_IMPL["Callback Implementations<br/>(click links, YAML reveal)"]
+    end
+
+    subgraph Types["Diagram Type Packages (config-only)"]
+        FLOW["graph-type-flowchart/<br/>schema.json + flow.graph-map.yaml"]
+        STATE["graph-type-state-machine/<br/>schema.json + state.graph-map.yaml"]
+        ER["graph-type-er/<br/>schema.json + er.graph-map.yaml"]
+        CLASS["graph-type-class/<br/>schema.json + class.graph-map.yaml"]
+    end
+
+    subgraph Ext["Extension Core (dartscript-vscode)"]
+        ACTIVATE["extension.ts activate()"]
+        INJECT["Instantiate + inject"]
+    end
+
+    Core --> VSCode
+    Types --> VSCode
+    VSCode --> Ext
+
+    style Core fill:#2d5a27,stroke:#4a8,color:#fff
+    style VSCode fill:#1a3a5c,stroke:#48a,color:#fff
+    style Types fill:#5a3a1a,stroke:#a84,color:#fff
+    style Ext fill:#3a1a3a,stroke:#a4a,color:#fff
+```
+
+### Package Details
+
+#### yaml-graph-core
+
+**Location:** Separate npm package (can be published independently)  
+**Dependencies:** `yaml` (for CST-level parsing), `ajv` (for JSON Schema validation)  
+**No VS Code dependency.**
+
+| Module | Responsibility |
+|--------|---------------|
+| `ConversionEngine` | Reads mapping file, walks YAML data, emits Mermaid source |
+| `YamlParserWrapper` | Comment-preserving parse, edit, serialize via `yaml` npm CST |
+| `SchemaValidator` | Validates YAML against JSON Schema, returns structured errors |
+| `MappingLoader` | Loads and validates `*.graph-map.yaml` files |
+| `AstNodeTransformer` | Sandboxed evaluation of inline JS transform fragments |
+| `ConversionCallbacks` | Interface for host-provided hooks (link injection, etc.) |
+| `GraphTypeRegistry` | Registers diagram types with their schema + mapping pairs |
+
+**Key API surface:**
+
+```typescript
+// yaml-graph-core public API
+export interface GraphType {
+    id: string;
+    schema: object;           // JSON Schema for the YAML source
+    mapping: GraphMapping;    // Parsed *.graph-map.yaml
+}
+
+export class ConversionEngine {
+    convert(
+        yamlText: string,
+        graphType: GraphType,
+        callbacks?: ConversionCallbacks
+    ): ConversionResult;
+}
+
+export interface ConversionResult {
+    mermaidSource: string;
+    errors: ValidationError[];
+    nodeMap: Map<string, SourceRange>;  // node ID → YAML source range
+}
+```
+
+#### yaml-graph-vscode
+
+**Location:** Separate package within the extension's monorepo or as an npm package  
+**Dependencies:** `yaml-graph-core`, `vscode` (extension API)
+
+| Module | Responsibility |
+|--------|---------------|
+| `YamlGraphEditorProvider` | `CustomTextEditorProvider` implementation |
+| `WebviewManager` | Creates and manages the split webview (tree + node editor + Mermaid) |
+| `SelectionCoordinator` | Bidirectional selection sync across tree, diagram, YAML |
+| `PostMessageProtocol` | Type-safe message definitions between extension host and webview |
+| `VsCodeCallbacks` | Implements `ConversionCallbacks` with VS Code-specific behavior |
+| `TreeDataBuilder` | Transforms parsed YAML into tree view model |
+| `NodeEditorController` | Sends schema + data to node editor panel, processes edits |
+
+**VsCodeCallbacks implementation:**
+
+```typescript
+import { ConversionCallbacks } from 'yaml-graph-core';
+
+export class VsCodeCallbacks implements ConversionCallbacks {
+    onNodeEmit(nodeId: string, nodeData: any, lines: string[]): string[] {
+        // Inject Mermaid click callback for jump-to-tree / jump-to-YAML
+        return [`click ${nodeId} callback "${nodeId}"`];
+    }
+
+    onComplete(allNodeIds: string[]): string[] {
+        // Add global style classes if needed
+        return [];
+    }
+}
+```
+
+#### Diagram Type Packages
+
+**Location:** Folders inside the extension or published as separate npm packages  
+**Dependencies:** None (pure configuration files)  
+**No TypeScript code** — only JSON Schema + mapping YAML
+
+```
+graph-type-flowchart/
+    flowchart.schema.json
+    flowchart.graph-map.yaml
+
+graph-type-state-machine/
+    state-machine.schema.json
+    state-machine.graph-map.yaml
+
+graph-type-er/
+    er.schema.json
+    er.graph-map.yaml
+
+graph-type-class/
+    class.schema.json
+    class.graph-map.yaml
+```
+
+Each folder is self-contained. Adding a new diagram type means creating a new
+folder with two files — no TypeScript, no build step.
+
+### Extension Integration Pattern
+
+The extension core (`extension.ts`) does minimal work — just instantiation
+and dependency injection:
+
+```typescript
+import { ConversionEngine, GraphTypeRegistry } from 'yaml-graph-core';
+import { YamlGraphEditorProvider, VsCodeCallbacks } from 'yaml-graph-vscode';
+
+export function activate(context: vscode.ExtensionContext) {
+    // 1. Create core engine (no VS Code dependency)
+    const engine = new ConversionEngine();
+    const registry = new GraphTypeRegistry();
+
+    // 2. Register diagram types (config-only)
+    registry.registerFromFolder(context.extensionPath + '/graph-types/graph-type-flowchart');
+    registry.registerFromFolder(context.extensionPath + '/graph-types/graph-type-state-machine');
+    registry.registerFromFolder(context.extensionPath + '/graph-types/graph-type-er');
+
+    // 3. Create VS Code integration with callbacks
+    const callbacks = new VsCodeCallbacks();
+    const provider = new YamlGraphEditorProvider(engine, registry, callbacks);
+
+    // 4. Register the custom editor
+    context.subscriptions.push(
+        vscode.window.registerCustomEditorProvider(
+            'yamlGraph.editor',
+            provider,
+            { webviewOptions: { retainContextWhenHidden: true } }
+        )
+    );
+}
+```
+
+**That's it.** Five lines of setup. The extension core knows nothing about
+how flowcharts differ from state machines, how Mermaid is rendered, or how
+the tree panel works. All of that lives in the packages.
+
+### Package Dependency Flow
+
+```mermaid
+flowchart BT
+    CORE["yaml-graph-core<br/><i>standalone, no VS Code</i>"]
+    VSCODE["yaml-graph-vscode<br/><i>VS Code integration</i>"]
+    TYPES["graph-type-*<br/><i>config-only, no TS</i>"]
+    EXT["extension.ts<br/><i>instantiation only</i>"]
+
+    CORE --> VSCODE
+    TYPES --> VSCODE
+    VSCODE --> EXT
+
+    style CORE fill:#2d5a27,stroke:#4a8,color:#fff
+    style VSCODE fill:#1a3a5c,stroke:#48a,color:#fff
+    style TYPES fill:#5a3a1a,stroke:#a84,color:#fff
+    style EXT fill:#3a1a3a,stroke:#a4a,color:#fff
+```
+
+### Summary
+
+| Layer | Contains | Dependencies | TypeScript? |
+|-------|----------|-------------|-------------|
+| `yaml-graph-core` | Engine, parser, validator, transforms, callbacks | `yaml`, `ajv` | Yes |
+| `yaml-graph-vscode` | Editor provider, webview, sync, tree, node editor | `yaml-graph-core`, `vscode` | Yes |
+| `graph-type-*` | JSON Schema + `*.graph-map.yaml` per diagram type | None | No |
+| Extension core | 5-line instantiation and registration | `yaml-graph-vscode` | Minimal |
+
+---
+
+## 12. Implementation Plan
 
 ### Phase 1 — Foundation (yaml-graph-core library)
 
 - Create standalone TypeScript/npm package `yaml-graph-core`
-- Define JSON schemas for flowchart and state machine
-- Define mapping file format and JSON Schema for `*.graph-map.yaml`
-- Build mapping-driven conversion engine
+- Implement `ConversionEngine`, `MappingLoader`, `SchemaValidator`
+- Implement `ConversionCallbacks` interface
+- Implement `AstNodeTransformer` sandboxed runtime
 - Comment-preserving YAML parser wrapper using `yaml` npm CST
-- Write flowchart and state machine mapping files
+- Define mapping file format and JSON Schema for `*.graph-map.yaml`
+- Define JSON Schemas for flowchart and state machine
+- Write flowchart and state machine `*.graph-map.yaml` mapping files
+- Unit tests: engine converts YAML → Mermaid using mapping files only
 - Can be used standalone (Node.js, CLI, or any TS project) before the editor exists
 
-### Phase 2 — Custom Editor Scaffold
+### Phase 2 — Custom Editor Scaffold (yaml-graph-vscode)
 
-- `CustomTextEditorProvider` with split webview
+- Create `yaml-graph-vscode` integration package
+- `YamlGraphEditorProvider` with split webview (left pane + Mermaid preview)
 - Basic tree rendering from parsed YAML
+- Node editor panel below tree (empty initially)
 - Basic Mermaid preview using bundled mermaid.js
+- `VsCodeCallbacks` implementation (click link injection)
 - File association: `*.flow.yaml`, `*.state.yaml`
+- Extension integration: instantiation pattern in `extension.ts`
 
-### Phase 3 — Tree Editing
+### Phase 3 — Tree Editing + Node Editor + Interactivity
 
-- Inline editing of labels, types, status fields
+- Node editor panel: schema-driven form for selected node
+- Inline editing of labels, types, status fields via node editor
 - Add/delete nodes and edges via toolbar
 - Comment-preserving writes back to TextDocument
 - Schema validation with inline error display
+- Selection sync: tree ↔ Mermaid ↔ YAML ↔ node editor
+- Jump-to-tree and jump-to-YAML-line via Mermaid click callbacks
 
-### Phase 4 — Integration
+### Phase 4 — Diagram Type Packages
 
-- Selection sync: tree click highlights Mermaid node
-- Mermaid click selects tree node
+- Create `graph-type-flowchart/` folder (schema + mapping)
+- Create `graph-type-state-machine/` folder (schema + mapping)
+- Create `graph-type-er/` folder (schema + mapping)
+- `GraphTypeRegistry.registerFromFolder()` auto-discovery
 - Status-based styling (implemented=green, planned=yellow)
 - Export SVG
 
 ### Phase 5 — Additional Graph Types
 
-- ER diagram support
 - Class diagram support
 - Mindmap support (tree structure is a natural fit)
+- Publish `yaml-graph-core` as standalone npm package
 
 ### Phase 6 — Advanced Features
 
