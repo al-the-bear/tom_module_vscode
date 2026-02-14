@@ -34,7 +34,7 @@ Press a trigger key, then the letter (with or without `Ctrl+Shift` held). `?` = 
 | Panel | Location | Content |
 |-------|----------|---------|
 | **TOM AI** | Bottom panel | 6 accordion sections: Chat Quick Access, Prompt Templates, Workspace Info, AI Configuration, Tools Reference, Quick Actions |
-| **TOM** | Bottom panel | Tasks, Logs, Settings |
+| **TOM** | Bottom panel | Issues & Tests — GitHub issue tracking with configurable columns, statuses, labels. See [User Guide](user_guide.md#tom-panel) |
 | **VS CODE NOTES** | Explorer sidebar | Global markdown notepad (persisted to `~/.tom/`) |
 | **WORKSPACE NOTES** | Explorer sidebar | Per-workspace markdown notepad |
 | **Status Page** | Editor tab | Dashboard with 8 service configurations |
@@ -61,7 +61,7 @@ When enabled, the Telegram bot supports these CLI-like commands:
 
 ## Config
 
-**External config:** `~/.tom/vscode/tom_vscode_extension.json` — 12 sections: sendToChat, promptExpander, botConversation, tomAiChat, dartscriptBridge, chordMenus, combinedCommands, commandlines, favorites, stateMachines, telegram, trail
+**External config:** `~/.tom/vscode/tom_vscode_extension.json` — 13 sections: sendToChat, promptExpander, botConversation, tomAiChat, dartscriptBridge, chordMenus, combinedCommands, commandlines, favorites, stateMachines, telegram, trail, issuePanels
 
 Open via: `DS: Open Config` or `Ctrl+Shift+E → O`
 

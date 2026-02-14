@@ -14,7 +14,8 @@ DartScript provides productivity features for VS Code including smart Copilot Ch
 - ⚡ **Dart Script Execution**: Execute Dart files directly or via D4rt interpreter
 - 🔧 **Tom CLI Integration**: Control Tom CLI from VS Code with server communication
 - 📊 **Process Monitor**: Background process monitoring with auto-restart
-- 🔄 **Window Reload**: Quick keyboard shortcut for window reload
+- � **Issue & Test Tracking**: GitHub issue management with configurable columns, statuses, labels, and split-panel detail view. See the [User Guide](doc/user_guide.md#tom-panel) for configuration.
+- �🔄 **Window Reload**: Quick keyboard shortcut for window reload
 - ❓ **Extension Help**: Built-in documentation access
 
 ## Installation
@@ -295,6 +296,7 @@ Copyright (c) 2024-2026 Tom Framework. All rights reserved.
 ## Documentation
 
 - [User Guide](doc/user_guide.md) - Complete guide to extension features
+- [Quick Reference](doc/quick_reference.md) - Keyboard shortcuts and panel overview
 - [Feature Overview](_copilot_guidelines/vscode_extension_overview.md) - All 15 feature areas with documentation index
 - [Bridge Scripting Guide](_copilot_guidelines/bridge_scripting_guide.md) - Advanced JavaScript/Dart bridge scripting
 - [Architecture](_copilot_guidelines/architecture.md) - System architecture details

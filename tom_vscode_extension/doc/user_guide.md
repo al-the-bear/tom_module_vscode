@@ -577,7 +577,67 @@ For details, see [tom_ai_bottom_panel.md](../_copilot_guidelines/tom_ai_bottom_p
 **Location:** Bottom panel tab labeled "TOM"
 **Focus:** `Ctrl+Shift+9`
 
-General-purpose panel for tasks, logs, and settings.
+Accordion-based panel with two sections for GitHub issue and test tracking.
+
+#### Issues Section
+
+Browse, create, and manage GitHub issues across workspace repositories and additional configured repos. Features include:
+
+- **Repository selector** — dropdown with workspace-discovered repos and manually configured additional repos (with optional display-name prefixes, e.g. `"Global Issues:owner/repo"`)
+- **All Repos view** — aggregate issues from all repos into a single list (configurable via `allReposOption`)
+- **Status filtering** — filter by configurable statuses (e.g. open, in_triage, assigned, closed), each with a color indicator
+- **Label filtering** — quick-labels (one-click toggle) and slow-labels (picker from sections)
+- **Sorting** — sort by number, title, status, created/updated date, comments, or author (multi-field)
+- **Column system** — configurable table columns with drag-to-resize handles. Right-click any issue row to show/hide optional columns
+- **Split-panel detail view** — select an issue to view comments, change status, toggle labels, add comments with attachments, or open in browser
+
+#### Tests Section
+
+Same interface as Issues, configured independently for test-tracking repos. Typically uses `scanWorkspace: false` with manually specified test repos.
+
+#### Issue Panel Configuration
+
+Configuration is in `~/.tom/vscode/tom_vscode_extension.json` under the `issuePanels` section. Config is re-read on every panel interaction (repo switch, refresh, etc.) — no reload needed for config changes.
+
+**Structure:**
+
+```json
+{
+  "issuePanels": {
+    "common": { ... },
+    "issueKit": { ... },
+    "testkit": { ... }
+  }
+}
+```
+
+**`common`** — Shared settings for both panels:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `columnLabels` | `object` | Display names for columns (e.g. `"commentCount": "# of Comments"`) |
+| `growthPriority` | `string[]` | Column expansion order when extra space is available (e.g. `["title", "author", "repository"]`) |
+
+**`issueKit` / `testkit`** — Per-panel settings:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `provider` | `string` | `"github"` | Issue provider (currently only `github`) |
+| `scanWorkspace` | `boolean` | `true`/`false` | Auto-discover repos from workspace git remotes |
+| `allReposOption` | `boolean` | `true`/`false` | Show "All Repos" aggregate option in dropdown |
+| `excludeRepos` | `string[]` | `[]` | Repos to hide (e.g. `["owner/repo"]`) |
+| `additionalRepos` | `string[]` | `[]` | Extra repos, optionally with display prefix (`"Label:owner/repo"`) |
+| `statuses` | `string[]` | — | Status definitions with colors: `"status_name[color]"` |
+| `defaultColumns` | `string` | — | Comma-separated optional columns shown by default |
+| `availableColumns` | `string[]` | — | Column definitions (see format below) |
+| `labels` | `string[]` | — | Label definitions: `"quicklabel=Name"` or `"slowlabel=Name"` |
+
+**Column definition format:** `columnName{style}[minWidth,maxWidth]*`
+
+- `columnName` — one of: `statusDot`, `id`, `title`, `repository`, `repositoryOwner`, `status`, `author`, `commentCount`, `creationTimestamp`, `updateTimestamp`, `labels`
+- `{style}` — visual style: `dot` (status dot), `normal` (foreground color, 12px), `grey` (muted, 11px). Optional, defaults to `grey`
+- `[minWidth,maxWidth]` — pixel width range for auto-layout and resize limits
+- `*` — marks the column as required (always visible, not toggleable)
 
 ### VS Code Notes
 
