@@ -87,8 +87,8 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground); }
 .toolbar button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 .toolbar button.primary:hover { background: var(--vscode-button-hoverBackground); }
-.icon-btn { padding: 3px 6px; height: 22px; font-size: 12px; opacity: 0.8; display: inline-flex; align-items: center; justify-content: center; }
-.icon-btn:hover { opacity: 1; }
+.icon-btn { padding: 3px 6px; height: 22px; font-size: 12px; opacity: 0.8; display: inline-flex; align-items: center; justify-content: center; background: none; border: none; color: var(--vscode-foreground); cursor: pointer; }
+.icon-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
 .icon-btn.danger { color: var(--vscode-errorForeground); }
 .icon-btn .codicon { font-size: 14px; }
 .codicon { font-family: codicon; font-size: 12px; line-height: 1; }

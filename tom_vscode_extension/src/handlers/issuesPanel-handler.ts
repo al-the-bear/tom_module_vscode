@@ -26,22 +26,34 @@ import { getConfigPath } from './handler_shared';
 
 export type PanelMode = 'issues' | 'tests';
 
+interface ParsedStatus {
+    name: string;
+    color: string;
+}
+
+function parseStatusEntry(raw: string): ParsedStatus {
+    const m = raw.match(/^(.+?)\[(.+?)\]$/);
+    if (m) { return { name: m[1], color: m[2] }; }
+    return { name: raw, color: 'grey' };
+}
+
 interface IssuePanelConfig {
     provider: string;
     repos: string[];
     additionalRepos: string[];
-    additionalRepoPrefix: string;
     statuses: string[];
+    statusColors: Record<string, string>;
     labels: string[];
 }
 
 function loadPanelConfig(section: string): IssuePanelConfig {
+    const defaultStatuses = ['open[green]', 'in_triage[yellow]', 'assigned[red]', 'closed[grey]'];
     const defaults: IssuePanelConfig = {
         provider: 'github',
         repos: [],
         additionalRepos: [],
-        additionalRepoPrefix: '',
-        statuses: ['open', 'in_triage', 'assigned', 'closed'],
+        statuses: defaultStatuses.map(s => parseStatusEntry(s).name),
+        statusColors: Object.fromEntries(defaultStatuses.map(s => { const p = parseStatusEntry(s); return [p.name, p.color]; })),
         labels: ['quicklabel=Flaky', 'quicklabel=Regression', 'quicklabel=Blocked'],
     };
     try {
@@ -54,8 +66,16 @@ function loadPanelConfig(section: string): IssuePanelConfig {
             provider: typeof cfg.provider === 'string' ? cfg.provider : defaults.provider,
             repos: Array.isArray(cfg.repos) ? cfg.repos : [],
             additionalRepos: Array.isArray(cfg.additionalRepos) ? cfg.additionalRepos : [],
-            additionalRepoPrefix: typeof cfg.additionalRepoPrefix === 'string' ? cfg.additionalRepoPrefix : defaults.additionalRepoPrefix,
-            statuses: Array.isArray(cfg.statuses) && cfg.statuses.length > 0 ? cfg.statuses : defaults.statuses,
+            statuses: (() => {
+                const raw = Array.isArray(cfg.statuses) && cfg.statuses.length > 0 ? cfg.statuses : defaultStatuses;
+                return raw.map((s: string) => parseStatusEntry(s).name);
+            })(),
+            statusColors: (() => {
+                const raw = Array.isArray(cfg.statuses) && cfg.statuses.length > 0 ? cfg.statuses : defaultStatuses;
+                const map: Record<string, string> = {};
+                for (const s of raw) { const p = parseStatusEntry(s); map[p.name] = p.color; }
+                return map;
+            })(),
             labels: Array.isArray(cfg.labels) ? cfg.labels : defaults.labels,
         };
     } catch {
@@ -88,6 +108,7 @@ export function getIssuesHtmlFragment(prefix: string): string {
     <div id="${prefix}-issueList" class="issue-list"></div>
     <div id="${prefix}-filterPicker" class="picker-overlay" style="display:none;"></div>
     <div id="${prefix}-sortPicker" class="picker-overlay sort-picker-overlay" style="display:none;"></div>
+    <div id="${prefix}-columnPicker" class="picker-overlay column-picker-overlay" style="display:none;"></div>
   </div>
   <div id="${prefix}-splitHandle" class="split-handle"></div>
   <div class="issues-editor" id="${prefix}-editor">
@@ -111,7 +132,7 @@ export function getIssuesHtmlFragment(prefix: string): string {
         <textarea id="${prefix}-inputText" placeholder="Write a comment…"></textarea>
       </div>
       <div class="input-icons">
-        <button id="${prefix}-attachBtn" class="icon-btn" title="Add Attachment"><span class="codicon codicon-paperclip"></span></button>
+        <button id="${prefix}-attachBtn" class="icon-btn" title="Add Attachment"><span class="codicon codicon-attach"></span></button>
         <button id="${prefix}-sendBtn" class="icon-btn send-btn" title="Send"><span class="codicon codicon-send"></span></button>
       </div>
     </div>
@@ -160,6 +181,10 @@ export function getIssuesCss(): string {
     font-size: 12px;
 }
 .browser-toolbar select:first-child { flex: 1; min-width: 80px; }
+.issues-root .icon-btn { background: none; border: none; color: var(--vscode-foreground); cursor: pointer; }
+.issues-root .icon-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
+.issues-root .icon-btn.send-btn { color: var(--vscode-textLink-foreground); }
+.issues-root .icon-btn.send-btn:hover { color: var(--vscode-textLink-activeForeground); }
 .issue-list {
     flex: 1;
     overflow-y: auto;
@@ -183,7 +208,8 @@ export function getIssuesCss(): string {
 }
 .issue-number { color: var(--vscode-descriptionForeground); font-size: 11px; min-width: 35px; }
 .issue-item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.issue-state-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; background: #888; }
+.issue-state-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+.issue-col { color: var(--vscode-descriptionForeground); font-size: 10px; white-space: nowrap; flex-shrink: 0; max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
 .issue-status-stamp {
     position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
     padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 600;
@@ -192,6 +218,7 @@ export function getIssuesCss(): string {
 }
 .icon-btn.active-indicator { background: var(--vscode-button-background); color: var(--vscode-button-foreground); opacity: 1; border-radius: 3px; }
 .icon-btn.active-indicator:hover { background: var(--vscode-button-hoverBackground); }
+.column-picker-overlay { position: fixed; left: 0; top: 0; }
 
 /* ---- Picker overlays ---- */
 .picker-overlay {
@@ -202,6 +229,7 @@ export function getIssuesCss(): string {
 }
 .picker-option { padding: 4px 10px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 6px; }
 .picker-option:hover { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }
+.picker-option.dimmed { opacity: 0.5; }
 .picker-option .check-box { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .picker-option .check-box .codicon { font-size: 14px; }
 .picker-section-header { padding: 6px 10px 3px 10px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); }
@@ -271,7 +299,7 @@ export function getIssuesCss(): string {
 .input-column input[type="text"]:focus { outline: none; border-color: var(--vscode-focusBorder); }
 .input-column textarea { flex: 1; min-height: 40px; resize: none; padding: 6px 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 3px; font-family: var(--vscode-editor-font-family); font-size: 13px; line-height: 1.4; }
 .input-column textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
-.input-icons { display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; width: 28px; flex-shrink: 0; }
+.input-icons { display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; width: 28px; flex-shrink: 0; padding-bottom: 4px; }
 
 /* Labels picker */
 .labels-picker { position: absolute; right: 8px; top: 34px; background: var(--vscode-menu-background); border: 1px solid var(--vscode-menu-border); border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 100; padding: 4px 0; min-width: 160px; }
@@ -301,6 +329,7 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     // State
     var repos = [];
     var configStatuses = ['open', 'in_triage', 'assigned', 'closed'];
+    var statusColors = { open: 'green', in_triage: 'yellow', assigned: 'red', closed: 'grey' };
     var configLabels = [];
     var currentRepo = null;
     var allIssues = [];
@@ -309,10 +338,18 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     var currentComments = [];
     var isNewIssueMode = false;
     var attachments = [];
-    var activeFilters = ['open'];
+    var activeFilters = [];
     var activeLabelFilters = {};
     var labelSections = {};
-    var sortFields = ['updatedAt'];
+    var sortFields = [];
+    var AVAILABLE_COLUMNS = [
+        { key: 'author', label: 'Author' },
+        { key: 'createdAt', label: 'Created' },
+        { key: 'updatedAt', label: 'Updated' },
+        { key: 'commentCount', label: 'Comments' },
+        { key: 'labels', label: 'Labels' }
+    ];
+    var visibleColumns = ['updatedAt'];
     var SORTABLE_FIELDS = [
         { key: 'number', label: 'Number' },
         { key: 'title', label: 'Title' },
@@ -361,6 +398,7 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
             case 'issuesInit':
                 repos = msg.repos || [];
                 configStatuses = msg.statuses || ['open', 'in_triage', 'assigned', 'closed'];
+                statusColors = msg.statusColors || {};
                 configLabels = msg.labels || [];
                 labelSections = {};
                 for (var li = 0; li < configLabels.length; li++) {
@@ -544,9 +582,9 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
         var html = '<div class="picker-section-header">Status</div>';
         for (var j = 0; j < configStatuses.length; j++) {
             var st = configStatuses[j];
-            if (!presentStatuses[st]) continue;
             var checked = activeFilters.indexOf(st) >= 0;
-            html += '<div class="picker-option" data-section="status" data-value="' + escapeHtml(st) + '">';
+            var present = presentStatuses[st];
+            html += '<div class="picker-option' + (present ? '' : ' dimmed') + '" data-section="status" data-value="' + escapeHtml(st) + '">';
             html += '<span class="check-box">' + (checked ? '<span class="codicon codicon-check"></span>' : '') + '</span>';
             html += '<span>' + escapeHtml(formatStatusLabel(st)) + '</span></div>';
         }
@@ -585,18 +623,18 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
         });
     }
     function updateFilterBtnState() {
-        var isDefault = (activeFilters.length === 1 && activeFilters[0] === 'open');
+        var isDefault = (activeFilters.length === 0);
         if (isDefault) {
             var lkeys = Object.keys(activeLabelFilters);
             for (var i = 0; i < lkeys.length; i++) {
                 if (activeLabelFilters[lkeys[i]] && activeLabelFilters[lkeys[i]].length > 0) { isDefault = false; break; }
             }
-        } else { isDefault = false; }
+        }
         if (isDefault) { filterBtn.classList.remove('active-indicator'); }
         else { filterBtn.classList.add('active-indicator'); }
     }
     function updateSortBtnState() {
-        var isDefault = (sortFields.length === 1 && sortFields[0] === 'updatedAt');
+        var isDefault = (sortFields.length === 0);
         if (isDefault) { sortBtn.classList.remove('active-indicator'); }
         else { sortBtn.classList.add('active-indicator'); }
     }
@@ -644,6 +682,24 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     }
 
     // ---- Issue list ----
+    function getStatusColor(status) {
+        return statusColors[status] || 'grey';
+    }
+    function formatColumnValue(issue, col) {
+        switch (col) {
+            case 'author': return issue.author ? issue.author.name : '';
+            case 'createdAt': return formatDateShort(issue.createdAt);
+            case 'updatedAt': return formatDateShort(issue.updatedAt);
+            case 'commentCount': return (issue.commentCount || 0) + '';
+            case 'labels':
+                var lbls = (issue.labels || []).map(function(l) {
+                    var eq = l.indexOf('=');
+                    return eq > 0 ? l.substring(eq + 1) : l;
+                });
+                return lbls.join(', ');
+            default: return '';
+        }
+    }
     function renderIssueList() {
         if (issues.length === 0) { issueListEl.innerHTML = '<div class="empty-state">No issues found</div>'; return; }
         var html = '';
@@ -651,18 +707,62 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
             var issue = issues[i];
             var sel = selectedIssue && selectedIssue.id === issue.id ? ' selected' : '';
             var effStatus = getEffectiveStatus(issue);
+            var dotColor = getStatusColor(effStatus);
             html += '<div class="issue-item' + sel + '" data-idx="' + i + '">';
-            html += '<span class="issue-state-dot"></span>';
+            html += '<span class="issue-state-dot" style="background:' + escapeHtml(dotColor) + ';"></span>';
             html += '<span class="issue-number">#' + issue.number + '</span>';
             html += '<span class="issue-item-title">' + escapeHtml(issue.title) + '</span>';
+            for (var ci = 0; ci < visibleColumns.length; ci++) {
+                var cv = formatColumnValue(issue, visibleColumns[ci]);
+                if (cv) { html += '<span class="issue-col" title="' + escapeHtml(AVAILABLE_COLUMNS.filter(function(c){return c.key===visibleColumns[ci];})[0].label) + '">' + escapeHtml(cv) + '</span>'; }
+            }
             if (effStatus !== 'open') { html += '<span class="issue-status-stamp">' + escapeHtml(formatStatusLabel(effStatus)) + '</span>'; }
             html += '</div>';
         }
         issueListEl.innerHTML = html;
         issueListEl.querySelectorAll('.issue-item').forEach(function(el) {
             el.addEventListener('click', function() { selectIssue(issues[parseInt(el.dataset.idx)]); });
+            el.addEventListener('contextmenu', function(e) { e.preventDefault(); showColumnPicker(e.clientX, e.clientY); });
         });
     }
+    function showColumnPicker(x, y) {
+        var picker = $e('columnPicker');
+        if (!picker) return;
+        var html = '<div class="picker-section-header">Columns</div>';
+        for (var i = 0; i < AVAILABLE_COLUMNS.length; i++) {
+            var col = AVAILABLE_COLUMNS[i];
+            var checked = visibleColumns.indexOf(col.key) >= 0;
+            html += '<div class="picker-option" data-col="' + col.key + '">';
+            html += '<span class="check-box">' + (checked ? '<span class="codicon codicon-check"></span>' : '') + '</span>';
+            html += '<span>' + escapeHtml(col.label) + '</span></div>';
+        }
+        picker.innerHTML = html;
+        picker.style.display = '';
+        picker.style.left = x + 'px';
+        picker.style.top = y + 'px';
+        // Adjust if picking off-screen
+        requestAnimationFrame(function() {
+            var rect = picker.getBoundingClientRect();
+            var parent = picker.offsetParent ? picker.offsetParent.getBoundingClientRect() : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+            if (rect.right > parent.right) picker.style.left = Math.max(0, x - rect.width) + 'px';
+            if (rect.bottom > parent.bottom) picker.style.top = Math.max(0, y - rect.height) + 'px';
+        });
+        picker.querySelectorAll('.picker-option').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var colKey = el.dataset.col;
+                var idx = visibleColumns.indexOf(colKey);
+                if (idx >= 0) { visibleColumns.splice(idx, 1); } else { visibleColumns.push(colKey); }
+                showColumnPicker(x, y);
+                renderIssueList();
+            });
+        });
+    }
+    // Close column picker on outside click
+    document.addEventListener('click', function() {
+        var picker = $e('columnPicker');
+        if (picker) picker.style.display = 'none';
+    });
     function selectIssue(issue) {
         selectedIssue = issue;
         isNewIssueMode = false;
@@ -874,6 +974,7 @@ export function getIssuesScript(prefix: string, mode: PanelMode): string {
     // ---- Utility ----
     function escapeHtml(str) { if (!str) return ''; return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
     function formatDate(iso) { try { var d = new Date(iso); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch(e) { return iso; } }
+    function formatDateShort(iso) { try { var d = new Date(iso); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch(e) { return iso; } }
     function formatStatusLabel(st) { return st.replace(/_/g, ' ').replace(/\\b[a-z]/g, function(c) { return c.toUpperCase(); }); }
     function showError(msg) {
         var div = document.createElement('div'); div.className = 'empty-state'; div.style.color = 'var(--vscode-errorForeground)'; div.textContent = msg;
@@ -908,19 +1009,24 @@ export async function handleIssuesPanelMessage(msg: any, webview: vscode.Webview
             if (includeWorkspaceRepos) {
                 const wsRepos = provider.discoverRepos();
                 wsRepos.sort((a, b) => a.displayName.localeCompare(b.displayName));
-                const prefix = config.additionalRepoPrefix;
-                const additional: IssueProviderRepo[] = config.additionalRepos.map(r => ({
-                    id: r,
-                    displayName: prefix ? `${prefix}: ${r}` : r,
-                }));
-                const additionalIds = new Set(config.additionalRepos);
+                // additionalRepos format: "Prefix:owner/repo" or just "owner/repo"
+                const additional: IssueProviderRepo[] = config.additionalRepos.map(r => {
+                    const colonIdx = r.indexOf(':');
+                    if (colonIdx > 0) {
+                        const prefix = r.substring(0, colonIdx);
+                        const repoId = r.substring(colonIdx + 1);
+                        return { id: repoId, displayName: `${prefix}: ${repoId}` };
+                    }
+                    return { id: r, displayName: r };
+                });
+                const additionalIds = new Set(additional.map(a => a.id));
                 const filtered = wsRepos.filter(r => !additionalIds.has(r.id));
                 repos = [...additional, ...filtered];
             } else {
                 repos = config.repos.map(r => ({ id: r, displayName: r }));
                 repos.sort((a, b) => a.displayName.localeCompare(b.displayName));
             }
-            webview.postMessage({ type: 'issuesInit', repos, statuses: config.statuses, labels: config.labels, panelMode: mode });
+            webview.postMessage({ type: 'issuesInit', repos, statuses: config.statuses, statusColors: config.statusColors, labels: config.labels, panelMode: mode });
             break;
         }
 
