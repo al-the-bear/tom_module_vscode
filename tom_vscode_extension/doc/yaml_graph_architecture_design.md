@@ -107,14 +107,18 @@ tom_module_vscode/
             yaml-parser-wrapper.test.ts
         graph-types/            # config-only diagram type packages
             flowchart/
-                flowchart.schema.json
-                flowchart.graph-map.yaml
+                v1/
+                    flowchart.schema.json
+                    flowchart.graph-map.yaml
+                    style.css           # optional
             state-machine/
-                state-machine.schema.json
-                state-machine.graph-map.yaml
+                v1/
+                    state-machine.schema.json
+                    state-machine.graph-map.yaml
             er-diagram/
-                er-diagram.schema.json
-                er-diagram.graph-map.yaml
+                v1/
+                    er-diagram.schema.json
+                    er-diagram.graph-map.yaml
     yaml_graph_vscode/          # NEW — VS Code integration
         package.json
         tsconfig.json
@@ -209,6 +213,9 @@ export interface GraphType {
     /** Unique type id, e.g. 'flowchart', 'stateMachine' */
     id: string;
 
+    /** Mapping format version (matches the v{n}/ subfolder) */
+    version: number;
+
     /** File extension patterns, e.g. ['*.flow.yaml'] */
     filePatterns: string[];
 
@@ -217,6 +224,9 @@ export interface GraphType {
 
     /** Parsed mapping configuration from *.graph-map.yaml */
     mapping: GraphMapping;
+
+    /** Optional per-type CSS stylesheet content */
+    styleSheet?: string;
 }
 
 // ============================================================
@@ -626,33 +636,119 @@ export class ConversionEngine {
 import { GraphType, GraphMapping } from './types.js';
 import { MappingLoader } from './mapping-loader.js';
 
+export class GraphTypeConflictError extends Error {
+    constructor(
+        public readonly newTypeId: string,
+        public readonly existingTypeId: string,
+        public readonly pattern: string
+    ) {
+        super(
+            `Graph type '${newTypeId}' conflicts with '${existingTypeId}' ` +
+            `on pattern '${pattern}'`
+        );
+        this.name = 'GraphTypeConflictError';
+    }
+}
+
 export class GraphTypeRegistry {
-    private types = new Map<string, GraphType>();
+    /**
+     * All registered versions keyed by "{id}@{version}".
+     * e.g., "flowchart@1", "flowchart@2"
+     */
+    private allVersions = new Map<string, GraphType>();
+
+    /**
+     * File pattern → highest-version GraphType (default lookup).
+     */
     private filePatternMap = new Map<string, GraphType>();
+
+    /**
+     * File pattern → map of version → GraphType (for explicit version selection).
+     */
+    private versionedPatternMap = new Map<string, Map<number, GraphType>>();
+
     private loader = new MappingLoader();
 
-    /** Register a graph type from its constituent parts. */
+    /**
+     * Register a graph type. Throws GraphTypeConflictError if any file
+     * pattern is already claimed by a *different* graph type id.
+     * Multiple versions of the *same* id are allowed.
+     */
     register(graphType: GraphType): void {
-        this.types.set(graphType.id, graphType);
         for (const pattern of graphType.filePatterns) {
-            this.filePatternMap.set(pattern, graphType);
+            const existing = this.filePatternMap.get(pattern);
+            if (existing && existing.id !== graphType.id) {
+                throw new GraphTypeConflictError(
+                    graphType.id, existing.id, pattern
+                );
+            }
+        }
+
+        const versionKey = `${graphType.id}@${graphType.version}`;
+        this.allVersions.set(versionKey, graphType);
+
+        for (const pattern of graphType.filePatterns) {
+            // Update versioned map
+            let versions = this.versionedPatternMap.get(pattern);
+            if (!versions) {
+                versions = new Map();
+                this.versionedPatternMap.set(pattern, versions);
+            }
+            versions.set(graphType.version, graphType);
+
+            // Default map always points to highest version
+            const current = this.filePatternMap.get(pattern);
+            if (!current || graphType.version > current.version) {
+                this.filePatternMap.set(pattern, graphType);
+            }
         }
     }
 
     /**
-     * Register a graph type by loading schema.json and *.graph-map.yaml
-     * from a directory.
+     * Register all versions of a graph type from a folder containing
+     * version subfolders.
      */
     async registerFromFolder(folderPath: string): Promise<void> {
-        const graphType = await this.loader.loadFromFolder(folderPath);
-        this.register(graphType);
+        const graphTypes = await this.loader.loadFromFolder(folderPath);
+        for (const gt of graphTypes) {
+            this.register(gt);
+        }
     }
 
-    /** Look up graph type by file extension/pattern. */
+    /**
+     * Auto-scan a directory of graph-type folders and register them all.
+     * Used by the VS Code activation code.
+     */
+    async registerAllFromDirectory(
+        dirPath: string,
+        diagnostics?: { set(uri: any, diags: any[]): void }
+    ): Promise<void> {
+        // Scan dirPath for subdirectories, call registerFromFolder on each.
+        // Catch GraphTypeConflictError and report via diagnostics parameter.
+        // ... implementation
+    }
+
+    /**
+     * Look up graph type by file extension/pattern.
+     * Returns the highest version by default.
+     */
     getForFile(filename: string): GraphType | undefined {
         for (const [pattern, type] of this.filePatternMap) {
             if (this.matchesPattern(filename, pattern)) {
                 return type;
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * Look up a specific version of a graph type for a file.
+     * Used when YAML meta.graph-version requests a specific version.
+     */
+    getForFileVersion(filename: string, version: number): GraphType | undefined {
+        for (const [pattern, versions] of this.versionedPatternMap) {
+            if (this.matchesPattern(filename, pattern)) {
+                return versions.get(version);
             }
         }
         return undefined;
@@ -689,31 +785,80 @@ export class MappingLoader {
     private validator = new SchemaValidator();
 
     /**
-     * Load a graph type from a folder containing:
+     * Load all versions of a graph type from a folder containing
+     * version subfolders (v1/, v2/, etc.). Each subfolder must contain:
      *   - *.schema.json (exactly one)
      *   - *.graph-map.yaml (exactly one)
+     *   - style.css (optional)
+     *
+     * Returns an array of GraphType — one per version subfolder found.
      */
-    async loadFromFolder(folderPath: string): Promise<GraphType> {
-        const schemaFile = await this.findFile(folderPath, '.schema.json');
-        const mappingFile = await this.findFile(folderPath, '.graph-map.yaml');
+    async loadFromFolder(folderPath: string): Promise<GraphType[]> {
+        const versionDirs = await this.findVersionSubfolders(folderPath);
+        const results: GraphType[] = [];
 
-        const schemaText = await readFile(schemaFile, 'utf-8');
-        const schema = JSON.parse(schemaText);
+        for (const { version, path: versionPath } of versionDirs) {
+            const schemaFile = await this.findFile(versionPath, '.schema.json');
+            const mappingFile = await this.findFile(versionPath, '.graph-map.yaml');
 
-        const mappingText = await readFile(mappingFile, 'utf-8');
-        const mappingRaw = parseYaml(mappingText);
-        const mapping = this.normalizeMapping(mappingRaw);
+            const schemaText = await readFile(schemaFile, 'utf-8');
+            const schema = JSON.parse(schemaText);
 
-        // Derive file patterns from mapping id
-        // e.g., id: 'flowchart' → ['*.flow.yaml']
-        const filePatterns = this.deriveFilePatterns(mapping);
+            const mappingText = await readFile(mappingFile, 'utf-8');
+            const mappingRaw = parseYaml(mappingText);
 
-        return {
-            id: mapping.map.id,
-            filePatterns,
-            schema,
-            mapping
-        };
+            // Select version-specific parser
+            const parser = this.parsers.get(version);
+            if (!parser) {
+                throw new UnsupportedMappingVersionError(
+                    version,
+                    Array.from(this.parsers.keys())
+                );
+            }
+            const mapping = parser.parse(mappingRaw);
+
+            // Validate version field matches subfolder
+            if (mappingRaw.map?.version !== version) {
+                throw new Error(
+                    `Version mismatch in ${mappingFile}: ` +
+                    `file says ${mappingRaw.map?.version}, ` +
+                    `subfolder is v${version}`
+                );
+            }
+
+            const filePatterns = this.deriveFilePatterns(mapping);
+
+            // Load optional style.css
+            let styleSheet: string | undefined;
+            try {
+                styleSheet = await readFile(
+                    join(versionPath, 'style.css'), 'utf-8'
+                );
+            } catch { /* no style.css — that's fine */ }
+
+            results.push({
+                id: mapping.map.id,
+                version,
+                filePatterns,
+                schema,
+                mapping,
+                styleSheet,
+            });
+        }
+
+        return results;
+    }
+
+    /**
+     * Find version subfolders (v1/, v2/, etc.) and return them sorted
+     * by version number ascending.
+     */
+    private async findVersionSubfolders(
+        folderPath: string
+    ): Promise<Array<{ version: number; path: string }>> {
+        // Scan for directories matching v{number}
+        // Returns e.g. [{ version: 1, path: '.../flowchart/v1' }]
+        // ... implementation using readdir + filter
     }
 
     /**
@@ -974,8 +1119,8 @@ export class SchemaValidator {
 ```typescript
 // Core classes
 export { ConversionEngine } from './conversion-engine.js';
-export { GraphTypeRegistry } from './graph-type-registry.js';
-export { MappingLoader } from './mapping-loader.js';
+export { GraphTypeRegistry, GraphTypeConflictError } from './graph-type-registry.js';
+export { MappingLoader, UnsupportedMappingVersionError } from './mapping-loader.js';
 export { SchemaValidator } from './schema-validator.js';
 export { YamlParserWrapper } from './yaml-parser-wrapper.js';
 export { AstNodeTransformerRuntime } from './ast-node-transformer.js';
@@ -1060,7 +1205,8 @@ export class YamlGraphEditorProvider implements vscode.CustomTextEditorProvider 
         webviewPanel: vscode.WebviewPanel,
         _token: vscode.CancellationToken
     ): Promise<void> {
-        const graphType = this.registry.getForFile(document.fileName);
+        // Check for explicit version request in YAML meta
+        let graphType = this.resolveGraphType(document);
         if (!graphType) {
             vscode.window.showErrorMessage(
                 `No graph type registered for ${document.fileName}`
@@ -1111,6 +1257,27 @@ export class YamlGraphEditorProvider implements vscode.CustomTextEditorProvider 
         // Use convertWithPrepare to allow async pre-computation
         this.engine.convertWithPrepare(yamlText, graphType, this.callbacks)
             .then(result => webview.update(yamlText, result));
+    }
+
+    /**
+     * Resolve the graph type for a document. Checks the YAML meta section
+     * for an explicit graph-version request; otherwise uses the highest
+     * available version.
+     */
+    private resolveGraphType(document: vscode.TextDocument): GraphType | undefined {
+        // Quick parse to check for meta.graph-version
+        try {
+            const text = document.getText();
+            const data = parseYaml(text);
+            const requestedVersion = data?.meta?.['graph-version'];
+            if (typeof requestedVersion === 'number') {
+                return this.registry.getForFileVersion(
+                    document.fileName, requestedVersion
+                );
+            }
+        } catch { /* parse error — fall through to default */ }
+
+        return this.registry.getForFile(document.fileName);
     }
 }
 ```
@@ -1288,22 +1455,61 @@ export { NodeEditorController } from './node-editor-controller.js';
 
 ## 5. Diagram Type Packages
 
-Each diagram type is a self-contained folder with two files. No TypeScript.
+Each diagram type is a self-contained folder with a versioned subfolder
+structure. No TypeScript. The version subfolder (`v1/`, `v2/`, etc.) contains
+the schema and mapping files for that version of the mapping format.
+
+### Folder Structure Convention
+
+```
+graph-types/
+    flowchart/
+        v1/
+            flowchart.schema.json       # validates *.flow.yaml files
+            flowchart.graph-map.yaml    # converts YAML → Mermaid flowchart
+            style.css                   # optional per-type CSS
+    state-machine/
+        v1/
+            state-machine.schema.json
+            state-machine.graph-map.yaml
+    er-diagram/
+        v1/
+            er-diagram.schema.json
+            er-diagram.graph-map.yaml
+```
+
+When the mapping format evolves, a new version subfolder is added alongside
+the existing one:
+
+```
+graph-types/
+    flowchart/
+        v1/                             # original mapping format
+            flowchart.schema.json
+            flowchart.graph-map.yaml
+        v2/                             # new mapping format
+            flowchart.schema.json
+            flowchart.graph-map.yaml
+            style.css
+```
+
+Both versions are loaded simultaneously by `MappingLoader`. See Q13 in
+Section 14 for version coexistence details.
 
 ### flowchart/
 
-`flowchart.schema.json` — validates `*.flow.yaml` files  
-`flowchart.graph-map.yaml` — converts YAML → Mermaid flowchart
+`v1/flowchart.schema.json` — validates `*.flow.yaml` files  
+`v1/flowchart.graph-map.yaml` — converts YAML → Mermaid flowchart
 
 ### state-machine/
 
-`state-machine.schema.json` — validates `*.state.yaml` files  
-`state-machine.graph-map.yaml` — converts YAML → Mermaid stateDiagram-v2
+`v1/state-machine.schema.json` — validates `*.state.yaml` files  
+`v1/state-machine.graph-map.yaml` — converts YAML → Mermaid stateDiagram-v2
 
 ### er-diagram/
 
-`er-diagram.schema.json` — validates `*.er.yaml` files  
-`er-diagram.graph-map.yaml` — converts YAML → Mermaid erDiagram
+`v1/er-diagram.schema.json` — validates `*.er.yaml` files  
+`v1/er-diagram.graph-map.yaml` — converts YAML → Mermaid erDiagram
 
 See Section 6 for the complete draft schemas and Section 7 for the mapping
 file format.
@@ -2141,11 +2347,11 @@ export async function activateYamlGraphEditor(
     const engine = new ConversionEngine();
     const registry = new GraphTypeRegistry();
 
-    // 2. Register built-in diagram types
+    // 2. Auto-scan and register all graph types (with version subfolders)
     const graphTypesPath = context.extensionPath + '/graph-types';
-    await registry.registerFromFolder(graphTypesPath + '/flowchart');
-    await registry.registerFromFolder(graphTypesPath + '/state-machine');
-    await registry.registerFromFolder(graphTypesPath + '/er-diagram');
+    const diagnostics = vscode.languages.createDiagnosticCollection('yamlGraph');
+    context.subscriptions.push(diagnostics);
+    await registry.registerAllFromDirectory(graphTypesPath, diagnostics);
 
     // 3. VS Code integration with callbacks
     const callbacks = new VsCodeCallbacks();
@@ -2265,169 +2471,137 @@ These questions were raised during the design process and have been resolved:
 | 14 | How should the node editor form handle complex field types? | **Schema-driven recursive form renderer** | Full design in Section 10 — Node Editor subsection. Handles scalars, enums, arrays of objects, nested objects, and `additionalProperties`. |
 | 15 | Should `ConversionCallbacks` support async operations? | **`prepare()` method** on `ConversionCallbacks` | Async `prepare()` runs once before conversion. Emit callbacks remain synchronous, reading pre-computed data from `this`. Engine provides `convertWithPrepare()` async wrapper. See updated types in Section 3. |
 | 16 | How should undo/redo work for node editor edits? | **Single `WorkspaceEdit`** with all field changes | One `workspace.applyEdit()` call per "Apply" action produces one native undo step. Webview sends `edits: Array<{ path, value }>` in the `applyEdit` message. |
+| 11 | What happens when multiple graph types claim the same file pattern? | **Throw `GraphTypeConflictError`** + VS Code error notification + Problems pane diagnostic | First-registered wins. Core throws typed error; vscode layer shows `showErrorMessage()` and adds diagnostic on the conflicting `*.graph-map.yaml`. See error code in previous revision. |
+| 17 | Should `FieldSchema` support `oneOf`/`anyOf` JSON Schema combinators? | **Not supported** | Graph type schemas should not use `oneOf`/`anyOf` for fields. If a field needs polymorphic types, use separate fields or a `type` discriminator field instead. The node editor does not render variant selectors. |
+| 18 | How should the node editor handle YAML anchors and aliases? | **Not allowed** in graph YAML files | YAML anchors (`&anchor`) and aliases (`*anchor`) create shared references that complicate AST editing and make node-level edits unpredictable. Graph YAML files must use explicit values only. The schema validator should reject files containing aliases. If the `yaml` npm parser encounters an alias, it is resolved during parsing — the node editor always works with resolved values. |
+| 19 | Should the schema-driven form support custom widget hints? | **Yes — `x-widget` extension keyword** in JSON Schema | Graph type authors can add `"x-widget": "color-picker"` (or `"code"`, `"url"`, `"date"`, etc.) to schema properties. The node editor checks for `x-widget` and renders a specialized widget if available. Unknown widget hints fall back to the default widget for that type. See Section 10 Node Editor. |
+| 20 | How should validation errors be displayed for nested fields? | **Inline error indicators** mapped from schema paths | The extension host sends `showErrors` messages containing validation error paths (e.g., `/attributes/0/type`). The webview maps each path to the corresponding form field's `path` attribute and renders a red border + error tooltip on that field. Parent collapsible sections show a red badge count if they contain errors. The status bar shows total error count. |
 
 ### Open Questions
 
 Design questions requiring further discussion:
-
-#### Q11 — File pattern conflicts between graph types
-
-**Context:** `GraphTypeRegistry` uses a `filePatternMap` that maps file
-patterns to graph types. Two types claiming `*.flow.yaml` would silently shadow
-each other.
-
-**Proposal: fail loudly with a visible error — not just a log message.**
-
-When `register()` detects a pattern already claimed by another type:
-
-1. **Reject the conflicting registration** — the conflicting graph type is
-   *not* registered at all (not just the overlapping pattern).
-2. **Show a VS Code error notification** — `vscode.window.showErrorMessage()`
-   with the message: `Graph type '${newId}' conflicts with '${existingId}' on
-   pattern '${pattern}'. The type '${newId}' was not loaded.`
-3. **Add to Problems pane** — create a diagnostic on the conflicting
-   `*.graph-map.yaml` file so it appears in the VS Code Problems panel.
-4. **Log full details** — output channel logging for debugging.
-
-The first-registered type retains ownership. Since graph-type folders are
-scanned alphabetically, the order is deterministic. This ensures developers
-notice conflicts immediately rather than getting mysterious wrong-diagram-type
-behavior.
-
-In `yaml-graph-core` (which has no VS Code dependency), the `register()` method
-throws a `GraphTypeConflictError`. The `yaml-graph-vscode` layer catches it and
-translates to the VS Code-specific error notifications described above.
-
-```typescript
-// In yaml-graph-core:
-export class GraphTypeConflictError extends Error {
-    constructor(
-        public readonly newTypeId: string,
-        public readonly existingTypeId: string,
-        public readonly pattern: string
-    ) {
-        super(
-            `Graph type '${newTypeId}' conflicts with '${existingTypeId}' ` +
-            `on pattern '${pattern}'`
-        );
-        this.name = 'GraphTypeConflictError';
-    }
-}
-
-// In GraphTypeRegistry.register():
-register(graphType: GraphType): void {
-    for (const pattern of graphType.filePatterns) {
-        const existing = this.filePatternMap.get(pattern);
-        if (existing) {
-            throw new GraphTypeConflictError(
-                graphType.id, existing.id, pattern
-            );
-        }
-    }
-    this.types.set(graphType.id, graphType);
-    for (const pattern of graphType.filePatterns) {
-        this.filePatternMap.set(pattern, graphType);
-    }
-}
-
-// In yaml-graph-vscode activation:
-try {
-    await registry.registerFromFolder(folderPath);
-} catch (e) {
-    if (e instanceof GraphTypeConflictError) {
-        vscode.window.showErrorMessage(e.message);
-        // Add diagnostic to Problems pane
-        diagnosticCollection.set(mappingFileUri, [
-            new vscode.Diagnostic(
-                new vscode.Range(0, 0, 0, 0),
-                e.message,
-                vscode.DiagnosticSeverity.Error
-            )
-        ]);
-    }
-}
-```
-
----
 
 #### Q13 — Mapping format versioning and version coexistence
 
 **Context:** As the mapping format evolves, older mapping files may become
 incompatible. Different graph-type authors may update at different speeds.
 
-**Proposal: required `version: 1` field + version coexistence strategy.**
+**Proposal: versioned subfolders within each graph-type folder — true
+side-by-side version support with no migration magic.**
 
-**Part A — Version field from day one.** The mapping file has a required
-`version` field in the `map:` section:
+**Why not auto-migrate?** There is no reliable way to automatically transform a
+v1 mapping file into v2 semantics. Mapping files contain structural rules
+(source paths, shape templates, JS transform fragments) that are
+format-version-specific. A "normalizer" that converts v1 to v2 would need to
+understand the semantic intent of every mapping rule — this is essentially
+writing a new mapping file, not a mechanical transformation. Any auto-migration
+would be fragile, produce subtly wrong output, and create a false sense of
+compatibility. The only honest approach is to truly support both versions.
+
+**Part A — Version subfolders from day one.**
+
+Each graph-type folder uses versioned subfolders:
+
+```
+graph-types/
+    flowchart/
+        v1/
+            flowchart.schema.json
+            flowchart.graph-map.yaml
+            style.css                   # optional
+        v2/                             # added when v2 mapping format ships
+            flowchart.schema.json
+            flowchart.graph-map.yaml
+            style.css
+```
+
+The `version` field inside `*.graph-map.yaml` must match the subfolder name:
 
 ```yaml
+# graph-types/flowchart/v1/flowchart.graph-map.yaml
 map:
   version: 1
   id: flowchart
   mermaidType: flowchart
 ```
 
-`MappingLoader` checks the version and refuses to load files with an
-unrecognized version, emitting a clear error message. The
-`graph-map.schema.json` includes `version` as a required property with
-`const: 1` (updated when the format changes).
+**Part B — How `MappingLoader` handles versions.**
 
-**Part B — Supporting two versions simultaneously.** When the mapping format
-evolves from v1 to v2, the system must support both during the transition
-period:
+1. **Scan version subfolders.** When `registerFromFolder('graph-types/flowchart')`
+   is called, the loader scans for subdirectories matching `v\d+/`. Each
+   subfolder that contains a `*.graph-map.yaml` is loaded independently.
 
-1. **Version-specific loaders.** `MappingLoader` maintains an internal registry
-   of version normalizers:
+2. **Version-specific schemas.** Each version subfolder has its own JSON Schema
+   for the mapping file format. `MappingLoader` validates the mapping file
+   against the schema found in the same subfolder:
+   - `v1/` mapping validated against `graph-map.v1.schema.json` (or an embedded
+     schema matching version 1)
+   - `v2/` mapping validated against `graph-map.v2.schema.json`
+
+3. **Version-specific parsers.** Each mapping format version has a dedicated
+   parser class that produces the internal `GraphMapping` TypeScript interface:
 
    ```typescript
-   private normalizers = new Map<number, MappingNormalizer>([
-       [1, new MappingNormalizerV1()],
-       [2, new MappingNormalizerV2()],
+   interface MappingParser {
+       readonly version: number;
+       parse(rawYaml: unknown): GraphMapping;
+   }
+
+   // Registered at engine construction:
+   private parsers = new Map<number, MappingParser>([
+       [1, new MappingParserV1()],
+       [2, new MappingParserV2()],
    ]);
    ```
 
-   Each normalizer converts the raw parsed YAML into the internal
-   `GraphMapping` TypeScript interface. The internal interface always reflects
-   the latest version. Older normalizers transform the v1 structure into the
-   current internal representation (upward migration).
+   Each parser knows exactly how to read its own format. There is no
+   transformation from v1 to v2 — each parser reads its native format and
+   produces the internal `GraphMapping` independently. The internal
+   `GraphMapping` interface may evolve, but both parsers produce valid instances
+   of whatever the current `GraphMapping` interface looks like.
 
-2. **Schema per version.** Each mapping format version has its own JSON Schema:
-   - `graph-map.v1.schema.json`
-   - `graph-map.v2.schema.json`
+4. **Version selection at runtime.** When a YAML data file (e.g.,
+   `login.flow.yaml`) is opened, the engine determines which version to use:
 
-   `MappingLoader` selects the schema based on the `version` field before
-   validation.
+   - **Highest available version** is preferred by default. If both `v1/` and
+     `v2/` exist for `flowchart`, v2 is used.
+   - **User override** via a `graph-version` field in the YAML file's `meta`
+     section:
+     ```yaml
+     meta:
+       id: login-flow
+       title: Login Flow
+       graph-version: 1    # force v1 mapping
+     ```
+   - If no version subfolder exists for the requested version, show an error.
 
-3. **Graph types are not duplicated.** A single graph type folder contains one
-   `*.graph-map.yaml` file at one version. There is no need for two flowchart
-   folders — the normalizer handles the difference.
+5. **Both versions are fully functional.** The v1 parser, v1 schema, and v1
+   mapping files are not degraded or deprecated — they continue to work exactly
+   as before. The only difference is that new graph types or updated built-in
+   types may ship with v2 subfolders.
 
-4. **Deprecation cycle.** When v2 is released:
-   - Built-in graph types are updated to v2.
-   - v1 normalizer remains functional with a deprecation warning.
-   - After two minor releases, v1 support is removed.
+**Part C — Error on unknown version.**
 
-5. **Error on unknown version.** If the `version` field contains a value with
-   no registered normalizer, `MappingLoader` throws a typed error:
+```typescript
+export class UnsupportedMappingVersionError extends Error {
+    constructor(
+        public readonly version: number,
+        public readonly supportedVersions: number[]
+    ) {
+        super(
+            `Mapping format version ${version} is not supported. ` +
+            `Supported: ${supportedVersions.join(', ')}`
+        );
+    }
+}
+```
 
-   ```typescript
-   export class UnsupportedMappingVersionError extends Error {
-       constructor(
-           public readonly version: number,
-           public readonly supportedVersions: number[]
-       ) {
-           super(
-               `Mapping format version ${version} is not supported. ` +
-               `Supported: ${supportedVersions.join(', ')}`
-           );
-       }
-   }
-   ```
+**Part D — Deprecation cycle.**
 
-This approach keeps the internal engine working against a single `GraphMapping`
-interface while gracefully handling mapping files at any supported version.
-
----
+When a version is retired:
+- A deprecation warning is shown for one release cycle.
+- The version subfolder and its parser are removed in the next major release.
+- Built-in graph types always ship with the latest version subfolder.
 
 ### Further Open Questions
 
@@ -2435,7 +2609,6 @@ These are smaller items that emerged from the recent design expansion:
 
 | # | Question | Context | Impact |
 |---|----------|---------|--------|
-| 17 | Should `FieldSchema` support `oneOf` / `anyOf` JSON Schema combinators? | Some schemas use `oneOf` for polymorphic fields (e.g., a field that is either a string or an object). The recursive renderer needs a strategy for these. | May need a "variant selector" widget in the node editor |
-| 18 | How should the node editor handle YAML anchors and aliases? | YAML anchors (`&anchor`) and aliases (`*anchor`) create shared references. Editing an aliased value should warn that it affects multiple nodes. | Affects YAML AST edit logic and user communication |
-| 19 | Should the schema-driven form support custom widget hints in the JSON Schema? | Graph type authors may want to hint at a specific widget (e.g., `"x-widget": "color-picker"` for a color string field). A `x-widget` extension keyword in the schema could enable this. | Nice-to-have for rich editors; can start with standard types only |
-| 20 | How should validation errors be displayed for nested fields in the node editor? | Schema validation returns paths like `/entities/user/attributes/0/type`. The node editor needs to map these back to form fields and show inline error indicators. | Affects form rendering and error propagation from extension host to webview |
+| 21 | How should `MappingLoader` discover and validate version subfolders? | The auto-scan (Q10) now needs to scan `graph-types/{type}/v{n}/` instead of `graph-types/{type}/`. Need to define the exact scan algorithm and error handling for malformed version folders. | Affects activation code and error reporting |
+| 22 | Should the `meta.graph-version` field be required or optional in YAML data files? | If optional, the engine defaults to the highest version. If required, users must always specify. Optional is friendlier but may surprise users when a v2 mapping produces different output than v1. | Affects user experience and backward compatibility |
+| 23 | How should the extension handle a graph type that has only a v2 subfolder (no v1)? | A third-party graph type might skip v1 entirely. The engine should accept any version subfolder without requiring sequential numbering. | Affects version scanning logic |
