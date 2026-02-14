@@ -89,8 +89,8 @@ const DEFAULT_AVAILABLE_COLUMNS: ColumnDef[] = [
     { key: 'status', style: 'grey', minWidth: 60, maxWidth: 120, required: false },
     { key: 'author', style: 'grey', minWidth: 60, maxWidth: 150, required: false },
     { key: 'commentCount', style: 'grey', minWidth: 20, maxWidth: 20, required: false },
-    { key: 'creationTimestamp', style: 'grey', minWidth: 70, maxWidth: 70, required: false },
-    { key: 'updateTimestamp', style: 'grey', minWidth: 70, maxWidth: 70, required: false },
+    { key: 'creationTimestamp', style: 'grey', minWidth: 80, maxWidth: 80, required: false },
+    { key: 'updateTimestamp', style: 'grey', minWidth: 80, maxWidth: 80, required: false },
 ];
 
 function loadPanelConfig(mode: PanelMode): IssuePanelConfig {
@@ -339,7 +339,7 @@ export function getIssuesCss(): string {
 /* Column resize handles */
 .col-resize-handles { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 10; }
 .col-resize-handle { position: absolute; top: 0; bottom: 0; width: 5px; cursor: col-resize; pointer-events: auto; background: transparent; }
-.col-resize-handle:hover, .col-resize-handle.dragging { background: var(--vscode-focusBorder); }
+.col-resize-handle:hover, .col-resize-handle.dragging { background: var(--vscode-editorWidget-border, #555); }
 /* Config error */
 .config-error { padding: 16px; font-size: 12px; color: var(--vscode-errorForeground); }
 .config-error h3 { margin: 0 0 8px 0; font-size: 13px; }
