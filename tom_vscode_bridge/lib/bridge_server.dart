@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:tom_vscode_bridge/script_api.dart';
 import 'package:tom_vscode_bridge/src/cli_integration_server.dart';
-import 'package:tom_dartscript_bridges/tom_dartscript_bridges.dart';
+import 'package:tom_d4rt/d4rt.dart';
+import 'package:tom_d4rt_dcli/dartscript.b.dart';
+import 'package:tom_vscode_scripting_api/tom_vscode_scripting_api.dart';
 
 /// Default port for CLI integration server
 const int defaultCliServerPort = 19900;
@@ -109,7 +111,7 @@ class VSCodeBridgeServer implements VSCodeAdapter {
     _interpreter.grant(DangerousPermission.any);    // Code evaluation, native plugins
     
     // register bridges
-    TomDartscriptBridges.register(_interpreter);
+    TomD4rtDcliBridge.register(_interpreter);
     _interpreter.registerBridgedClass(vsCodeBridgeDefinition, 'package:vscode_bridge/vscode_bridge.dart');
     
     // Register global variables for script access
