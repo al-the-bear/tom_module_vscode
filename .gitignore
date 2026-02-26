@@ -52,7 +52,9 @@ build/
 dist/
 out/
 target/
-bin/
+# Ignore bin/ contents but allow Dart source files
+bin/*
+!bin/*.dart
 obj/
 
 # Coverage

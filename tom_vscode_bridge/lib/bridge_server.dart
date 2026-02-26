@@ -52,12 +52,35 @@ class ExecutionContext {
   bool get hasException => exceptionMessage != null;
 }
 
+/// Callback type for registering additional D4rt bridges with the interpreter.
+///
+/// Used by [VSCodeBridgeServer] to allow consumers to register extra bridges
+/// beyond the base DCli and VS Code bridges.
+typedef BridgeRegistrar = void Function(D4rt interpreter);
+
 /// JSON-RPC based bridge server for VS Code communication
 ///
 /// This server communicates with the VS Code extension via stdin/stdout
 /// using a JSON-RPC-like protocol.
 ///
 /// Implements [VSCodeAdapter] to provide the bridge for VS Code API wrappers.
+///
+/// ## Extensibility
+///
+/// Pass [additionalBridgeRegistrars] to register extra D4rt bridges beyond
+/// the base DCli and VS Code bridges. Pass [initSource] to override the
+/// default initialization script executed before user scripts.
+///
+/// ```dart
+/// // Basic bridge server (DCli + VS Code only)
+/// VSCodeBridgeServer().start();
+///
+/// // Extended bridge server with additional bridges
+/// VSCodeBridgeServer(
+///   additionalBridgeRegistrars: [TomDartscriptBridges.register],
+///   initSource: myCustomInitSource,
+/// ).start();
+/// ```
 class VSCodeBridgeServer implements VSCodeAdapter {
   final StreamController<String> _outputController = StreamController<String>();
   int _messageId = 0;
@@ -65,6 +88,7 @@ class VSCodeBridgeServer implements VSCodeAdapter {
   late final D4rt _interpreter;
   late final VsCodeBridge _vsCodeBridge;
   bool _hasExecutionContext = false;
+  final String? _initSource;
 
   /// CLI integration server for Tom CLI connections
   CliIntegrationServer? _cliServer;
@@ -86,7 +110,19 @@ class VSCodeBridgeServer implements VSCodeAdapter {
     return Zone.current['params'] as Map<String, dynamic>? ?? {};
   }
 
-  VSCodeBridgeServer() {
+  /// Creates a new bridge server instance.
+  ///
+  /// [additionalBridgeRegistrars] - Optional list of callbacks to register
+  /// additional D4rt bridges beyond the base DCli and VS Code bridges.
+  /// Each callback receives the D4rt interpreter instance.
+  ///
+  /// [initSource] - Optional initialization source that the D4rt interpreter
+  /// executes before user scripts (to pre-import packages). If null, uses
+  /// [defaultInitSource].
+  VSCodeBridgeServer({
+    List<BridgeRegistrar>? additionalBridgeRegistrars,
+    String? initSource,
+  }) : _initSource = initSource {
     // Initialize the static VSCode instance with this adapter
     VSCode.initialize(this);
 
@@ -112,12 +148,19 @@ class VSCodeBridgeServer implements VSCodeAdapter {
       DangerousPermission.any,
     ); // Code evaluation, native plugins
 
-    // register bridges
+    // Register base bridges (DCli + VS Code)
     TomD4rtDcliBridge.register(_interpreter);
     _interpreter.registerBridgedClass(
       vsCodeBridgeDefinition,
       'package:vscode_bridge/vscode_bridge.dart',
     );
+
+    // Register additional bridges from consumers (e.g., tom_core_d4rt bridges)
+    if (additionalBridgeRegistrars != null) {
+      for (final registrar in additionalBridgeRegistrars) {
+        registrar(_interpreter);
+      }
+    }
 
     // Register global variables for script access
     // These are available in scripts that import the vscode_bridge package
@@ -149,13 +192,14 @@ class VSCodeBridgeServer implements VSCodeAdapter {
 
     // Log the interpreter configuration for debugging
     _logInterpreterConfigurationConcise();
-
-    // Note: Bridge initialization scripts (imports for other packages) should be
-    // added here once bridge generation is set up for the relevant packages.
-    // For now, all VS Code globals are registered above via registerGlobalVariable().
   }
 
-  static const String _defaultInitSource = '''
+  /// Default initialization source for the D4rt interpreter.
+  ///
+  /// This script is executed before user scripts to pre-import commonly used
+  /// packages. Override via the [initSource] constructor parameter when
+  /// additional or different imports are needed.
+  static const String defaultInitSource = '''
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
@@ -193,7 +237,7 @@ void main() {}
       return;
     }
 
-    _interpreter.execute(source: _defaultInitSource);
+    _interpreter.execute(source: _initSource ?? defaultInitSource);
     _hasExecutionContext = true;
   }
 
