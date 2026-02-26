@@ -11,16 +11,16 @@ import 'package:tom_vscode_scripting_api/tom_vscode_scripting_api.dart';
 const int defaultCliServerPort = 19900;
 
 /// Global debug logging switches for VS Code Bridge
-/// 
+///
 /// - [debugTraceLogging]: Enables detailed logging of raw message transmission
 /// - [debugLogging]: Enables logging of request/response handling after message parsing
 class BridgeLogging {
   /// Enable trace-level logging for raw data transmission (JSON messages)
   static bool debugTraceLogging = false;
-  
+
   /// Enable debug logging for request handling and responses
   static bool debugLogging = false;
-  
+
   /// Set both debug logging flags at once
   static void setDebugLogging(bool enabled) {
     debugLogging = enabled;
@@ -29,25 +29,25 @@ class BridgeLogging {
 }
 
 /// Collects log messages and exception information during script execution.
-/// 
-/// This class captures all logging output and exceptions during a script's 
+///
+/// This class captures all logging output and exceptions during a script's
 /// execution so they can be included in the response sent back to VS Code.
 class ExecutionContext {
   final List<String> logs = [];
   String? exceptionMessage;
   String? exceptionStackTrace;
-  
+
   /// Add a log message
   void log(String message) {
     logs.add(message);
   }
-  
+
   /// Record an exception
   void recordException(Object error, StackTrace stackTrace) {
     exceptionMessage = error.toString();
     exceptionStackTrace = stackTrace.toString();
   }
-  
+
   /// Check if an exception was recorded
   bool get hasException => exceptionMessage != null;
 }
@@ -56,27 +56,26 @@ class ExecutionContext {
 ///
 /// This server communicates with the VS Code extension via stdin/stdout
 /// using a JSON-RPC-like protocol.
-/// 
+///
 /// Implements [VSCodeAdapter] to provide the bridge for VS Code API wrappers.
 class VSCodeBridgeServer implements VSCodeAdapter {
-
   final StreamController<String> _outputController = StreamController<String>();
   int _messageId = 0;
   final Map<String, Completer<dynamic>> _pendingRequests = {};
   late final D4rt _interpreter;
   late final VsCodeBridge _vsCodeBridge;
   bool _hasExecutionContext = false;
-  
+
   /// CLI integration server for Tom CLI connections
   CliIntegrationServer? _cliServer;
 
   String? _currentCallId() => Zone.current['callId'] as String?;
-  
-  static void setResult( Object? result ) {
-    final resultMap = Zone.current['result'] as Map<String,dynamic>?;
+
+  static void setResult(Object? result) {
+    final resultMap = Zone.current['result'] as Map<String, dynamic>?;
     resultMap?['result'] = result;
     final bridgeServer = Zone.current['bridgeServer'] as VSCodeBridgeServer?;
-    if( bridgeServer != null && BridgeLogging.debugLogging ) {
+    if (bridgeServer != null && BridgeLogging.debugLogging) {
       print('[SETRES] Setting script result: $result');
     }
   }
@@ -88,10 +87,9 @@ class VSCodeBridgeServer implements VSCodeAdapter {
   }
 
   VSCodeBridgeServer() {
-
-        // Initialize the static VSCode instance with this adapter
+    // Initialize the static VSCode instance with this adapter
     VSCode.initialize(this);
-    
+
     // Register VsCodeBridge for script execution
     _vsCodeBridge = VsCodeBridge();
 
@@ -101,34 +99,57 @@ class VSCodeBridgeServer implements VSCodeAdapter {
     // and dart:isolate, ensure D4rt is configured appropriately.
     // See: https://pub.dev/packages/d4rt for configuration options
     _interpreter = D4rt();
-    
+
     // Grant all permissions for VS Code bridge local development
     // This gives scripts full access to system resources
-    _interpreter.grant(FilesystemPermission.any);   // File operations (dart:io)
-    _interpreter.grant(NetworkPermission.any);      // Network connections
-    _interpreter.grant(ProcessRunPermission.any);   // Process execution
-    _interpreter.grant(IsolatePermission.any);      // Isolate operations (dart:isolate)
-    _interpreter.grant(DangerousPermission.any);    // Code evaluation, native plugins
-    
+    _interpreter.grant(FilesystemPermission.any); // File operations (dart:io)
+    _interpreter.grant(NetworkPermission.any); // Network connections
+    _interpreter.grant(ProcessRunPermission.any); // Process execution
+    _interpreter.grant(
+      IsolatePermission.any,
+    ); // Isolate operations (dart:isolate)
+    _interpreter.grant(
+      DangerousPermission.any,
+    ); // Code evaluation, native plugins
+
     // register bridges
     TomD4rtDcliBridge.register(_interpreter);
-    _interpreter.registerBridgedClass(vsCodeBridgeDefinition, 'package:vscode_bridge/vscode_bridge.dart');
-    
+    _interpreter.registerBridgedClass(
+      vsCodeBridgeDefinition,
+      'package:vscode_bridge/vscode_bridge.dart',
+    );
+
     // Register global variables for script access
     // These are available in scripts that import the vscode_bridge package
     final vsCodeInstance = VSCode.instance;
     const vsCodeLib = 'package:vscode_bridge/vscode_bridge.dart';
     _interpreter.registerGlobalVariable('vscode', vsCodeInstance, vsCodeLib);
-    _interpreter.registerGlobalVariable('window', vsCodeInstance.window, vsCodeLib);
-    _interpreter.registerGlobalVariable('workspace', vsCodeInstance.workspace, vsCodeLib);
-    _interpreter.registerGlobalVariable('commands', vsCodeInstance.commands, vsCodeLib);
-    _interpreter.registerGlobalVariable('extensions', vsCodeInstance.extensions, vsCodeLib);
+    _interpreter.registerGlobalVariable(
+      'window',
+      vsCodeInstance.window,
+      vsCodeLib,
+    );
+    _interpreter.registerGlobalVariable(
+      'workspace',
+      vsCodeInstance.workspace,
+      vsCodeLib,
+    );
+    _interpreter.registerGlobalVariable(
+      'commands',
+      vsCodeInstance.commands,
+      vsCodeLib,
+    );
+    _interpreter.registerGlobalVariable(
+      'extensions',
+      vsCodeInstance.extensions,
+      vsCodeLib,
+    );
     _interpreter.registerGlobalVariable('lm', vsCodeInstance.lm, vsCodeLib);
     _interpreter.registerGlobalVariable('chat', vsCodeInstance.chat, vsCodeLib);
-    
+
     // Log the interpreter configuration for debugging
     _logInterpreterConfigurationConcise();
-    
+
     // Note: Bridge initialization scripts (imports for other packages) should be
     // added here once bridge generation is set up for the relevant packages.
     // For now, all VS Code globals are registered above via registerGlobalVariable().
@@ -177,36 +198,36 @@ void main() {}
   }
 
   /// Logs the interpreter configuration in concise format for startup.
-  /// 
+  ///
   /// This provides a quick overview of available packages, variables, and classes.
   /// For detailed configuration, use the "DartScript: Print Configuration" command.
   void _logInterpreterConfigurationConcise() {
     final config = _interpreter.getConfiguration();
-    
+
     print('[D4RT] DartScript interpreter ready');
-    
+
     // 1. List of packages (import paths), alphabetical
     final packages = config.imports.map((i) => i.importPath).toList()..sort();
     print('[D4RT] Packages: ${packages.join(', ')}');
-    
+
     // 2. List of global variables, alphabetical
     final vars = config.globalVariables.map((v) => v.name).toList()..sort();
     if (vars.isNotEmpty) {
       print('[D4RT] Globals: ${vars.join(', ')}');
     }
-    
-    // 3. List of global getters, alphabetical  
+
+    // 3. List of global getters, alphabetical
     final getters = config.globalGetters.map((g) => g.name).toList()..sort();
     if (getters.isNotEmpty) {
       print('[D4RT] Global getters: ${getters.join(', ')}');
     }
-    
+
     // 4. List of global functions, alphabetical
     final funcs = config.globalFunctions.map((f) => f.name).toList()..sort();
     if (funcs.isNotEmpty) {
       print('[D4RT] Functions: ${funcs.join(', ')}');
     }
-    
+
     // 5. Per package: list of classes on a single line
     for (final import in config.imports) {
       final classNames = import.classes.map((c) => c.name).toList()..sort();
@@ -214,51 +235,63 @@ void main() {}
       final allTypes = [...classNames, ...enumNames];
       if (allTypes.isNotEmpty) {
         // Extract short package name from import path
-        final shortName = import.importPath.split('/').last.replaceAll('.dart', '');
+        final shortName = import.importPath
+            .split('/')
+            .last
+            .replaceAll('.dart', '');
         print('[D4RT] $shortName: ${allTypes.join(', ')}');
       }
     }
   }
 
   /// Logs the detailed interpreter configuration.
-  /// 
+  ///
   /// This is called via the "DartScript: Print Configuration" command
   /// and provides full details about all classes, methods, constructors, etc.
   void _logInterpreterConfigurationDetailed() {
     final config = _interpreter.getConfiguration();
-    
-    print('[D4RT CONFIG] ═══════════════════════════════════════════════════════');
+
+    print(
+      '[D4RT CONFIG] ═══════════════════════════════════════════════════════',
+    );
     print('[D4RT CONFIG] Detailed DartScript Configuration');
-    print('[D4RT CONFIG] ═══════════════════════════════════════════════════════');
-    
+    print(
+      '[D4RT CONFIG] ═══════════════════════════════════════════════════════',
+    );
+
     // Log imports with classes and enums
     for (final import in config.imports) {
       print('[D4RT CONFIG]');
       print('[D4RT CONFIG] Import: ${import.importPath}');
       for (final cls in import.classes) {
-        final ctors = cls.constructors.map((c) => c.isEmpty ? '""' : c).join(', ');
+        final ctors = cls.constructors
+            .map((c) => c.isEmpty ? '""' : c)
+            .join(', ');
         final methods = cls.methods.join(', ');
         final getters = cls.getters.join(', ');
         final setters = cls.setters.join(', ');
         final staticMethods = cls.staticMethods.join(', ');
         final staticGetters = cls.staticGetters.join(', ');
         final staticSetters = cls.staticSetters.join(', ');
-        
+
         print('[D4RT CONFIG]   Class: ${cls.name}');
         if (ctors.isNotEmpty) print('[D4RT CONFIG]     constructors: $ctors');
         if (methods.isNotEmpty) print('[D4RT CONFIG]     methods: $methods');
         if (getters.isNotEmpty) print('[D4RT CONFIG]     getters: $getters');
         if (setters.isNotEmpty) print('[D4RT CONFIG]     setters: $setters');
-        if (staticMethods.isNotEmpty) print('[D4RT CONFIG]     staticMethods: $staticMethods');
-        if (staticGetters.isNotEmpty) print('[D4RT CONFIG]     staticGetters: $staticGetters');
-        if (staticSetters.isNotEmpty) print('[D4RT CONFIG]     staticSetters: $staticSetters');
+        if (staticMethods.isNotEmpty)
+          print('[D4RT CONFIG]     staticMethods: $staticMethods');
+        if (staticGetters.isNotEmpty)
+          print('[D4RT CONFIG]     staticGetters: $staticGetters');
+        if (staticSetters.isNotEmpty)
+          print('[D4RT CONFIG]     staticSetters: $staticSetters');
       }
       for (final enm in import.enums) {
         final values = enm.values.join(', ');
         print('[D4RT CONFIG]   Enum: ${enm.name} = $values');
       }
     }
-    
+
     // Log global variables
     if (config.globalVariables.isNotEmpty) {
       print('[D4RT CONFIG]');
@@ -267,31 +300,33 @@ void main() {}
         print('[D4RT CONFIG]   ${v.name}: ${v.valueType}');
       }
     }
-    
+
     // Log global getters
     if (config.globalGetters.isNotEmpty) {
       final getters = config.globalGetters.map((g) => g.name).join(', ');
       print('[D4RT CONFIG]');
       print('[D4RT CONFIG] Global getters: $getters');
     }
-    
+
     // Log global functions
     if (config.globalFunctions.isNotEmpty) {
       final funcs = config.globalFunctions.map((f) => f.name).join(', ');
       print('[D4RT CONFIG]');
       print('[D4RT CONFIG] Global functions: $funcs');
     }
-    
+
     // Log permissions
     if (config.permissions.isNotEmpty) {
       final perms = config.permissions.map((p) => p.type).join(', ');
       print('[D4RT CONFIG]');
       print('[D4RT CONFIG] Permissions: $perms');
     }
-    
+
     print('[D4RT CONFIG]');
     print('[D4RT CONFIG] Debug enabled: ${config.debugEnabled}');
-    print('[D4RT CONFIG] ═══════════════════════════════════════════════════════');
+    print(
+      '[D4RT CONFIG] ═══════════════════════════════════════════════════════',
+    );
   }
 
   /// Start the bridge server
@@ -322,35 +357,48 @@ void main() {}
       if (method != null) {
         // This is a request from VS Code
         try {
-        unawaited(_handleVSCodeRequest(method, params ?? {}, idRaw));
+          unawaited(_handleVSCodeRequest(method, params ?? {}, idRaw));
         } catch (e, stackTrace) {
           if (idRaw != null) {
             _sendErrorResponse(idRaw, e.toString(), stackTrace);
           }
-        };
+        }
+        ;
       } else if (responseKey != null && message.containsKey('result')) {
         final completer = _pendingRequests.remove(responseKey);
         if (completer != null && !completer.isCompleted) {
           completer.complete(message['result']);
           if (BridgeLogging.debugLogging) {
-            print('[RSPFULL] Received response for request id: $responseKey ${jsonEncode(message)}');
+            print(
+              '[RSPFULL] Received response for request id: $responseKey ${jsonEncode(message)}',
+            );
           } else if (BridgeLogging.debugTraceLogging) {
-            print('[RSP] ← id: $responseKey (${_truncate(message['result']?.toString() ?? '', 100)})');
+            print(
+              '[RSP] ← id: $responseKey (${_truncate(message['result']?.toString() ?? '', 100)})',
+            );
           }
         } else {
-          print('[RSPNPC] Received response with no pending completer for id: $responseKey');
+          print(
+            '[RSPNPC] Received response with no pending completer for id: $responseKey',
+          );
         }
       } else if (responseKey != null && message.containsKey('error')) {
         final completer = _pendingRequests.remove(responseKey);
         if (completer != null && !completer.isCompleted) {
           completer.completeError(message['error']);
           if (BridgeLogging.debugLogging) {
-            print('[ERRFULL] Received error response for request id: $responseKey ${jsonEncode(message['error'])}');
+            print(
+              '[ERRFULL] Received error response for request id: $responseKey ${jsonEncode(message['error'])}',
+            );
           } else if (BridgeLogging.debugTraceLogging) {
-            print('[ERR] ← id: $responseKey (${_truncate(message['error']?.toString() ?? '', 100)})');
+            print(
+              '[ERR] ← id: $responseKey (${_truncate(message['error']?.toString() ?? '', 100)})',
+            );
           }
         } else {
-          print('[ERRNPC] Received error response with no pending completer for id: $responseKey');
+          print(
+            '[ERRNPC] Received error response with no pending completer for id: $responseKey',
+          );
         }
       }
     } catch (e) {
@@ -373,9 +421,7 @@ void main() {}
     final callId = id?.toString();
     return runZoned(
       () => _handleRequestInternal(method, params, id),
-      zoneValues: {
-        if (callId != null) 'callId': callId,
-      },
+      zoneValues: {if (callId != null) 'callId': callId},
       zoneSpecification: ZoneSpecification(
         print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
           // Route print to stderr for VS Code Output pane
@@ -387,7 +433,7 @@ void main() {}
 
   /// Handle a request from CLI (socket connection)
   /// Runs in a zone that redirects print() to the socket as log notifications
-  /// 
+  ///
   /// [client] The socket to send log messages to
   /// [sendLogToSocket] Callback to send log messages to the socket
   Future<Map<String, dynamic>?> handleCliRequest(
@@ -399,9 +445,7 @@ void main() {}
     final callId = id?.toString();
     return runZoned(
       () => _handleRequestInternalWithResult(method, params, id),
-      zoneValues: {
-        if (callId != null) 'callId': callId,
-      },
+      zoneValues: {if (callId != null) 'callId': callId},
       zoneSpecification: ZoneSpecification(
         print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
           // Route print to socket for CLI visibility
@@ -418,7 +462,11 @@ void main() {}
   ) async {
     final result = await _handleRequestInternalWithResult(method, params, id);
     // Response is sent inside for executeScript/executeFile/executeExpression, otherwise send here
-    if (id != null && result != null && method != 'executeScript' && method != 'executeFile' && method != 'executeExpression') {
+    if (id != null &&
+        result != null &&
+        method != 'executeScript' &&
+        method != 'executeFile' &&
+        method != 'executeExpression') {
       _sendResponse(id, result);
     }
   }
@@ -482,7 +530,9 @@ void main() {}
           // Uses D4rt's eval() method for direct expression evaluation
           final expression = params['expression'] as String?;
           if (expression == null) {
-            throw Exception('expression parameter is required for executeExpressionVcb');
+            throw Exception(
+              'expression parameter is required for executeExpressionVcb',
+            );
           }
           final evalParams = Map<String, dynamic>.from(params);
           evalParams['script'] = expression;
@@ -503,7 +553,10 @@ void main() {}
 
         case 'printConfiguration':
           _logInterpreterConfigurationDetailed();
-          result = {'success': true, 'message': 'Configuration printed to output'};
+          result = {
+            'success': true,
+            'message': 'Configuration printed to output',
+          };
           break;
 
         default:
@@ -523,7 +576,7 @@ void main() {}
   }
 
   /// Send a request to VS Code and await response
-  /// 
+  ///
   /// This implements [VSCodeAdapter.sendRequest] for the VS Code API wrappers.
   @override
   Future<Map<String, dynamic>> sendRequest(
@@ -533,16 +586,23 @@ void main() {}
     Duration timeout = const Duration(seconds: 30),
   }) {
     return sendRequestGeneric<Map<String, dynamic>>(
-      method, params,
+      method,
+      params,
       scriptName: scriptName,
       timeout: timeout,
     );
   }
 
   /// Generic version of sendRequest for internal use
-  /// 
+  ///
   /// This allows returning different types from the request.
-  Future<T> sendRequestGeneric<T>(String method, Map<String, dynamic> params,{String? scriptName, Duration timeout = const Duration(seconds: 30), String? callId}) {
+  Future<T> sendRequestGeneric<T>(
+    String method,
+    Map<String, dynamic> params, {
+    String? scriptName,
+    Duration timeout = const Duration(seconds: 30),
+    String? callId,
+  }) {
     final id = 'dart-${_messageId++}';
     final effectiveCallId = callId ?? _currentCallId();
     final completer = Completer<T>();
@@ -554,8 +614,14 @@ void main() {}
       timer = Timer(timeout, () {
         final pending = _pendingRequests.remove(id);
         if (pending != null && !pending.isCompleted) {
-          pending.completeError(TimeoutException('[B01] Request timed out: $method (id: $id, timeout: ${timeout.inSeconds}s)'));
-          print('[B01] Request timeout: $method (id: $id, timeout: ${timeout.inSeconds}s)');
+          pending.completeError(
+            TimeoutException(
+              '[B01] Request timed out: $method (id: $id, timeout: ${timeout.inSeconds}s)',
+            ),
+          );
+          print(
+            '[B01] Request timeout: $method (id: $id, timeout: ${timeout.inSeconds}s)',
+          );
         }
       });
     }
@@ -570,7 +636,9 @@ void main() {}
       'timeoutMs': timeoutMs,
     };
     if (BridgeLogging.debugLogging) {
-      print('[REQ] → $method (id: $id, callId: ${effectiveCallId ?? 'NONE'}, timeoutMs: $timeoutMs)');
+      print(
+        '[REQ] → $method (id: $id, callId: ${effectiveCallId ?? 'NONE'}, timeoutMs: $timeoutMs)',
+      );
     }
     if (BridgeLogging.debugTraceLogging) {
       print('[REQPRM] Params: ${jsonEncode(params)}');
@@ -599,15 +667,13 @@ void main() {}
   /// Send a response to a VS Code request
   void _sendResponse(Object id, dynamic result) {
     if (BridgeLogging.debugLogging) {
-      print('[SNDFULL] Sending response for id: $id with result: ${jsonEncode(result)}');
+      print(
+        '[SNDFULL] Sending response for id: $id with result: ${jsonEncode(result)}',
+      );
     } else if (BridgeLogging.debugTraceLogging) {
       print('[SND] ← id: $id (${_truncate(result?.toString() ?? '', 100)})');
     }
-    final message = {
-      'jsonrpc': '2.0',
-      'id': id,
-      'result': result,
-    };
+    final message = {'jsonrpc': '2.0', 'id': id, 'result': result};
 
     _outputController.add(jsonEncode(message));
   }
@@ -617,15 +683,12 @@ void main() {}
     final message = {
       'jsonrpc': '2.0',
       'id': id,
-      'error': {
-        'message': error,
-        'data': stackTrace?.toString(),
-      },
+      'error': {'message': error, 'data': stackTrace?.toString()},
     };
 
     _outputController.add(jsonEncode(message));
   }
-  
+
   /// Truncate a string for compact logging
   String _truncate(String s, int maxLength) {
     if (s.length <= maxLength) return s;
@@ -647,13 +710,15 @@ void main() {}
   // -------------------------------------------------------------------
 
   /// Start the CLI integration server
-  /// 
+  ///
   /// Params:
   /// - port (optional): Port to listen on. If not provided, auto-selects
   ///   an available port in the range 19900-19909.
-  Future<Map<String, dynamic>> _startCliServer(Map<String, dynamic> params) async {
+  Future<Map<String, dynamic>> _startCliServer(
+    Map<String, dynamic> params,
+  ) async {
     final requestedPort = params['port'] as int?;
-    
+
     // Check if already running
     if (_cliServer?.isRunning == true) {
       final currentPort = _cliServer!.serverPort;
@@ -669,38 +734,46 @@ void main() {}
         await _cliServer!.stop();
       }
     }
-    
+
     // If specific port requested, try only that port
     if (requestedPort != null) {
       return _tryStartCliServerOnPort(requestedPort, failOnPortInUse: true);
     }
-    
+
     // Auto-select port: try 19900-19909
     for (var port = defaultCliServerPort; port <= maxCliServerPort; port++) {
-      final result = await _tryStartCliServerOnPort(port, failOnPortInUse: false);
+      final result = await _tryStartCliServerOnPort(
+        port,
+        failOnPortInUse: false,
+      );
       if (result['success'] == true) {
         return result;
       }
       // Port in use, try next
-      if (BridgeLogging.debugLogging) print('[CLITRY] Port $port in use, trying next...');
+      if (BridgeLogging.debugLogging)
+        print('[CLITRY] Port $port in use, trying next...');
     }
-    
+
     // No ports available
     return {
       'success': false,
-      'message': 'No available ports in range $defaultCliServerPort-$maxCliServerPort',
+      'message':
+          'No available ports in range $defaultCliServerPort-$maxCliServerPort',
       'error': 'NO_PORT_AVAILABLE',
     };
   }
-  
+
   /// Try to start CLI server on a specific port
-  Future<Map<String, dynamic>> _tryStartCliServerOnPort(int port, {required bool failOnPortInUse}) async {
+  Future<Map<String, dynamic>> _tryStartCliServerOnPort(
+    int port, {
+    required bool failOnPortInUse,
+  }) async {
     try {
       _cliServer = CliIntegrationServer(this, port: port);
       await _cliServer!.start();
-      
+
       print('[CLIOK] CLI integration server started on port $port');
-      
+
       return {
         'success': true,
         'message': 'CLI server started on port $port',
@@ -719,11 +792,7 @@ void main() {}
         };
       }
       // Return failure without error logging (will try next port)
-      return {
-        'success': false,
-        'port': port,
-        'error': 'PORT_IN_USE',
-      };
+      return {'success': false, 'port': port, 'error': 'PORT_IN_USE'};
     } catch (e) {
       _cliServer = null;
       _sendError('Failed to start CLI server: $e');
@@ -735,7 +804,7 @@ void main() {}
       };
     }
   }
-  
+
   /// Stop the CLI integration server
   Future<Map<String, dynamic>> _stopCliServer() async {
     if (_cliServer == null || !_cliServer!.isRunning) {
@@ -745,13 +814,13 @@ void main() {}
         'wasRunning': false,
       };
     }
-    
+
     final port = _cliServer!.serverPort;
     await _cliServer!.stop();
     _cliServer = null;
-    
+
     print('[CLISTP] CLI integration server stopped');
-    
+
     return {
       'success': true,
       'message': 'CLI server stopped',
@@ -759,7 +828,7 @@ void main() {}
       'wasRunning': true,
     };
   }
-  
+
   /// Get CLI server status
   Map<String, dynamic> _getCliServerStatus() {
     final isRunning = _cliServer?.isRunning == true;
@@ -798,17 +867,22 @@ void main() {}
   // -------------------------------------------------------------------
 
   /// Start the Tom Process Monitor and verify all related processes are running.
-  /// 
+  ///
   /// The Process Monitor starts as a detached process at:
   /// `~/.tom/bin/darwin_arm64/Tom Process Monitor`
-  /// 
+  ///
   /// After starting, waits 3 seconds and checks if:
   /// - Process Monitor is alive
-  /// - Watcher is alive  
+  /// - Watcher is alive
   /// - Ledger Server is alive
-  Future<Map<String, dynamic>> _startProcessMonitor(Map<String, dynamic> params) async {
-    final home = Platform.environment['HOME'] ?? '/Users/${Platform.environment['USER']}';
-    final processMonitorPath = '$home/.tom/bin/darwin_arm64/Tom Process Monitor';
+  Future<Map<String, dynamic>> _startProcessMonitor(
+    Map<String, dynamic> params,
+  ) async {
+    final home =
+        Platform.environment['HOME'] ??
+        '/Users/${Platform.environment['USER']}';
+    final processMonitorPath =
+        '$home/.tom/bin/darwin_arm64/Tom Process Monitor';
     final defaultDirectory = '$home/.tom/process_monitor';
 
     // Check if Process Monitor binary exists
@@ -829,37 +903,49 @@ void main() {}
     try {
       // Start Process Monitor as a detached process
       if (BridgeLogging.debugLogging) {
-        print('[PMSTRT] Starting Tom Process Monitor from: $processMonitorPath');
+        print(
+          '[PMSTRT] Starting Tom Process Monitor from: $processMonitorPath',
+        );
         print('[PMDIR] Directory parameter: $defaultDirectory');
       }
 
-      await Process.start(
-        processMonitorPath,
-        ['--directory', defaultDirectory],
-        mode: ProcessStartMode.detached,
-      );
+      await Process.start(processMonitorPath, [
+        '--directory',
+        defaultDirectory,
+      ], mode: ProcessStartMode.detached);
 
-      if (BridgeLogging.debugLogging) print('[PMWAIT] Process Monitor started, waiting 3 seconds for processes to initialize...');
-      
+      if (BridgeLogging.debugLogging)
+        print(
+          '[PMWAIT] Process Monitor started, waiting 3 seconds for processes to initialize...',
+        );
+
       // Wait 3 seconds for processes to start
       await Future<void>.delayed(const Duration(seconds: 3));
 
       // Check aliveness of all processes
-      final processMonitorAlive = await _isProcessRunning('Tom Process Monitor');
-      final watcherAlive = await _isProcessRunning('Tom Watcher') || await _isProcessRunning('monitor_watcher');
+      final processMonitorAlive = await _isProcessRunning(
+        'Tom Process Monitor',
+      );
+      final watcherAlive =
+          await _isProcessRunning('Tom Watcher') ||
+          await _isProcessRunning('monitor_watcher');
       final ledgerServerAlive = await _isProcessRunning('Tom Ledger Server');
 
       final allAlive = processMonitorAlive && watcherAlive && ledgerServerAlive;
       final status = StringBuffer();
-      status.write('Process Monitor: ${processMonitorAlive ? "alive" : "not running"}, ');
+      status.write(
+        'Process Monitor: ${processMonitorAlive ? "alive" : "not running"}, ',
+      );
       status.write('Watcher: ${watcherAlive ? "alive" : "not running"}, ');
-      status.write('Ledger Server: ${ledgerServerAlive ? "alive" : "not running"}');
+      status.write(
+        'Ledger Server: ${ledgerServerAlive ? "alive" : "not running"}',
+      );
 
       if (BridgeLogging.debugLogging) print('[PMSTAT] Process status: $status');
 
       return {
         'success': allAlive,
-        'message': allAlive 
+        'message': allAlive
             ? 'All processes started successfully'
             : 'Some processes failed to start: $status',
         'processMonitor': {'alive': processMonitorAlive},
@@ -882,7 +968,8 @@ void main() {}
       final result = await Process.run('pgrep', ['-f', processName]);
       return result.exitCode == 0 && result.stdout.toString().trim().isNotEmpty;
     } catch (e) {
-      if (BridgeLogging.debugLogging) print('[PCHKERR] Error checking process $processName: $e');
+      if (BridgeLogging.debugLogging)
+        print('[PCHKERR] Error checking process $processName: $e');
       return false;
     }
   }
@@ -932,7 +1019,8 @@ void main() {}
       throw Exception('projectPath and prompt parameters are required');
     }
 
-    if (BridgeLogging.debugLogging) print('[DOCGEN] Generating documentation for: $projectPath');
+    if (BridgeLogging.debugLogging)
+      print('[DOCGEN] Generating documentation for: $projectPath');
 
     // Ask Copilot via VS Code (nested request to TypeScript)
     final copilotResponse = await sendRequestGeneric<String>('askCopilot', {
@@ -975,13 +1063,16 @@ void main() {}
     if (!file.existsSync()) {
       throw Exception('File does not exist: $filePath');
     }
-    
+
     final script = await file.readAsString();
-    
-    if (BridgeLogging.debugLogging) print('[FLOAD] Loaded file $filePath (${script.length} chars) for execution');
+
+    if (BridgeLogging.debugLogging)
+      print(
+        '[FLOAD] Loaded file $filePath (${script.length} chars) for execution',
+      );
 
     params['script'] = script;
-    
+
     // Set basePath to the file's directory for relative imports
     // Only set if not already provided
     if (params['basePath'] == null) {
@@ -1013,171 +1104,190 @@ void main() {}
     // Create execution context to capture logs and exceptions
     final executionContext = ExecutionContext();
 
-    if (BridgeLogging.debugLogging) print('[SEXEC] Executing Dart script (${script.length} chars)${basePath != null ? " with basePath: $basePath" : ""}');
+    if (BridgeLogging.debugLogging)
+      print(
+        '[SEXEC] Executing Dart script (${script.length} chars)${basePath != null ? " with basePath: $basePath" : ""}',
+      );
 
     // Build sources map by recursively resolving imports
     // This is a workaround for D4rt not implementing file system imports
     Map<String, String> sources = {};
     if (basePath != null) {
       final scriptUri = 'file://$basePath/__script__.dart';
-      resolveImportsRecursively(script, scriptUri, sources, BridgeLogging.debugLogging ? print : null);
+      resolveImportsRecursively(
+        script,
+        scriptUri,
+        sources,
+        BridgeLogging.debugLogging ? print : null,
+      );
     }
 
     try {
       // Initialize the bridge context with params before running the script
-      _vsCodeBridge.setExecutionContext(
-        executeParams,
-        {},
-        bridgeServer: this,
-      );
+      _vsCodeBridge.setExecutionContext(executeParams, {}, bridgeServer: this);
 
       // Use a Completer to handle the async result from the guarded zone
       final completer = Completer<Map<String, dynamic>>();
-      
+
       // Use runZonedGuarded to catch uncaught async exceptions
-      unawaited(runZonedGuarded(
-        () async {
-          if (BridgeLogging.debugLogging) print('[SEVAL] ${useEval ? "Evaluating expression" : "Executing script"}...');
-          
-          // Execute D4rt with try-catch to capture local exceptions
-          Object? rawResult;
-          try {
-            if (useEval) {
-              // Ensure an execution context exists before eval()
-              _ensureExecutionContext();
-              // Use eval() for direct expression evaluation
-              rawResult = _interpreter.eval(script);
-            } else if (basePath != null) {
-              // When basePath is provided, use library + sources approach to enable relative imports
-              // This works around D4rt's basePath not setting currentlibrary
-              final libraryUri = 'file://$basePath/__script__.dart';
-              // Add the main script to sources
-              sources[libraryUri] = script;
-              rawResult = _interpreter.execute(
-                library: libraryUri,
-                sources: sources,
-                basePath: basePath,
-                allowFileSystemImports: true,
+      unawaited(
+        runZonedGuarded(
+          () async {
+            if (BridgeLogging.debugLogging)
+              print(
+                '[SEVAL] ${useEval ? "Evaluating expression" : "Executing script"}...',
               );
-            } else {
-              rawResult = _interpreter.execute(
-                source: script,
-                allowFileSystemImports: false,
-              );
+
+            // Execute D4rt with try-catch to capture local exceptions
+            Object? rawResult;
+            try {
+              if (useEval) {
+                // Ensure an execution context exists before eval()
+                _ensureExecutionContext();
+                // Use eval() for direct expression evaluation
+                rawResult = _interpreter.eval(script);
+              } else if (basePath != null) {
+                // When basePath is provided, use library + sources approach to enable relative imports
+                // This works around D4rt's basePath not setting currentlibrary
+                final libraryUri = 'file://$basePath/__script__.dart';
+                // Add the main script to sources
+                sources[libraryUri] = script;
+                rawResult = _interpreter.execute(
+                  library: libraryUri,
+                  sources: sources,
+                  basePath: basePath,
+                  allowFileSystemImports: true,
+                );
+              } else {
+                rawResult = _interpreter.execute(
+                  source: script,
+                  allowFileSystemImports: false,
+                );
+              }
+            } catch (e, stackTrace) {
+              print('[D4RTERR] D4rt execution error: $e');
+              executionContext.recordException(e, stackTrace);
+              // Return error response with logs
+              final errorPayload = {
+                'success': false,
+                'error': e.toString(),
+                'stackTrace': stackTrace.toString(),
+                'logs': executionContext.logs,
+              };
+              if (id != null) {
+                _sendResponse(id, errorPayload);
+              }
+              if (!completer.isCompleted) {
+                completer.complete(errorPayload);
+              }
+              return;
             }
-          } catch (e, stackTrace) {
-            print('[D4RTERR] D4rt execution error: $e');
-            executionContext.recordException(e, stackTrace);
-            // Return error response with logs
-            final errorPayload = {
-              'success': false,
-              'error': e.toString(),
-              'stackTrace': stackTrace.toString(),
+
+            if (BridgeLogging.debugLogging)
+              print('[SDONE] Script executed, processing result... $rawResult');
+
+            dynamic resolved = rawResult;
+            try {
+              if (rawResult is Future) {
+                if (BridgeLogging.debugLogging)
+                  print('[SFUT] Resolving script future...');
+                // Script execution can take a very long time for AI-assisted document processing
+                // (e.g., askCopilotChat polling). Set to 48 hours to allow for long-running operations.
+                resolved = await rawResult.timeout(
+                  const Duration(hours: 48),
+                  onTimeout: () {
+                    print('[B02] Script execution timed out after 48 hours');
+                    throw TimeoutException(
+                      '[B02] Script execution timed out after 48 hours',
+                    );
+                  },
+                );
+              }
+            } catch (e, stackTrace) {
+              print('[B03] Script future completed with error: $e');
+              executionContext.recordException(e, stackTrace);
+              final errorPayload = {
+                'success': false,
+                'error': e.toString(),
+                'stackTrace': stackTrace.toString(),
+                'logs': executionContext.logs,
+              };
+              if (id != null) {
+                _sendResponse(id, errorPayload);
+              }
+              if (!completer.isCompleted) {
+                completer.complete(errorPayload);
+              }
+              return;
+            }
+
+            // For eval(), resolved is the direct expression value
+            // For execute(), the script may set a result in the zone's result map via context
+            // Use zone result if explicitly set, otherwise use the resolved rawResult
+            final zoneResultMap =
+                Zone.current['result'] as Map<String, dynamic>?;
+            final zoneResult = zoneResultMap?['result'];
+            final Object? finalResult = zoneResult ?? resolved;
+            if (BridgeLogging.debugLogging)
+              print(
+                '[SRESULT] Final result: $finalResult (zone: $zoneResult, resolved: $resolved)',
+              );
+
+            final responsePayload = {
+              'success': true,
+              'result': finalResult,
               'logs': executionContext.logs,
+              // Include exception info if one was recorded but caught internally
+              if (executionContext.hasException)
+                'exception': executionContext.exceptionMessage,
+              if (executionContext.hasException)
+                'exceptionStackTrace': executionContext.exceptionStackTrace,
             };
+
             if (id != null) {
-              _sendResponse(id, errorPayload);
+              _sendResponse(id, responsePayload);
             }
+
             if (!completer.isCompleted) {
-              completer.complete(errorPayload);
+              completer.complete(responsePayload);
             }
-            return;
-          }
-          
-          if (BridgeLogging.debugLogging) print('[SDONE] Script executed, processing result... $rawResult');
-
-          dynamic resolved = rawResult;
-          try {
-            if (rawResult is Future) {
-              if (BridgeLogging.debugLogging) print('[SFUT] Resolving script future...');
-              // Script execution can take a very long time for AI-assisted document processing
-              // (e.g., askCopilotChat polling). Set to 48 hours to allow for long-running operations.
-              resolved = await rawResult.timeout(
-                const Duration(hours: 48),
-                onTimeout: () {
-                   print('[B02] Script execution timed out after 48 hours');
-                  throw TimeoutException('[B02] Script execution timed out after 48 hours');
-                },
-              );
-            }
-          } catch (e, stackTrace) {
-            print('[B03] Script future completed with error: $e');
-            executionContext.recordException(e, stackTrace);
-            final errorPayload = {
-              'success': false,
-              'error': e.toString(),
-              'stackTrace': stackTrace.toString(),
-              'logs': executionContext.logs,
-            };
-            if (id != null) {
-              _sendResponse(id, errorPayload);
-            }
-            if (!completer.isCompleted) {
-              completer.complete(errorPayload);
-            }
-            return;
-          }
-
-          // For eval(), resolved is the direct expression value
-          // For execute(), the script may set a result in the zone's result map via context
-          // Use zone result if explicitly set, otherwise use the resolved rawResult
-          final zoneResultMap = Zone.current['result'] as Map<String, dynamic>?;
-          final zoneResult = zoneResultMap?['result'];
-          final Object? finalResult = zoneResult ?? resolved;
-          if (BridgeLogging.debugLogging) print('[SRESULT] Final result: $finalResult (zone: $zoneResult, resolved: $resolved)');
-
-          final responsePayload = {
-            'success': true,
-            'result': finalResult,
-            'logs': executionContext.logs,
-            // Include exception info if one was recorded but caught internally
-            if (executionContext.hasException) 'exception': executionContext.exceptionMessage,
-            if (executionContext.hasException) 'exceptionStackTrace': executionContext.exceptionStackTrace,
-          };
-
-          if (id != null) {
-            _sendResponse(id, responsePayload);
-          }
-
-          if (!completer.isCompleted) {
-            completer.complete(responsePayload);
-          }
-        },
-        // Error handler for uncaught async exceptions
-        (error, stackTrace) {
-          print('[SASYNC] Uncaught async exception in script: $error');
-          executionContext.recordException(error, stackTrace);
-          final errorPayload = {
-            'success': false,
-            'error': error.toString(),
-            'stackTrace': stackTrace.toString(),
-            'logs': executionContext.logs,
-          };
-          if (id != null) {
-            _sendResponse(id, errorPayload);
-          }
-          if (!completer.isCompleted) {
-            completer.complete(errorPayload);
-          }
-        },
-        zoneValues: {
-          'bridgeServer': this,
-          'executionContext': executionContext,
-          'result': <String, dynamic>{},
-          'params': executeParams,
-          if (id != null) 'callId': id.toString(),
-        },
-        // Override print to capture script output and forward to parent zone
-        zoneSpecification: ZoneSpecification(
-          print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
-            // Capture in execution context for error response logs
-            executionContext.log(line);
-            // Forward to parent zone (which routes to stderr for VS Code or socket for CLI)
-            parent.print(zone, line);
           },
+          // Error handler for uncaught async exceptions
+          (error, stackTrace) {
+            print('[SASYNC] Uncaught async exception in script: $error');
+            executionContext.recordException(error, stackTrace);
+            final errorPayload = {
+              'success': false,
+              'error': error.toString(),
+              'stackTrace': stackTrace.toString(),
+              'logs': executionContext.logs,
+            };
+            if (id != null) {
+              _sendResponse(id, errorPayload);
+            }
+            if (!completer.isCompleted) {
+              completer.complete(errorPayload);
+            }
+          },
+          zoneValues: {
+            'bridgeServer': this,
+            'executionContext': executionContext,
+            'result': <String, dynamic>{},
+            'params': executeParams,
+            if (id != null) 'callId': id.toString(),
+          },
+          // Override print to capture script output and forward to parent zone
+          zoneSpecification: ZoneSpecification(
+            print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
+              // Capture in execution context for error response logs
+              executionContext.log(line);
+              // Forward to parent zone (which routes to stderr for VS Code or socket for CLI)
+              parent.print(zone, line);
+            },
+          ),
         ),
-      ));
-      
+      );
+
       // Wait for the script to complete
       return await completer.future;
     } catch (e, stackTrace) {
