@@ -192,7 +192,7 @@ Access settings via **File > Preferences > Settings**, then search for "DartScri
 | `dartscript.maxContextSize` | `50000` | Maximum context size in tokens |
 | `dartscript.autoRunOnSave` | `false` | Automatically run scripts on save |
 | `dartscript.copilotModel` | `gpt-4o` | Preferred Copilot model |
-| `dartscript.configPath` | `~/.tom/vscode/tom_vscode_extension.json` | Path to extension config file |
+| `dartscript.configPath` | `~/.tom_ai/vscode/tom_vscode_extension.json` | Path to extension config file |
 | `dartscript.sendToChat.showNotifications` | `true` | Show notifications when sending to chat |
 | `dartscript.sendToChat.chatAnswerFolder` | `_ai/chat_replies` | Folder for chat answer files |
 
