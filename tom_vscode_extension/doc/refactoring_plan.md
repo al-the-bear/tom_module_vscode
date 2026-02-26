@@ -35,7 +35,7 @@
 |----------|---------|-------|
 | Extension ID (`name`) | `dartscript-vscode` | `tom-ai-extension` |
 | Display name | `DartScript` | `@Tom` |
-| Publisher | `tom` | `tom` |
+| Publisher | `tom` | `Peter Nicolai Alexis Kyaw` |
 | Description | "AI-powered build and documentation..." | "AI-powered workspace automation with Copilot, Local LLM, and AI Chat integration" |
 | View container label (@CHAT) | `DartScript` | `@Tom` |
 | Chat participant ID | `@dartscript` | `@tom` |
@@ -64,7 +64,7 @@ These canonical names will be used consistently across config keys, file names, 
 | Subsystem | Canonical Name | Config Key | View ID suffix | Variable prefix |
 |-----------|---------------|------------|---------------|-----------------|
 | Local LLM | `localLlm` | `localLlm` | `localLlmChatPanel` | `localLlm` |
-| AI Conversation | `conversation` | `conversation` | `conversationChatPanel` | `conversation` |
+| AI Conversation | `aiConversation` | `aiConversation` | `aiConversationChatPanel` | `aiConversation` |
 | Copilot Chat | `copilot` | `copilot` | `copilotChatPanel` | `copilot` |
 | Tom AI Chat | `tomAiChat` | `tomAiChat` | `tomAiChatChatPanel` | `tomAiChat` |
 
@@ -72,7 +72,7 @@ These canonical names will be used consistently across config keys, file names, 
 
 ## 2. Command Renaming
 
-### 2.1 Complete Command Mapping (78 commands)
+### 2.1 Complete Command Mapping (77 commands)
 
 #### Copilot Commands
 
@@ -119,11 +119,11 @@ These canonical names will be used consistently across config keys, file names, 
 
 | # | Current ID | Current Title | New ID | New Title |
 |---|-----------|---------------|--------|-----------|
-| 22 | `dartscript.startBotConversation` | DS: Start Local-Copilot Conversation | `tomAi.conversation.start` | @T: Start AI Conversation |
-| 23 | `dartscript.stopBotConversation` | DS: Stop Local-Copilot Conversation | `tomAi.conversation.stop` | @T: Stop AI Conversation |
-| 24 | `dartscript.haltBotConversation` | DS: Halt Local-Copilot Conversation | `tomAi.conversation.halt` | @T: Halt AI Conversation |
-| 25 | `dartscript.continueBotConversation` | DS: Continue Local-Copilot Conversation | `tomAi.conversation.continue` | @T: Continue AI Conversation |
-| 26 | `dartscript.addToBotConversation` | DS: Add to Local-Copilot Conversation | `tomAi.conversation.add` | @T: Add to AI Conversation |
+| 22 | `dartscript.startBotConversation` | DS: Start Local-Copilot Conversation | `tomAi.aiConversation.start` | @T: Start AI Conversation |
+| 23 | `dartscript.stopBotConversation` | DS: Stop Local-Copilot Conversation | `tomAi.aiConversation.stop` | @T: Stop AI Conversation |
+| 24 | `dartscript.haltBotConversation` | DS: Halt Local-Copilot Conversation | `tomAi.aiConversation.halt` | @T: Halt AI Conversation |
+| 25 | `dartscript.continueBotConversation` | DS: Continue Local-Copilot Conversation | `tomAi.aiConversation.continue` | @T: Continue AI Conversation |
+| 26 | `dartscript.addToBotConversation` | DS: Add to Local-Copilot Conversation | `tomAi.aiConversation.add` | @T: Add to AI Conversation |
 
 #### Tom AI Chat Commands
 
@@ -158,7 +158,7 @@ These canonical names will be used consistently across config keys, file names, 
 
 | # | Current ID | Current Title | New ID | New Title |
 |---|-----------|---------------|--------|-----------|
-| 41 | `dartscript.chordMenu.conversation` | DS: Conversation Shortcuts... | `tomAi.chordMenu.conversation` | @T: AI Conversation Shortcuts... |
+| 41 | `dartscript.chordMenu.conversation` | DS: Conversation Shortcuts... | `tomAi.chordMenu.aiConversation` | @T: AI Conversation Shortcuts... |
 | 42 | `dartscript.chordMenu.llm` | DS: Local LLM Shortcuts... | `tomAi.chordMenu.localLlm` | @T: Local LLM Shortcuts... |
 | 43 | `dartscript.chordMenu.chat` | DS: Send to Chat Shortcuts... | `tomAi.chordMenu.copilot` | @T: Copilot Shortcuts... |
 | 44 | `dartscript.chordMenu.tomAiChat` | DS: Tom AI Chat Shortcuts... | `tomAi.chordMenu.tomAiChat` | @T: Tom AI Chat Shortcuts... |
@@ -224,8 +224,7 @@ These canonical names will be used consistently across config keys, file names, 
 
 | # | Current ID | Current Title | New ID | New Title |
 |---|-----------|---------------|--------|-----------|
-| 77 | `dartscript.openInExternalApp` | DS: Open in External Application | `tomAi.openInExternalApp` | @T: Open in External Application |
-| 78 | `dartscript.openInMdViewer` | DS: Open in MD Viewer | `tomAi.openInMdViewer` | @T: Open in MD Viewer |
+| 77 | `dartscript.openInMdViewer` | DS: Open in MD Viewer | `tomAi.openInMdViewer` | @T: Open in MD Viewer |
 
 ### 2.2 Submenu Renaming
 
@@ -266,13 +265,15 @@ These canonical names will be used consistently across config keys, file names, 
 | `yamlGraph.editor` | `tomAi.yamlGraphEditor` | YAML Graph Editor | `*.flow.yaml`, `*.state.yaml`, `*.er.yaml` |
 | `questTodo.editor` | `tomAi.todoEditor` | Todo Editor | `*.todo.yaml` |
 | `trailViewer.editor` | `tomAi.trailViewer` | Trail Viewer | `*.prompts.md`, `*.answers.md` |
+| `summaryTrailViewer.editor` | `tomAi.summaryTrailViewer` | Summary Trail Viewer | `*.prompts.md`, `*.answers.md` |
+| `rawTrailViewer.editor` | `tomAi.rawTrailViewer` | Raw Trail Viewer | Individual prompt/answer trail files |
 
 ### 3.4 @CHAT Panel Tabs (inside unified panel)
 
 | Current Internal ID | Current Label | New Internal ID | New Label |
 |--------------------|--------------|-----------------|-----------|
 | `localLlmNotepad` | Local LLM | `localLlmChatPanel` | Local LLM |
-| `conversationNotepad` | AI Conversation | `conversationChatPanel` | AI Conversation |
+| `conversationNotepad` | AI Conversation | `aiConversationChatPanel` | AI Conversation |
 | `copilotNotepad` | Copilot | `copilotChatPanel` | Copilot |
 | `tomAiChatNotepad` | Tom AI Chat | `tomAiChatChatPanel` | Tom AI Chat |
 
@@ -282,7 +283,7 @@ These canonical names will be used consistently across config keys, file names, 
 |-------------|----------|--------|
 | `dsNotes-handler.ts` | `sidebarNotes-handler.ts` | Reflects sidebar notes purpose |
 | `expandPrompt-handler.ts` | `localLlm-handler.ts` | Matches canonical subsystem name |
-| `botConversation-handler.ts` | `conversation-handler.ts` | Matches canonical subsystem name |
+| `botConversation-handler.ts` | `aiConversation-handler.ts` | Matches canonical subsystem name |
 | `sendToChatAdvanced-handler.ts` | `copilotTemplates-handler.ts` | Matches what it does |
 | `unifiedNotepad-handler.ts` | `chatPanel-handler.ts` | Matches @CHAT panel |
 
@@ -297,7 +298,7 @@ These canonical names will be used consistently across config keys, file names, 
 | `Ctrl+Shift+C` | `chordMenu.conversation` | AI Conversation | `tomAi.chordMenu.copilot` | **Copilot** (C = Copilot) |
 | `Ctrl+Shift+L` | `chordMenu.llm` | Local LLM | `tomAi.chordMenu.localLlm` | Local LLM (L = Local) |
 | `Ctrl+Shift+T` | `chordMenu.tomAiChat` | Tom AI Chat | `tomAi.chordMenu.tomAiChat` | Tom AI Chat (T = Tom) |
-| `Ctrl+Shift+A` | `chordMenu.chat` | Copilot/Send to Chat | `tomAi.chordMenu.conversation` | **AI Conversation** (A = AI) |
+| `Ctrl+Shift+A` | `chordMenu.chat` | Copilot/Send to Chat | `tomAi.chordMenu.aiConversation` | **AI Conversation** (A = AI) |
 | `Ctrl+Shift+E` | `chordMenu.execute` | Execute | `tomAi.chordMenu.execute` | Execute (unchanged) |
 | `Ctrl+Shift+X` | `chordMenu.favorites` | Favorites | `tomAi.chordMenu.favorites` | Favorites (unchanged) |
 
@@ -344,12 +345,12 @@ All LM tools will use the `tomAi_` prefix.
 | 15 | `tom_manageTodo` | `tomAi_manageTodo` | Manage Todo List |
 | 16 | `dartscript_notifyUser` | `tomAi_notifyUser` | Notify User |
 | 17 | `dartscript_getWorkspaceInfo` | `tomAi_getWorkspaceInfo` | Get Workspace Info |
-| 18 | `dartscript_listTodos` | `tomAi_listTodos` | List All Quest Todos |
-| 19 | `dartscript_getAllTodos` | `tomAi_getAllTodos` | List All Quest + Session Todos |
-| 20 | `dartscript_getTodo` | `tomAi_getTodo` | Get Quest Todo |
-| 21 | `dartscript_createTodo` | `tomAi_createTodo` | Create Quest Todo |
-| 22 | `dartscript_updateTodo` | `tomAi_updateTodo` | Update Quest Todo |
-| 23 | `dartscript_moveTodo` | `tomAi_moveTodo` | Move Quest Todo |
+| 18 | `dartscript_listTodos` | `tomAi_listQuestTodos` | List All Quest Todos |
+| 19 | `dartscript_getAllTodos` | `tomAi_getAllQuestAndSessionTodos` | List All Quest + Session Todos |
+| 20 | `dartscript_getTodo` | `tomAi_getQuestTodo` | Get Quest Todo |
+| 21 | `dartscript_createTodo` | `tomAi_createQuestTodo` | Create Quest Todo |
+| 22 | `dartscript_updateTodo` | `tomAi_updateQuestTodo` | Update Quest Todo |
+| 23 | `dartscript_moveTodo` | `tomAi_moveQuestTodo` | Move Quest Todo |
 | 24 | `dartscript_windowTodo_add` | `tomAi_sessionTodo_add` | Add Session Todo |
 | 25 | `dartscript_windowTodo_list` | `tomAi_sessionTodo_list` | List Session Todos |
 | 26 | `dartscript_windowTodo_getAll` | `tomAi_sessionTodo_getAll` | Get All Session Todos |
@@ -449,20 +450,20 @@ The JSON config file (`tom_vscode_extension.json`) top-level keys are reorganize
 | 2 | `promptExpander.profiles` | `localLlm.profiles` | Under new parent |
 | 3 | `promptExpander.models` | `localLlm.models` | Under new parent |
 | 4 | `llmConfigurations` | `localLlm.configurations` | Move under subsystem |
-| 5 | `botConversation` | `conversation` | Rename to canonical |
-| 6 | `botConversation.profiles` | `conversation.profiles` | Under new parent |
-| 7 | `botConversation.selfTalk` | `conversation.selfTalk` | Under new parent |
-| 8 | `aiConversationSetups` | `conversation.setups` | Move under subsystem |
+| 5 | `botConversation` | `aiConversation` | Rename to canonical |
+| 6 | `botConversation.profiles` | `aiConversation.profiles` | Under new parent |
+| 7 | `botConversation.selfTalk` | `aiConversation.selfTalk` | Under new parent |
+| 8 | `aiConversationSetups` | `aiConversation.setups` | Move under subsystem |
 | 9 | `templates` (top-level) | `copilot.templates` | Move under subsystem |
 | 10 | `defaultTemplates` | (distributed) | Split into per-subsystem `defaultTemplate` |
 | 11 | `defaultTemplates.copilot` | `copilot.defaultTemplate` | Move under subsystem |
 | 12 | (new) | `localLlm.defaultTemplate` | Add for symmetry |
-| 13 | (new) | `conversation.defaultTemplate` | Add for symmetry |
+| 13 | (new) | `aiConversation.defaultTemplate` | Add for symmetry |
 | 14 | (new) | `tomAiChat.defaultTemplate` | Add for symmetry |
 | 15 | `tomAiChat` | `tomAiChat` | Already canonical |
 | 16 | `tomAiChat.templates` | `tomAiChat.templates` | Already correct |
-| 17 | `telegram` | `conversation.telegram` | Move under subsystem |
-| 18 | `telegramAutostart` | `conversation.telegram.autostart` | Move under subsystem |
+| 17 | `telegram` | `aiConversation.telegram` | Move under subsystem |
+| 18 | `telegramAutostart` | `aiConversation.telegram.autostart` | Move under subsystem |
 | 19 | `trail` | `trail` | Keep |
 | 20 | `trail.paths.*` | `trail.paths.*` | Reorganize (see §8) |
 | 21 | `trailCleanupDays` | `trail.cleanupDays` | Move under trail |
@@ -503,7 +504,7 @@ The JSON config file (`tom_vscode_extension.json`) top-level keys are reorganize
         "tools": {...},
         "defaultTemplate": "..."
     },
-    "conversation": {
+    "aiConversation": {
         "profiles": [...],
         "selfTalk": [...],
         "setups": [...],
@@ -527,13 +528,21 @@ The JSON config file (`tom_vscode_extension.json`) top-level keys are reorganize
 
     // Trail configuration
     "trail": {
-        "enabled": true,
-        "cleanupDays": 2,
-        "maxEntries": 1000,
-        "paths": {
-            "localLlm": "${ai}/trail/localllm",
-            "copilot": "${ai}/trail/copilot",
-            "lmApi": "${ai}/trail/lm-api"
+        "raw": {
+            "enabled": true,
+            "cleanupDays": 2,
+            "maxEntries": 1000,
+            "stripThinking": true,
+            "paths": {
+                "localLlm": "${ai}/trail/localllm",
+                "copilot": "${ai}/trail/copilot",
+                "lmApi": "${ai}/trail/lm-api"
+            }
+        },
+        "summary": {
+            "enabled": true,
+            "promptsFilePattern": "${ai}/quests/${quest}/${quest}.${subsystem}.prompts.md",
+            "answersFilePattern": "${ai}/quests/${quest}/${quest}.${subsystem}.answers.md"
         }
     },
 
@@ -589,9 +598,9 @@ class TomAiConfiguration {
     // Config path resolution (replaces getConfigPath + getConfigPathSimple)
     get configPath(): string;
 
-    // Typed section accessors
+    // Typed section accessors (read)
     getLocalLlm(): LocalLlmConfig;
-    getConversation(): ConversationConfig;
+    getAiConversation(): AiConversationConfig;
     getCopilot(): CopilotConfig;
     getTomAiChat(): TomAiChatConfig;
     getTrail(): TrailConfig;
@@ -599,6 +608,17 @@ class TomAiConfiguration {
     getTodo(): TodoConfig;
     getReminders(): RemindersConfig;
     getFavorites(): FavoriteEntry[];
+
+    // Typed section mutators (write — preserves comments via YAML AST)
+    saveLocalLlm(config: LocalLlmConfig): Promise<void>;
+    saveAiConversation(config: AiConversationConfig): Promise<void>;
+    saveCopilot(config: CopilotConfig): Promise<void>;
+    saveTomAiChat(config: TomAiChatConfig): Promise<void>;
+    saveTrail(config: TrailConfig): Promise<void>;
+    saveBridge(config: BridgeConfig): Promise<void>;
+    saveTodo(config: TodoConfig): Promise<void>;
+    saveReminders(config: RemindersConfig): Promise<void>;
+    saveFavorites(favorites: FavoriteEntry[]): Promise<void>;
 
     // Generic section accessor
     getSection<T>(key: string): T | undefined;
@@ -619,7 +639,7 @@ class TomAiConfiguration {
 ```
 
 **Key decisions:**
-- Config resolution: VS Code setting → workspace `.tom/` → `~/.tom/vscode/` → built-in defaults
+- Config resolution: VS Code setting → workspace `.tom/` → built-in defaults
 - All 15 inline `JSON.parse(fs.readFileSync(...))` patterns replaced by `TomAiConfiguration.instance.getSection()`
 - If no config file found, display a button: "Create Default Configuration"
 - `getConfigPath()` and `getConfigPathSimple()` are both removed — replaced by `TomAiConfiguration.instance.configPath`
@@ -675,25 +695,33 @@ Location: Quest folder (`${ai}/quests/<quest-id>/`)
 
 AI Conversation uses one of the above three subsystems and delegates trail writing accordingly (it already does this).
 
-### 8.5 Trail Configuration
+### 8.5 Raw Trail Configuration
 
 ```jsonc
 {
     "trail": {
-        "enabled": true,
-        "cleanupDays": 2,
-        "maxEntries": 1000,
-        "stripThinking": true,    // Setting to strip <thinking> blocks from raw trail
-        "paths": {
-            "localLlm": "${ai}/trail/localllm",
-            "copilot": "${ai}/trail/copilot",
-            "lmApi": "${ai}/trail/lm-api"
+        "raw": {
+            "enabled": true,
+            "cleanupDays": 2,
+            "maxEntries": 1000,
+            "stripThinking": true,    // Setting to strip <thinking> blocks from raw trail
+            "paths": {
+                "localLlm": "${ai}/trail/localllm",
+                "copilot": "${ai}/trail/copilot",
+                "lmApi": "${ai}/trail/lm-api"
+            }
+        },
+        "summary": {
+            "enabled": true,
+            "promptsFilePattern": "${ai}/quests/${quest}/${quest}.${subsystem}.prompts.md",
+            "answersFilePattern": "${ai}/quests/${quest}/${quest}.${subsystem}.answers.md"
         }
     }
 }
 ```
 
-Note: Profile/model suffixes are appended dynamically. The paths above are base paths.
+Note: For raw trail, profile/model suffixes are appended dynamically. The paths above are base paths.
+For summary trail, `${quest}` and `${subsystem}` are resolved at write time (e.g., `myquest.copilot.prompts.md`).
 
 ### 8.6 TrailService Class
 
@@ -748,7 +776,7 @@ Starting from workspace root. `${ai}` defaults to `_ai` and is configurable via 
 │   ├── answers/
 │   │   └── copilot/                    # Copilot chat-answer JSON files
 │   ├── attachments/                    # File attachments for prompts
-│   ├── bot_conversations/              # AI Conversation session logs
+│   ├── ai_conversations/              # AI Conversation session logs
 │   ├── chat_replies/                   # Copilot answer watcher folder (configurable)
 │   ├── clarifications/                 # User clarification files
 │   ├── clarifications_processed/       # Processed clarification files
@@ -786,6 +814,8 @@ Starting from workspace root. `${ai}` defaults to `_ai` and is configurable via 
 └── ztmp/                               # Temporary files
 ```
 
+> **Follow-up TODO:** Clarify the purpose and content boundaries of `ai_conversations/`, `local/`, and `tom_ai_chat/` folders. Currently there is overlap in what each stores — document the intended separation.
+
 ### 9.2 Path Registry (WsPaths Update)
 
 All paths centralized in the updated `WsPaths` class:
@@ -815,7 +845,7 @@ All paths centralized in the updated `WsPaths` class:
 | `copilot` | `copilot` | Copilot data |
 | `tomAiChat` | `tom_ai_chat` | Chat session files |
 | `chatReplies` | `chat_replies` | Copilot answers |
-| `botConversations` | `bot_conversations` | Conversation logs |
+| `aiConversations` | `ai_conversations` | AI Conversation logs |
 | `attachments` | `attachments` | Attachments |
 | `answersCopilot` | `answers/copilot` | Copilot answer JSONs |
 | `trail` | `trail` | Raw trail root |
@@ -899,7 +929,7 @@ interface WebviewMessage {
 // Chat panel messages
 interface ChatPanelSendMessage extends WebviewMessage {
     type: 'send';
-    panelId: 'localLlm' | 'conversation' | 'copilot' | 'tomAiChat';
+    panelId: 'localLlm' | 'aiConversation' | 'copilot' | 'tomAiChat';
     text: string;
     templateId?: string;
 }
@@ -1038,7 +1068,7 @@ All file-based persistence will use YAML format with the `yaml` package's Docume
 ### 12.3 ChatVariablesStore Changes
 
 **Current:** Per workspace via `context.workspaceState['chatVariablesStore']`  
-**New:** Per VS Code window via `${ai}/<window-id>.chatvariable.yaml`
+**New:** Per VS Code window via `${ai}/chat_variables/<window-id>.chatvariable.yaml`
 
 - `<window-id>` is from `vscode.env.sessionId` or a window-local ID
 - Cleanup: On window reload, stale files from closed windows are cleaned up
@@ -1051,14 +1081,14 @@ All workspace state keys will use the `tomAi.` prefix consistently:
 | Current Key | New Key |
 |------------|---------|
 | `llmSelectedConfig` | `tomAi.localLlm.selectedConfig` |
-| `conversationAiSetup` | `tomAi.conversation.selectedSetup` |
+| `conversationAiSetup` | `tomAi.aiConversation.selectedSetup` |
 | `qt.panelState` | `tomAi.questTodo.panelState` |
 | `qt.pendingSelect` | `tomAi.questTodo.pendingSelect` |
 | `trailEditor.pendingFocus` | `tomAi.trailEditor.pendingFocus` |
 | `copilotAutoHideDelay` | `tomAi.copilot.autoHideDelay` |
 | `WorkspaceNotepadProvider.STORAGE_KEY` | `tomAi.notes.workspaceNoteFile` |
 | `dartscript.dsNotes.localLlmDraft` | `tomAi.chatPanel.localLlm.draft` |
-| `dartscript.dsNotes.conversationDraft` | `tomAi.chatPanel.conversation.draft` |
+| `dartscript.dsNotes.conversationDraft` | `tomAi.chatPanel.aiConversation.draft` |
 | `dartscript.dsNotes.copilotDraft` | `tomAi.chatPanel.copilot.draft` |
 | `dartscript.dsNotes.tomAiChatDraft` | `tomAi.chatPanel.tomAiChat.draft` |
 | `dartscript.dsNotes.conversationLlmProfileA` | **Remove** (unused) |
@@ -1077,7 +1107,10 @@ User Input
     ↓
 Template Application (if template selected or defaultTemplate configured)
     ↓
-Variable Expansion (quest, role, activeProjects, todo, custom vars)
+Answerfile Wrapper Template Application (if sending to Copilot — wraps prompt with answer-file instructions)
+    ↓
+Variable Expansion (all extension placeholders: ${ai}, ${username}, ${quest}, ${role},
+    ${activeProjects}, ${todo}, custom vars — unified replacement logic across all subsystems)
     ↓
 Trail Logging (via TrailService — both raw and summary)
     ↓
@@ -1226,10 +1259,10 @@ Old tools (replaced by `tomAi_queue_*` / `tomAi_timed_*`):
 | # | Task | Impact |
 |---|------|--------|
 | 3.1 | Update `package.json`: extension ID, display name, publisher | Extension identity |
-| 3.2 | Rename all 78 command IDs and titles (§2) | `package.json` + all handler registrations |
+| 3.2 | Rename all 77 command IDs and titles (§2) | `package.json` + all handler registrations |
 | 3.3 | Rename all view IDs and container IDs (§3) | `package.json` + view registrations |
 | 3.4 | Rename all 20 VS Code settings (§6) | `package.json` + all settings reads |
-| 3.5 | Rename all 47 LM tool names (§5) | `package.json` + tool registrations |
+| 3.5 | Rename all 43 LM tool names (§5) | `package.json` + tool registrations |
 | 3.6 | Rename chat variable prefix → `tomAi.*` | `package.json` + variable provider |
 | 3.7 | Rename submenu IDs | `package.json` |
 | 3.8 | Update all keybindings (§4) | `package.json` |
@@ -1300,7 +1333,7 @@ Old tools (replaced by `tomAi_queue_*` / `tomAi_timed_*`):
 |---------|-----|
 | `dsNotes-handler.ts` | `sidebarNotes-handler.ts` |
 | `expandPrompt-handler.ts` | `localLlm-handler.ts` |
-| `botConversation-handler.ts` | `conversation-handler.ts` |
+| `botConversation-handler.ts` | `aiConversation-handler.ts` |
 | `sendToChatAdvanced-handler.ts` | `copilotTemplates-handler.ts` |
 | `unifiedNotepad-handler.ts` | `chatPanel-handler.ts` |
 
