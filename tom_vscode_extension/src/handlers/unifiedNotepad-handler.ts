@@ -211,7 +211,7 @@ function detectQuestFromWorkspace(): string | null {
     return null;
 }
 
-/** Get the trail folder path — uses quest directory when a quest .code-workspace is open, falls back to _ai/trail */
+/** Get the trail folder path — uses quest directory for consolidated trail files when a quest .code-workspace is open, falls back to _ai/trail */
 export function getTrailFolder(): string {
     const wsRoot = getWorkspaceRoot();
     if (!wsRoot) return '';
@@ -220,6 +220,13 @@ export function getTrailFolder(): string {
         const questFolder = WsPaths.ai('quests', questId) || path.join(wsRoot, '_ai', 'quests', questId);
         return questFolder;
     }
+    return WsPaths.ai('trail') || path.join(wsRoot, '_ai', 'trail');
+}
+
+/** Get the folder for individual trail files (userprompt.md, answer.json) — always _ai/trail */
+export function getIndividualTrailFolder(): string {
+    const wsRoot = getWorkspaceRoot();
+    if (!wsRoot) return '';
     return WsPaths.ai('trail') || path.join(wsRoot, '_ai', 'trail');
 }
 
@@ -339,8 +346,11 @@ function writePromptTrail(originalPrompt: string, templateName: string, isAnswer
             fs.mkdirSync(trailFolder, { recursive: true });
         }
         
-        // Cleanup old individual files on first write of the day
-        cleanupOldTrailFiles(trailFolder);
+        // Cleanup old individual files on first write of the day (from _ai/trail)
+        const cleanupDir = getIndividualTrailFolder();
+        if (cleanupDir) {
+            cleanupOldTrailFiles(cleanupDir);
+        }
         
         const trailPrefix = getTrailFilePrefix();
         migrateTrailFiles(trailFolder, trailPrefix);
@@ -373,9 +383,13 @@ ANSWER-WRAPPER: ${isAnswerWrapper ? 'yes' : 'no'}
         // Trim if over max entries
         trimTrailFile(promptsFile, getMaxTrailEntries());
         
-        // Also write individual file with expanded prompt
-        const individualFile = path.join(trailFolder, `${timestamp}_prompt_${requestId}.userprompt.md`);
-        fs.writeFileSync(individualFile, expandedPrompt, 'utf-8');
+        // Also write individual file with expanded prompt to _ai/trail
+        const individualDir = getIndividualTrailFolder();
+        if (individualDir) {
+            if (!fs.existsSync(individualDir)) { fs.mkdirSync(individualDir, { recursive: true }); }
+            const individualFile = path.join(individualDir, `${timestamp}_prompt_${requestId}.userprompt.md`);
+            fs.writeFileSync(individualFile, expandedPrompt, 'utf-8');
+        }
         
     } catch (e) {
         console.error('[Trail] Failed to write prompt trail:', e);
@@ -449,9 +463,13 @@ ${commentsSection}${variablesSection}${referencesSection}${attachmentsSection}
         // Trim if over max entries
         trimTrailFile(answersFile, getMaxTrailEntries());
         
-        // Also write individual JSON answer file
-        const individualFile = path.join(trailFolder, `${timestamp}_answer_${answer.requestId}.answer.json`);
-        fs.writeFileSync(individualFile, JSON.stringify(answer, null, 2), 'utf-8');
+        // Also write individual JSON answer file to _ai/trail
+        const individualDir = getIndividualTrailFolder();
+        if (individualDir) {
+            if (!fs.existsSync(individualDir)) { fs.mkdirSync(individualDir, { recursive: true }); }
+            const individualFile = path.join(individualDir, `${timestamp}_answer_${answer.requestId}.answer.json`);
+            fs.writeFileSync(individualFile, JSON.stringify(answer, null, 2), 'utf-8');
+        }
         
     } catch (e) {
         console.error('[Trail] Failed to write answer trail:', e);
