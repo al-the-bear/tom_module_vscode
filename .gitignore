@@ -298,3 +298,6 @@ bk_master.yaml
 
 # Local development folders (repo-specific - add as needed)
 # /some_local_folder/
+
+# Refactoring backup - original project copy
+tom_vscode_extension_original/
