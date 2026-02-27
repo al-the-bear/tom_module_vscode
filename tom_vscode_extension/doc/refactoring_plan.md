@@ -1413,3 +1413,21 @@ Old tools (replaced by `tomAi_queue_*` / `tomAi_timed_*`):
 | Hardcoded Ollama URLs | 9 | 0 |
 | LM tool prefix variants | 3 (`tom_`, `dartscript_`, camelCase) | 1 (`tomAi_`) |
 | Magic numbers | 30+ | 0 (centralized in constants + optionally configurable) |
+
+---
+
+## Open TODOs (Current)
+
+_Last updated: 2026-02-27_
+
+1. **Phase 3 cleanup (rename/rebrand):** finish residual legacy `dartscript.*` command/menu/non-view identifiers in manifest and code (compatibility-first removal pass).
+2. **Phase 4 migration:** complete full config key migration and trail path backward-compatibility migration.
+3. **Phase 5 parity/polish:** complete panel parity items, unified prompt pipeline rollout, and dead-code/tool dedup cleanup.
+4. **Phase 6 completion:** run full regression sweep and finalize docs refresh for renamed surfaces.
+5. **Folder-structure clarification (follow-up TODO):** document clear boundaries for `_ai/ai_conversations/`, `_ai/local/`, and `_ai/tom_ai_chat/` to remove overlap.
+6. **Documentation closeout tasks (section 16, open):**
+    - Update `extension_analysis.md` with the finalized names/structure.
+    - Update `README.md`.
+    - Update `_copilot_guidelines/` references.
+    - Update `.github/copilot-instructions.md` references.
+    - Execute and document a full regression test run across commands/panels/trail/config.
