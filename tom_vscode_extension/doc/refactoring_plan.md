@@ -2,7 +2,43 @@
 
 **Extension:** `tom-ai-extension` (renamed from `dartscript-vscode`)  
 **Date:** 26 Feb 2026  
+**Last updated:** 27 Feb 2026 (implementation status sync)  
 **Companion docs:** `extension_analysis.md`, `extension_discrepancies.md`
+
+---
+
+## Current Implementation Status (27 Feb 2026)
+
+This section tracks actual implementation progress against the plan.
+
+### Completed in code
+
+- **Pre-implementation and status checkpoints committed:** `ccbe91d`, `a7cad5a`
+- **Phase 1 (infrastructure): substantial initial implementation completed** in `0fd8e0f`:
+    - Added `FsUtils`, `constants`, `TomAiConfiguration`, `TrailService`, `BaseWebviewProvider`, `TodoProvider`, `webviewMessages`
+    - Initialized `TomAiConfiguration` + `TrailService` during extension activation
+- **Phase 2 (internal rewiring): partially completed** in `0fd8e0f`:
+    - Config path resolution rewired through `TomAiConfiguration` (with workspace-default chain)
+    - Trail toggle/load integrated with new config layer
+    - Multiple handlers moved from inline `JSON.parse(fs.readFileSync(...))` to `FsUtils.safeReadJson(...)`
+- **Phase 4 item 4.5 completed early:** configurable AI folder support in `WsPaths` (`tomAi.aiFolder`, with legacy fallback)
+
+### Verified
+
+- `npm run compile` passes after implementation batch
+- `dart analyze` passes with no issues after implementation batch
+
+### Not yet implemented (or only planned)
+
+- **Phase 3 Rename & Rebrand:** command/view/tool/settings/chat-variable prefix migration
+- **Remaining Phase 4 migration items:** full config key migration, per-window chatvariable file migration, trail path back-compat migration
+- **Phase 5 parity/polish:** panel parity items, unified prompt pipeline rollout, dead-code/tool dedup cleanup
+- **Phase 6 documentation/testing completion:** full regression sweep and docs refresh
+
+### Delivery guidance
+
+- **Do not publish this as a final release yet.**
+- Continue to end of Phases 3–5 (at minimum), then cut a single cohesive version to avoid a half-migrated external surface.
 
 ---
 
