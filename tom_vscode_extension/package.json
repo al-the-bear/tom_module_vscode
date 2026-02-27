@@ -581,11 +581,7 @@
             },
             {
                 "command": "tomAi.combined.maximizeToggle",
-                "key": "ctrl+shift+[IntlBackslash]"
-            },
-            {
-                "command": "tomAi.combined.maximizeToggle",
-                "key": "ctrl+shift+6"
+                "key": "ctrl+shift+`"
             },
             {
                 "command": "tomAi.combined.maximizeExplorer",
