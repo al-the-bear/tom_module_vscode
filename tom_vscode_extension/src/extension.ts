@@ -860,6 +860,10 @@ function registerCommandAliases(context: vscode.ExtensionContext): void {
         'tomAi.sendToLocalLlm.default': 'dartscript.sendToLocalLlm',
         'tomAi.sendToLocalLlm.template': 'dartscript.sendToLocalLlmAdvanced',
         'tomAi.sendToLocalLlm.standard': 'dartscript.sendToLocalLlmStandard',
+        'tomAi.sendToLocalLlm.expand': 'dartscript.sendToLocalLlm.expand',
+        'tomAi.sendToLocalLlm.rewrite': 'dartscript.sendToLocalLlm.rewrite',
+        'tomAi.sendToLocalLlm.detailed': 'dartscript.sendToLocalLlm.detailed',
+        'tomAi.sendToLocalLlm.annotated': 'dartscript.sendToLocalLlm.annotated',
 
         'tomAi.aiConversation.start': 'dartscript.startBotConversation',
         'tomAi.aiConversation.stop': 'dartscript.stopBotConversation',

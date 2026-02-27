@@ -64,6 +64,14 @@
             {
                 "id": "dartscript.sendToLocalLlmSubmenu",
                 "label": "DartScript: Send to local LLM..."
+            },
+            {
+                "id": "tomAi.sendToCopilotSubmenu",
+                "label": "@Tom: Send to Copilot..."
+            },
+            {
+                "id": "tomAi.sendToLocalLlmSubmenu",
+                "label": "@Tom: Send to Local LLM..."
             }
         ],
         "commands": [
@@ -468,6 +476,36 @@
                 "category": "@Tom"
             },
             {
+                "command": "tomAi.sendToCopilot.trailReminder",
+                "title": "@T: Send with Trail Reminder",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToCopilot.todoExecution",
+                "title": "@T: TODO Execution",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToCopilot.codeReview",
+                "title": "@T: Code Review",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToCopilot.explain",
+                "title": "@T: Explain Code",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToCopilot.addToTodo",
+                "title": "@T: Add to Todo",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToCopilot.fixMarkdown",
+                "title": "@T: Fix Markdown here",
+                "category": "@Tom"
+            },
+            {
                 "command": "tomAi.reloadConfig",
                 "title": "@T: Reload Configuration",
                 "category": "@Tom"
@@ -490,6 +528,31 @@
             {
                 "command": "tomAi.sendToLocalLlm.template",
                 "title": "@T: Send to Local LLM (Pick Template)",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToLocalLlm.default",
+                "title": "@T: Send to Local LLM (Default)",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToLocalLlm.expand",
+                "title": "@T: Expand Prompt",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToLocalLlm.rewrite",
+                "title": "@T: Rewrite",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToLocalLlm.detailed",
+                "title": "@T: Detailed Expansion",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToLocalLlm.annotated",
+                "title": "@T: Annotated Expansion",
                 "category": "@Tom"
             },
             {
@@ -825,7 +888,7 @@
             ],
             "editor/context": [
                 {
-                    "submenu": "dartscript.sendToChatSubmenu",
+                    "submenu": "tomAi.sendToCopilotSubmenu",
                     "group": "copilot@0"
                 },
                 {
@@ -842,7 +905,7 @@
                     "group": "copilot@3"
                 },
                 {
-                    "submenu": "dartscript.sendToLocalLlmSubmenu",
+                    "submenu": "tomAi.sendToLocalLlmSubmenu",
                     "group": "localLlm@0"
                 },
                 {
@@ -879,7 +942,7 @@
                     "group": "dartscript@10"
                 }
             ],
-            "dartscript.sendToChatSubmenu": [
+            "tomAi.sendToCopilotSubmenu": [
                 {
                     "command": "tomAi.sendToCopilot.trailReminder",
                     "group": "standard@1"
@@ -905,21 +968,21 @@
                     "group": "standard@6"
                 }
             ],
-            "dartscript.sendToLocalLlmSubmenu": [
+            "tomAi.sendToLocalLlmSubmenu": [
                 {
-                    "command": "dartscript.sendToLocalLlm.expand",
+                    "command": "tomAi.sendToLocalLlm.expand",
                     "group": "profiles@1"
                 },
                 {
-                    "command": "dartscript.sendToLocalLlm.rewrite",
+                    "command": "tomAi.sendToLocalLlm.rewrite",
                     "group": "profiles@2"
                 },
                 {
-                    "command": "dartscript.sendToLocalLlm.detailed",
+                    "command": "tomAi.sendToLocalLlm.detailed",
                     "group": "profiles@3"
                 },
                 {
-                    "command": "dartscript.sendToLocalLlm.annotated",
+                    "command": "tomAi.sendToLocalLlm.annotated",
                     "group": "profiles@4"
                 }
             ]
