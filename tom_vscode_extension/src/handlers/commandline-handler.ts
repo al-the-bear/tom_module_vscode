@@ -149,7 +149,7 @@ function getPostActionDefinitions(): PostActionDefinition[] {
 // getWorkspaceRoot() and resolvePathVariables() imported from handler_shared
 
 function getExtensionRoot(): string | undefined {
-    const ext = vscode.extensions.getExtension('tom.tom-ai-vscode');
+    const ext = vscode.extensions.getExtension('tom.tom-ai-extension');
     return ext?.extensionPath;
 }
 

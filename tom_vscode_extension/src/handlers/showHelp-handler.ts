@@ -12,7 +12,7 @@ import * as path from 'path';
  */
 export async function showHelpHandler(): Promise<void> {
     // Get the extension's installation path
-    const extension = vscode.extensions.getExtension('tom.tom-ai-vscode');
+    const extension = vscode.extensions.getExtension('tom.tom-ai-extension');
     if (!extension) {
         vscode.window.showErrorMessage('Could not find Tom AI extension');
         return;

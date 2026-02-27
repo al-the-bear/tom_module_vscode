@@ -637,7 +637,7 @@ export class DartBridgeClient {
                     break;
                 }
 
-                // Bot Conversation bridge API
+                // AI Conversation bridge API
                 case 'botConversation.getConfigVce':
                 case 'botConversation.getProfilesVce':
                 case 'botConversation.startVce':
@@ -650,7 +650,7 @@ export class DartBridgeClient {
                 case 'botConversation.singleTurnVce': {
                     const botMgr = getBotConversationManager();
                     if (!botMgr) {
-                        throw new Error('Bot Conversation manager not initialized');
+                        throw new Error('AI Conversation manager not initialized');
                     }
                     result = await botMgr.handleBridgeRequest(method, params);
                     break;

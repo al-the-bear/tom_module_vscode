@@ -550,7 +550,7 @@
                 "key": "ctrl+shift+x"
             },
             {
-                "command": "tomAi.chordMenu.aiConversation",
+                "command": "tomAi.chordMenu.copilot",
                 "key": "ctrl+shift+c",
                 "when": "!tomAi.chordMenuOpen"
             },
@@ -560,7 +560,7 @@
                 "when": "!tomAi.chordMenuOpen"
             },
             {
-                "command": "tomAi.chordMenu.copilot",
+                "command": "tomAi.chordMenu.aiConversation",
                 "key": "ctrl+shift+a",
                 "when": "!tomAi.chordMenuOpen"
             },
@@ -582,6 +582,10 @@
             {
                 "command": "tomAi.combined.maximizeToggle",
                 "key": "ctrl+shift+[IntlBackslash]"
+            },
+            {
+                "command": "tomAi.combined.maximizeToggle",
+                "key": "ctrl+shift+6"
             },
             {
                 "command": "tomAi.combined.maximizeExplorer",

@@ -103,7 +103,7 @@ let sendToChatAdvancedManager: SendToChatAdvancedManager | undefined;
 // Global manager instance for Prompt Expander
 let promptExpanderManager: PromptExpanderManager | undefined;
 
-// Global manager instance for Bot Conversation
+// Global manager instance for AI Conversation
 let botConversationManager: BotConversationManager | undefined;
 
 let instrumentationInstalled = false;
@@ -415,7 +415,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push({ dispose: () => promptExpanderManager?.dispose() });
     timeStep('promptExpanderManager', stepStart);
 
-    // Initialize Bot Conversation manager
+    // Initialize AI Conversation manager
     stepStart = performance.now();
     botConversationManager = new BotConversationManager(context);
     setBotConversationManager(botConversationManager);
@@ -668,7 +668,7 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
-    // Start Bot Conversation
+    // Start AI Conversation
     const startBotConversationCmd = vscode.commands.registerCommand(
         'tomAi.aiConversation.start',
         async () => {
@@ -676,7 +676,7 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
-    // Stop Bot Conversation
+    // Stop AI Conversation
     const stopBotConversationCmd = vscode.commands.registerCommand(
         'tomAi.aiConversation.stop',
         async () => {
@@ -684,7 +684,7 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
-    // Halt Bot Conversation
+    // Halt AI Conversation
     const haltBotConversationCmd = vscode.commands.registerCommand(
         'tomAi.aiConversation.halt',
         async () => {
@@ -692,7 +692,7 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
-    // Continue Bot Conversation
+    // Continue AI Conversation
     const continueBotConversationCmd = vscode.commands.registerCommand(
         'tomAi.aiConversation.continue',
         async () => {
@@ -700,7 +700,7 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
-    // Add to Bot Conversation
+    // Add to AI Conversation
     const addToBotConversationCmd = vscode.commands.registerCommand(
         'tomAi.aiConversation.add',
         async () => {

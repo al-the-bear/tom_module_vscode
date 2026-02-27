@@ -60,7 +60,7 @@ const QUICK_REFERENCE_COMMAND = 'tomAi.showQuickReference';
  */
 async function openQuickReference(): Promise<void> {
     // Find the extension by its ID
-    const ext = vscode.extensions.getExtension('tom.tom-ai-vscode');
+    const ext = vscode.extensions.getExtension('tom.tom-ai-extension');
     if (!ext) {
         vscode.window.showErrorMessage('Tom AI extension not found.');
         return;
@@ -93,8 +93,8 @@ const HELP_ITEM: ChordMenuItem = {
 
 const CHORD_GROUPS: Record<string, ChordGroup> = {
     conversation: {
-        title: 'Bot Conversation',
-        prefix: 'Ctrl+Shift+C',
+        title: 'AI Conversation',
+        prefix: 'Ctrl+Shift+A',
         items: [
             { key: 'b', label: 'Start Conversation', commandId: 'tomAi.aiConversation.start' },
             { key: 's', label: 'Stop Conversation', commandId: 'tomAi.aiConversation.stop' },
@@ -117,7 +117,7 @@ const CHORD_GROUPS: Record<string, ChordGroup> = {
     },
     chat: {
         title: 'Send to Copilot Chat',
-        prefix: 'Ctrl+Shift+A',
+        prefix: 'Ctrl+Shift+C',
         items: [
             { key: 'c', label: 'Send to Chat', commandId: 'tomAi.sendToCopilot' },
             { key: 's', label: 'Send to Chat (Standard)', commandId: 'tomAi.sendToCopilot.standard' },
