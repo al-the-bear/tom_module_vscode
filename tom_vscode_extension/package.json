@@ -584,6 +584,14 @@
                 "key": "ctrl+shift+`"
             },
             {
+                "command": "tomAi.combined.maximizeToggle",
+                "key": "ctrl+shift+1"
+            },
+            {
+                "command": "tomAi.combined.maximizeToggle",
+                "key": "ctrl+shift+6"
+            },
+            {
                 "command": "tomAi.combined.maximizeExplorer",
                 "key": "ctrl+shift+2"
             },
