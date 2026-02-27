@@ -912,6 +912,15 @@ function registerCommandAliases(context: vscode.ExtensionContext): void {
         'tomAi.chordMenu.execute': 'dartscript.chordMenu.execute',
         'tomAi.chordMenu.favorites': 'dartscript.chordMenu.favorites',
 
+        'tomAi.combined.maximizeToggle': 'dartscript.combined.maximizeToggle',
+        'tomAi.combined.maximizeExplorer': 'dartscript.combined.maximizeExplorer',
+        'tomAi.combined.maximizeEditor': 'dartscript.combined.maximizeEditor',
+        'tomAi.combined.maximizeChat': 'dartscript.combined.maximizeChat',
+        'tomAi.focusTomAi': 'dartscript.focusTomAI',
+        'tomAi.stateMachine.vsWindowStateFlow': 'dartscript.stateMachine.vsWindowStateFlow',
+        'tomAi.wsPanel.focus': 'dartscript.wsPanel.focus',
+        'tomAi.combined.showSideNotes': 'dartscript.combined.showSideNotes',
+
         'tomAi.editor.chatVariables': 'dartscript.openChatVariablesEditor',
         'tomAi.editor.promptQueue': 'dartscript.openQueueEditor',
         'tomAi.editor.timedRequests': 'dartscript.openTimedRequestsEditor',

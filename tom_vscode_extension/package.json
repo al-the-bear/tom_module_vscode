@@ -621,6 +621,46 @@
                 "category": "@Tom"
             },
             {
+                "command": "tomAi.combined.maximizeExplorer",
+                "title": "@T: Maximize Explorer",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.combined.maximizeEditor",
+                "title": "@T: Maximize Editor",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.combined.maximizeChat",
+                "title": "@T: Maximize Chat",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.combined.maximizeToggle",
+                "title": "@T: Toggle Maximize",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.stateMachine.vsWindowStateFlow",
+                "title": "@T: Window State Flow",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.focusTomAi",
+                "title": "@T: Focus Tom AI",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.wsPanel.focus",
+                "title": "@T: Focus Workspace Panel",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.combined.showSideNotes",
+                "title": "@T: Show Side Notes",
+                "category": "@Tom"
+            },
+            {
                 "command": "tomAi.editor.chatVariables",
                 "title": "@T: Open Chat Variables Editor",
                 "category": "@Tom"
@@ -828,27 +868,27 @@
                 "when": "!dartscript.chordMenuOpen"
             },
             {
-                "command": "dartscript.combined.maximizeToggle",
+                "command": "tomAi.combined.maximizeToggle",
                 "key": "ctrl+shift+[IntlBackslash]"
             },
             {
-                "command": "dartscript.combined.maximizeExplorer",
+                "command": "tomAi.combined.maximizeExplorer",
                 "key": "ctrl+shift+2"
             },
             {
-                "command": "dartscript.combined.maximizeEditor",
+                "command": "tomAi.combined.maximizeEditor",
                 "key": "ctrl+shift+3"
             },
             {
-                "command": "dartscript.combined.maximizeChat",
+                "command": "tomAi.combined.maximizeChat",
                 "key": "ctrl+shift+4"
             },
             {
-                "command": "dartscript.focusTomAI",
+                "command": "tomAi.focusTomAi",
                 "key": "ctrl+shift+0"
             },
             {
-                "command": "dartscript.stateMachine.vsWindowStateFlow",
+                "command": "tomAi.stateMachine.vsWindowStateFlow",
                 "key": "ctrl+shift+y"
             },
             {
@@ -856,7 +896,7 @@
                 "key": "ctrl+shift+8"
             },
             {
-                "command": "dartscript.wsPanel.focus",
+                "command": "tomAi.wsPanel.focus",
                 "key": "ctrl+shift+9"
             },
             {
@@ -864,7 +904,7 @@
                 "key": "ctrl+shift+n"
             },
             {
-                "command": "dartscript.combined.showSideNotes",
+                "command": "tomAi.combined.showSideNotes",
                 "key": "ctrl+shift+n"
             }
         ],

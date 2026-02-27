@@ -34,6 +34,7 @@ This section tracks actual implementation progress against the plan.
     - Migrated high-use `keybindings` and `menus` command references in `package.json` from `dartscript.*` to alias-backed `tomAi.*` IDs (chord menu, status page, explorer/editor context actions, and copilot submenu actions)
     - Added missing `tomAi.*` command aliases for Local LLM profile actions (`expand`/`rewrite`/`detailed`/`annotated`) to preserve compatibility during menu migration
     - Migrated submenu IDs and submenu menu trees from `dartscript.*` to `tomAi.*`, and added missing `tomAi.*` command contributions for menu-visible command titles
+    - Added alias coverage + manifest migration for remaining high-use keybinding commands (`combined.maximize*`, `focusTomAI`, `stateMachine.vsWindowStateFlow`, `wsPanel.focus`, `combined.showSideNotes`)
 
 ### Verified
 
@@ -42,7 +43,7 @@ This section tracks actual implementation progress against the plan.
 
 ### Not yet implemented (or only planned)
 
-- **Phase 3 Rename & Rebrand:** still incomplete — `package.json` migration for view IDs/settings and remaining command/menu/keybinding references is still pending; handler/view ID renames also pending
+- **Phase 3 Rename & Rebrand:** still incomplete — `package.json` migration for view IDs/settings and remaining command/menu references is still pending; handler/view ID renames also pending
 - **Remaining Phase 4 migration items:** full config key migration and trail path back-compat migration still pending
 - **Phase 5 parity/polish:** panel parity items, unified prompt pipeline rollout, dead-code/tool dedup cleanup
 - **Phase 6 documentation/testing completion:** full regression sweep and docs refresh
