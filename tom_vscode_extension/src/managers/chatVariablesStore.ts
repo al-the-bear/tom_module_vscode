@@ -9,6 +9,10 @@
  */
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import { WsPaths } from '../utils/workspacePaths';
+import { FsUtils } from '../utils/fsUtils';
 
 // ============================================================================
 // Types
@@ -80,10 +84,13 @@ export class ChatVariablesStore {
     readonly onDidChange: vscode.Event<{ key: string; value: unknown }> = this._onDidChange.event;
 
     private readonly context: vscode.ExtensionContext;
+    private readonly filePath: string;
 
     private constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.filePath = this.resolveFilePath();
         context.subscriptions.push(this._onDidChange);
+        context.subscriptions.push({ dispose: () => this.dispose() });
         this.restore();
     }
 
@@ -207,11 +214,13 @@ export class ChatVariablesStore {
             custom: { ...this._custom },
             changeLog: this._changeLog,
         };
-        this.context.workspaceState.update(WORKSPACE_STATE_KEY, snap);
+        FsUtils.safeWriteYaml(this.filePath, snap);
+        void this.context.workspaceState.update(WORKSPACE_STATE_KEY, snap);
     }
 
     private restore(): void {
-        const snap = this.context.workspaceState.get<ChatVariablesSnapshot>(WORKSPACE_STATE_KEY);
+        const snap = FsUtils.safeReadYaml<ChatVariablesSnapshot>(this.filePath)
+            ?? this.context.workspaceState.get<ChatVariablesSnapshot>(WORKSPACE_STATE_KEY);
         if (!snap) { return; }
         this._quest = snap.quest ?? '';
         this._role = snap.role ?? '';
@@ -220,6 +229,29 @@ export class ChatVariablesStore {
         this._todoFile = snap.todoFile ?? 'all';
         this._custom = snap.custom ?? {};
         this._changeLog = snap.changeLog ?? [];
+
+        if (!FsUtils.fileExists(this.filePath)) {
+            this.persist();
+        }
+    }
+
+    private resolveFilePath(): string {
+        const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const fallbackRoot = wsRoot ? path.join(wsRoot, '_ai') : path.join(process.cwd(), '_ai');
+        const chatVarsDir = WsPaths.ai('chat_variables') ?? path.join(fallbackRoot, 'chat_variables');
+        const rawId = vscode.env.sessionId || `window-${Date.now()}`;
+        const windowId = rawId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        return path.join(chatVarsDir, `${windowId}.chatvariable.yaml`);
+    }
+
+    private dispose(): void {
+        try {
+            if (fs.existsSync(this.filePath)) {
+                fs.unlinkSync(this.filePath);
+            }
+        } catch {
+            // Best-effort cleanup only.
+        }
     }
 
     /** Get a serialisable snapshot (for tests / debugging). */

@@ -448,14 +448,159 @@
                 "category": "DartScript"
             },
             {
-                "command": "dartscript.openInExternalApp",
-                "title": "DS: Open in External Application",
-                "category": "DartScript"
-            },
-            {
                 "command": "dartscript.openInMdViewer",
                 "title": "DS: Open in MD Viewer",
                 "category": "DartScript"
+            },
+            {
+                "command": "tomAi.sendToCopilot",
+                "title": "@T: Send to Copilot",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToCopilot.template",
+                "title": "@T: Send to Copilot (Pick Template)",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToCopilot.standard",
+                "title": "@T: Send to Copilot (Default Template)",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.reloadConfig",
+                "title": "@T: Reload Configuration",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToLocalLlm",
+                "title": "@T: Send to Local LLM",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.localLlm.switchModel",
+                "title": "@T: Change Local LLM Model...",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToLocalLlm.standard",
+                "title": "@T: Send to Local LLM (Default Template)",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.sendToLocalLlm.template",
+                "title": "@T: Send to Local LLM (Pick Template)",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.aiConversation.start",
+                "title": "@T: Start AI Conversation",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.aiConversation.stop",
+                "title": "@T: Stop AI Conversation",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.aiConversation.halt",
+                "title": "@T: Halt AI Conversation",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.aiConversation.continue",
+                "title": "@T: Continue AI Conversation",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.aiConversation.add",
+                "title": "@T: Add to AI Conversation",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.tomAiChat.start",
+                "title": "@T: Start Tom AI Chat",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.tomAiChat.send",
+                "title": "@T: Send Tom AI Chat Prompt",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.tomAiChat.interrupt",
+                "title": "@T: Interrupt Tom AI Chat",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.bridge.restart",
+                "title": "@T: Restart Bridge",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.bridge.switchProfile",
+                "title": "@T: Switch Bridge Profile...",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.cliServer.start",
+                "title": "@T: Start Tom CLI Integration Server",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.cliServer.stop",
+                "title": "@T: Stop Tom CLI Integration Server",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.statusPage",
+                "title": "@T: Extension Status Page",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.editor.chatVariables",
+                "title": "@T: Open Chat Variables Editor",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.editor.promptQueue",
+                "title": "@T: Open Prompt Queue Editor",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.editor.timedRequests",
+                "title": "@T: Open Timed Requests Editor",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.editor.contextSettings",
+                "title": "@T: Open Context & Settings Editor",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.editor.promptTemplates",
+                "title": "@T: Open Prompt Template Editor",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.editor.reusablePrompts",
+                "title": "@T: Open Reusable Prompt Editor",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.editor.rawTrailViewer",
+                "title": "@T: Open Raw Trail Viewer",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.editor.summaryTrailViewer",
+                "title": "@T: Open Summary Trail Viewer",
+                "category": "@Tom"
+            },
+            {
+                "command": "tomAi.openInMdViewer",
+                "title": "@T: Open in MD Viewer",
+                "category": "@Tom"
             }
         ],
         "views": {

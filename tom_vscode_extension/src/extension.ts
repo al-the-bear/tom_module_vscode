@@ -749,46 +749,6 @@ function registerCommands(context: vscode.ExtensionContext) {
         }
     );
 
-    // Open in External Application - uses externalApplications config
-    const openInExternalAppCmd = vscode.commands.registerCommand(
-        'dartscript.openInExternalApp',
-        async (uri?: vscode.Uri) => {
-            // Get the file to open
-            const filePath = uri?.fsPath || vscode.window.activeTextEditor?.document.uri.fsPath;
-            if (!filePath) {
-                vscode.window.showWarningMessage('No file selected to open');
-                return;
-            }
-            
-            const { openInExternalApplication, getExternalApplicationForFile } = await import('./handlers/handler_shared.js');
-            
-            // Check if there's a configured application
-            const app = getExternalApplicationForFile(filePath);
-            if (!app) {
-                vscode.window.showWarningMessage(
-                    `No external application configured for this file type. ` +
-                    `Configure in tom_vscode_extension.json → externalApplications.mappings`
-                );
-                return;
-            }
-            
-            if (!app.executable) {
-                vscode.window.showWarningMessage(
-                    `Executable '${app.executableName}' not configured for current platform. ` +
-                    `Configure in tom_vscode_extension.json → executables.${app.executableName}`
-                );
-                return;
-            }
-            
-            const success = await openInExternalApplication(filePath);
-            if (!success) {
-                vscode.window.showErrorMessage(
-                    `Failed to open file in ${app.label || app.executableName}`
-                );
-            }
-        }
-    );
-
     // Open in MD Viewer - dedicated command for markdown files
     const openInMdViewerCmd = vscode.commands.registerCommand(
         'dartscript.openInMdViewer',
@@ -874,7 +834,6 @@ function registerCommands(context: vscode.ExtensionContext) {
         telegramConfigureCmd,
         toggleTrailCmd,
         showStatusPageCmd,
-        openInExternalAppCmd,
         openInMdViewerCmd,
         openExtensionSettingsCmd
     );

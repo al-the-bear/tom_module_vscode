@@ -2,7 +2,7 @@
 
 **Extension:** `tom-ai-extension` (renamed from `dartscript-vscode`)  
 **Date:** 26 Feb 2026  
-**Last updated:** 27 Feb 2026 (implementation status sync)  
+**Last updated:** 27 Feb 2026 (status + implementation continuation)  
 **Companion docs:** `extension_analysis.md`, `extension_discrepancies.md`
 
 ---
@@ -13,7 +13,7 @@ This section tracks actual implementation progress against the plan.
 
 ### Completed in code
 
-- **Pre-implementation and status checkpoints committed:** `ccbe91d`, `a7cad5a`
+- **Pre-implementation/status checkpoints committed:** `ccbe91d`, `a7cad5a`, `7b63d63`
 - **Phase 1 (infrastructure): substantial initial implementation completed** in `0fd8e0f`:
     - Added `FsUtils`, `constants`, `TomAiConfiguration`, `TrailService`, `BaseWebviewProvider`, `TodoProvider`, `webviewMessages`
     - Initialized `TomAiConfiguration` + `TrailService` during extension activation
@@ -22,6 +22,15 @@ This section tracks actual implementation progress against the plan.
     - Trail toggle/load integrated with new config layer
     - Multiple handlers moved from inline `JSON.parse(fs.readFileSync(...))` to `FsUtils.safeReadJson(...)`
 - **Phase 4 item 4.5 completed early:** configurable AI folder support in `WsPaths` (`tomAi.aiFolder`, with legacy fallback)
+- **Phase 3 (rename/rebrand): partial compatibility-first rollout completed** in `22c6e9c`:
+    - Added `tomAi.*` command compatibility aliases mapping to legacy `dartscript.*` implementations
+    - Migrated major internal `executeCommand(...)` callsites to `tomAi.*` IDs (status page, unified panel, queue/timed/context editors, etc.)
+    - Updated extension identity metadata in `package.json`: `name`, `displayName`, `publisher`
+- **Additional continuation batch (current working tree / next commit):**
+    - Migrated `ChatVariablesStore` persistence from workspaceState-only to per-window YAML file: `${ai}/chat_variables/<window-id>.chatvariable.yaml` (with migration fallback)
+    - Added best-effort cleanup of current window chatvariable file on dispose
+    - Removed obsolete `dartscript.openInExternalApp` command wiring from activation and `package.json` contributes.commands
+    - Added first-class `tomAi.*` command contributions in `package.json` (palette-visible aliases), while keeping legacy command entries for compatibility during transition
 
 ### Verified
 
@@ -30,15 +39,16 @@ This section tracks actual implementation progress against the plan.
 
 ### Not yet implemented (or only planned)
 
-- **Phase 3 Rename & Rebrand:** command/view/tool/settings/chat-variable prefix migration
-- **Remaining Phase 4 migration items:** full config key migration, per-window chatvariable file migration, trail path back-compat migration
+- **Phase 3 Rename & Rebrand:** still incomplete — full `package.json` contributes migration for views/menus/keybindings/settings and handler/view ID renames still pending
+- **Remaining Phase 4 migration items:** full config key migration and trail path back-compat migration still pending
 - **Phase 5 parity/polish:** panel parity items, unified prompt pipeline rollout, dead-code/tool dedup cleanup
 - **Phase 6 documentation/testing completion:** full regression sweep and docs refresh
 
 ### Delivery guidance
 
 - **Do not publish this as a final release yet.**
-- Continue to end of Phases 3–5 (at minimum), then cut a single cohesive version to avoid a half-migrated external surface.
+- Current state is intentionally compatibility-first and transitional (new aliases + legacy IDs).
+- Continue through Phases 3–5 (at minimum), then cut a single cohesive version to avoid a half-migrated external surface.
 
 ---
 
