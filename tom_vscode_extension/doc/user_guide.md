@@ -1,4 +1,4 @@
-# DartScript Extension User Guide
+# @Tom Extension User Guide
 
 ## 1) What the extension provides
 
@@ -8,8 +8,8 @@ The extension combines VS Code automation, bridge-based scripting, Copilot workf
 
 Current bottom panel layout:
 
-- `@CHAT` (`dartscript.chatPanel`): Session Todo, Workspace Todo, Local LLM, AI Conversation, Copilot, Tom AI Chat.
-- `@WS` (`dartscript.wsPanel`): Guidelines, Documentation, Logs, Settings, Issues, Tests, Quest TODO.
+- `@CHAT` (`tomAi.chatPanel`): Session Todo, Workspace Todo, Local LLM, AI Conversation, Copilot, Tom AI Chat.
+- `@WS` (`tomAi.wsPanel`): Guidelines, Documentation, Logs, Settings, Issues, Tests, Quest TODO.
 
 Explorer adds note and todo views for session, quest, and workspace contexts.
 
@@ -19,9 +19,9 @@ Explorer adds note and todo views for session, quest, and workspace contexts.
 
 Use command palette or editor context menu:
 
-- `DS: Send to Copilot Chat`
-- `DS: Send to Copilot Chat (Standard)`
-- `DS: Send to Copilot Chat (Template)...`
+- `@T: Send to Copilot`
+- `@T: Send to Copilot (Default Template)`
+- `@T: Send to Copilot (Pick Template)`
 
 In `@CHAT`, Copilot supports templates, prompt slots, answer-file notifications, and response-value extraction.
 
@@ -29,9 +29,9 @@ In `@CHAT`, Copilot supports templates, prompt slots, answer-file notifications,
 
 Use:
 
-- `Tom AI: Start Chat`
-- `Tom AI: Send Chat Prompt`
-- `Tom AI: Interrupt Chat`
+- `@T: Start Tom AI Chat`
+- `@T: Send Tom AI Chat Prompt`
+- `@T: Interrupt Tom AI Chat`
 
 Tom AI Chat tools are initialized during activation and support workspace operations, editing actions, diagnostics, and integrations.
 
@@ -39,30 +39,30 @@ Tom AI Chat tools are initialized during activation and support workspace operat
 
 Use:
 
-- `DS: Send to local LLM`
-- `DS: Send to local LLM (Standard)`
-- `DS: Send to local LLM (Template)...`
+- `@T: Send to Local LLM`
+- `@T: Send to Local LLM (Default Template)`
+- `@T: Send to Local LLM (Pick Template)`
 
-Switch model with `DS: Change local Ollama model...`.
+Switch model with `@T: Change Local LLM Model...`.
 
 ## 4) Bridge operations
 
 Bridge and automation commands:
 
-- `DS: Restart Bridge`
-- `DS: Switch Dartscript Bridge Profile...`
-- `DS: Start Tom CLI Integration Server`
-- `DS: Stop Tom CLI Integration Server`
-- `DS: Start Tom Process Monitor`
+- `@T: Restart Bridge`
+- `@T: Switch Bridge Profile...`
+- `@T: Start Tom CLI Integration Server`
+- `@T: Stop Tom CLI Integration Server`
+- `@T: Start Process Monitor`
 
 ## 5) Status, config, and diagnostics
 
 Use:
 
-- `DS: Extension Status Page`
-- `DS: Open Extension Settings`
-- `DS: Open Config File`
-- `DS: Toggle Bridge Debug Logging`
+- `@T: Extension Status Page`
+- `@T: Open Extension Settings`
+- `@T: Open Config File`
+- `@T: Toggle Bridge Debug Logging`
 
 ## 6) YAML graph editing
 

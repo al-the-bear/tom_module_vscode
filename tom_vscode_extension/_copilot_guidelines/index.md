@@ -17,7 +17,7 @@ Type: TypeScript extension
 - [project.md](project.md)
 - [copilot_guidelines.md](copilot_guidelines.md)
 - [copilot_answers.md](copilot_answers.md)
-- [dartscript_extension_bridge.md](dartscript_extension_bridge.md)
+- [extension_bridge.md](extension_bridge.md)
 - [bridge_scripting_guide.md](bridge_scripting_guide.md)
 - [keybindings_and_commands.md](keybindings_and_commands.md)
 - [tom_ai_chat.md](tom_ai_chat.md)

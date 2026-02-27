@@ -14,10 +14,10 @@ The extension integrates three AI paths:
 
 Main commands:
 
-- `dartscript.sendToChat`
-- `dartscript.sendToChatStandard`
-- `dartscript.sendToChatAdvanced`
-- `dartscript.reloadSendToChatConfig`
+- `tomAi.sendToCopilot`
+- `tomAi.sendToCopilot.standard`
+- `tomAi.sendToCopilot.template`
+- `tomAi.reloadConfig`
 
 Unified Notepad (`@CHAT`) also supports Copilot prompt slots, template selection, answer-file polling, and response value extraction.
 
@@ -37,9 +37,9 @@ These tools are available to Tom AI Chat workflows and include model-assisted es
 
 Tom AI Chat command surface:
 
-- `dartscript.startTomAIChat`
-- `dartscript.sendToTomAIChat`
-- `dartscript.interruptTomAIChat`
+- `tomAi.tomAiChat.start`
+- `tomAi.tomAiChat.send`
+- `tomAi.tomAiChat.interrupt`
 
 Tool categories include:
 

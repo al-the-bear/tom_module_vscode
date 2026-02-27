@@ -59,11 +59,11 @@
         "submenus": [
             {
                 "id": "dartscript.sendToChatSubmenu",
-                "label": "DartScript: Send to Chat..."
+                "label": "@Tom: Send to Chat..."
             },
             {
                 "id": "dartscript.sendToLocalLlmSubmenu",
-                "label": "DartScript: Send to local LLM..."
+                "label": "@Tom: Send to Local LLM..."
             },
             {
                 "id": "tomAi.sendToCopilotSubmenu",

@@ -1,4 +1,4 @@
-# DartScript VS Code Extension Documentation
+# @Tom VS Code Extension Documentation
 
 This folder contains user-facing documentation for the `tom_vscode_extension` plugin.
 
@@ -21,5 +21,5 @@ This folder contains user-facing documentation for the `tom_vscode_extension` pl
 
 ## Panel Naming (Current)
 
-- Bottom panel `@CHAT` hosts the Unified Notepad webview (`dartscript.chatPanel`).
-- Bottom panel `@WS` hosts the workspace webview (`dartscript.wsPanel`).
+- Bottom panel `@CHAT` hosts the Unified Notepad webview (`tomAi.chatPanel`).
+- Bottom panel `@WS` hosts the workspace webview (`tomAi.wsPanel`).

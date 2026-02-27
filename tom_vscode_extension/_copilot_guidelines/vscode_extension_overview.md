@@ -124,7 +124,7 @@ Bridge commands cover restart/profile switching and optional CLI/process monitor
 
 - `architecture.md`
 - `implementation.md`
-- `dartscript_extension_bridge.md`
+- `extension_bridge.md`
 - `keybindings_and_commands.md`
 - `tom_ai_bottom_panel.md`
 - `tom_ai_chat.md`

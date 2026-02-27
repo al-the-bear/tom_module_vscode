@@ -1,9 +1,9 @@
-# DartScript Extension Quick Reference
+# @Tom Extension Quick Reference
 
 ## Bottom Panels
 
-- `@CHAT` → `dartscript.chatPanel`
-- `@WS` → `dartscript.wsPanel`
+- `@CHAT` → `tomAi.chatPanel`
+- `@WS` → `tomAi.wsPanel`
 
 ## Keybindings
 
@@ -11,26 +11,26 @@
 
 | Key | Command | Description |
 |-----|---------|-------------|
-| `Ctrl+Shift+0` | `dartscript.focusTomAI` | Focus `@CHAT` panel |
-| `Ctrl+Shift+9` | `dartscript.wsPanel.focus` | Focus `@WS` panel |
-| `Ctrl+Shift+8` | `dartscript.showStatusPage` | Open status page |
-| `Ctrl+Shift+Y` | `dartscript.stateMachine.vsWindowStateFlow` | Window state flow |
-| `Ctrl+Shift+N` | `dartscript.combined.showSideNotes` | Show side notes |
-| `Ctrl+Shift+\` | `dartscript.combined.maximizeToggle` | Maximize toggle |
-| `Ctrl+Shift+2` | `dartscript.combined.maximizeExplorer` | Maximize explorer |
-| `Ctrl+Shift+3` | `dartscript.combined.maximizeEditor` | Maximize editor |
-| `Ctrl+Shift+4` | `dartscript.combined.maximizeChat` | Maximize chat |
+| `Ctrl+Shift+0` | `tomAi.focusChatPanel` | Focus `@CHAT` panel |
+| `Ctrl+Shift+9` | `tomAi.wsPanel.focus` | Focus `@WS` panel |
+| `Ctrl+Shift+8` | `tomAi.statusPage` | Open status page |
+| `Ctrl+Shift+Y` | `tomAi.layout.windowStateFlow` | Window state flow |
+| `Ctrl+Shift+N` | `tomAi.showSidebarNotes` | Show sidebar notes |
+| `Ctrl+Shift+\` | `tomAi.layout.maximizeToggle` | Maximize toggle |
+| `Ctrl+Shift+2` | `tomAi.layout.maximizeExplorer` | Maximize explorer |
+| `Ctrl+Shift+3` | `tomAi.layout.maximizeEditor` | Maximize editor |
+| `Ctrl+Shift+4` | `tomAi.layout.maximizeChat` | Maximize chat |
 
 ### Chord Menus
 
 | Key | Command | Description |
 |-----|---------|-------------|
-| `Ctrl+Shift+C` | `dartscript.chordMenu.conversation` | Conversation menu |
-| `Ctrl+Shift+L` | `dartscript.chordMenu.llm` | Local LLM menu |
-| `Ctrl+Shift+A` | `dartscript.chordMenu.chat` | Send-to-chat menu |
-| `Ctrl+Shift+T` | `dartscript.chordMenu.tomAiChat` | Tom AI chat menu |
-| `Ctrl+Shift+E` | `dartscript.chordMenu.execute` | Execute menu |
-| `Ctrl+Shift+X` | `dartscript.chordMenu.favorites` | Favorites menu |
+| `Ctrl+Shift+C` | `tomAi.chordMenu.copilot` | Copilot menu |
+| `Ctrl+Shift+L` | `tomAi.chordMenu.localLlm` | Local LLM menu |
+| `Ctrl+Shift+A` | `tomAi.chordMenu.aiConversation` | AI Conversation menu |
+| `Ctrl+Shift+T` | `tomAi.chordMenu.tomAiChat` | Tom AI chat menu |
+| `Ctrl+Shift+E` | `tomAi.chordMenu.execute` | Execute menu |
+| `Ctrl+Shift+X` | `tomAi.chordMenu.favorites` | Favorites menu |
 
 ## Explorer Views
 
@@ -43,56 +43,56 @@
 
 ## Core AI Commands
 
-- `dartscript.sendToChat`
-- `dartscript.sendToChatStandard`
-- `dartscript.sendToChatAdvanced`
-- `dartscript.startTomAIChat`
-- `dartscript.sendToTomAIChat`
-- `dartscript.interruptTomAIChat`
-- `dartscript.sendToLocalLlm`
-- `dartscript.sendToLocalLlmAdvanced`
+- `tomAi.sendToCopilot`
+- `tomAi.sendToCopilot.standard`
+- `tomAi.sendToCopilot.template`
+- `tomAi.tomAiChat.start`
+- `tomAi.tomAiChat.send`
+- `tomAi.tomAiChat.interrupt`
+- `tomAi.sendToLocalLlm`
+- `tomAi.sendToLocalLlm.template`
 
 ## Bridge and Runtime Commands
 
-- `dartscript.restartBridge`
-- `dartscript.switchBridgeProfile`
-- `dartscript.startCliServer`
-- `dartscript.stopCliServer`
-- `dartscript.startProcessMonitor`
+- `tomAi.bridge.restart`
+- `tomAi.bridge.switchProfile`
+- `tomAi.cliServer.start`
+- `tomAi.cliServer.stop`
+- `tomAi.startProcessMonitor`
 
 ## Utility Commands
 
-- `dartscript.showStatusPage`
-- `dartscript.showQuickReference`
-- `dartscript.openConfig`
-- `dartscript.openExtensionSettings`
+- `tomAi.statusPage`
+- `tomAi.showQuickReference`
+- `tomAi.openConfig`
+- `tomAi.openSettings`
 
 ## Custom Editors (file-bound)
 
 | Editor | View Type | File Patterns | Priority |
 |--------|-----------|---------------|----------|
-| YAML Graph Editor | `yamlGraph.editor` | `*.flow.yaml`, `*.state.yaml`, `*.er.yaml` | default |
-| Quest TODO Editor | `questTodo.editor` | `*.todo.yaml` | option |
-| Trail Viewer | `trailViewer.editor` | `*.prompts.md`, `*.answers.md` | default |
+| YAML Graph Editor | `tomAi.yamlGraphEditor` | `*.flow.yaml`, `*.state.yaml`, `*.er.yaml` | default |
+| Quest TODO Editor | `tomAi.todoEditor` | `*.todo.yaml` | option |
+| Trail Viewer | `tomAi.trailViewer` | `*.prompts.md`, `*.answers.md` | default |
 
 ## Standalone Webview Panels (command-opened)
 
 | Panel | View Type | Opened Via |
 |-------|-----------|------------|
-| Status Page | `tomStatusPage` | `dartscript.showStatusPage` |
-| Prompt Trail Viewer | `dartscript.trailViewer` | `dartscript.openTrailViewer` |
-| Prompt Queue | `dartscript.queueEditor` | `dartscript.openQueueEditor` |
-| Timed Requests | `dartscript.timedRequestsEditor` | `dartscript.openTimedRequestsEditor` |
-| Prompt Template Editor | `dartscript.globalTemplateEditor` | `dartscript.openGlobalTemplateEditor` |
-| Reusable Prompt Editor | `dartscript.reusablePromptEditor` | `dartscript.openReusablePromptEditor` |
-| Context & Settings | `dartscript.contextSettingsEditor` | `dartscript.openContextSettingsEditor` |
-| Chat Variables | `chatVariablesEditor` | `dartscript.openChatVariablesEditor` |
-| Quest TODO Pop-out | `questTodoEditor` | Pop-out from sidebar |
-| Markdown Preview | `dartscriptMarkdownHtmlPreview` | Internal preview |
+| Status Page | `tomStatusPage` | `tomAi.statusPage` |
+| Prompt Trail Viewer | `tomAi.trailViewer` | `tomAi.editor.rawTrailViewer` |
+| Prompt Queue | `tomAi.queueEditor` | `tomAi.editor.promptQueue` |
+| Timed Requests | `tomAi.timedRequestsEditor` | `tomAi.editor.timedRequests` |
+| Prompt Template Editor | `tomAi.globalTemplateEditor` | `tomAi.editor.promptTemplates` |
+| Reusable Prompt Editor | `tomAi.reusablePromptEditor` | `tomAi.editor.reusablePrompts` |
+| Context & Settings | `tomAi.contextSettingsEditor` | `tomAi.editor.contextSettings` |
+| Chat Variables | `tomAi.chatVariablesEditor` | `tomAi.editor.chatVariables` |
+| Quest TODO Pop-out | `tomAi.questTodoEditor` | Pop-out from sidebar |
+| Markdown Preview | `tomAi.markdownHtmlPreview` | Internal preview |
 
 ## Bottom Panel Sub-sections
 
-### @CHAT (`dartscript.chatPanel`)
+### @CHAT (`tomAi.chatPanel`)
 
 | Section | Icon | Description |
 |---------|------|-------------|
@@ -101,7 +101,7 @@
 | Copilot | `codicon-copilot` | Copilot integration |
 | Tom AI Chat | `codicon-comment-discussion-sparkle` | Tom AI chat interface |
 
-### @WS (`dartscript.wsPanel`)
+### @WS (`tomAi.wsPanel`)
 
 | Section | Icon | Description |
 |---------|------|-------------|

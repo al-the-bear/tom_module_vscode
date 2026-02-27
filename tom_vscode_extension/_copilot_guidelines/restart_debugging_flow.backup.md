@@ -4,9 +4,9 @@ Backup reference for extension runtime troubleshooting.
 
 ## Fast path
 
-1. `DS: Restart Bridge`
-2. `DS: Extension Status Page`
-3. `DS: Toggle Bridge Debug Logging`
+1. `@T: Restart Bridge`
+2. `@T: Extension Status Page`
+3. `@T: Toggle Bridge Debug Logging`
 4. Reload window if necessary
 
 ## If issue persists

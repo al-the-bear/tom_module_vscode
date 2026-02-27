@@ -1,6 +1,8 @@
-# DartScript VS Code Extension — Discrepancies & Improvement Opportunities
+# @Tom VS Code Extension — Discrepancies & Improvement Opportunities
 
-**Extension:** `dartscript-vscode` v0.1.0  
+> **Note:** This document is a pre-migration snapshot. Command and setting IDs referenced here use the legacy `dartscript.*` namespace. See `refactoring_plan.md` for the canonical `tomAi.*` mappings.
+
+**Extension:** `tom-ai-extension` (formerly `dartscript-vscode`) v0.1.0  
 **Companion doc:** `extension_analysis.md`  
 **Date:** 26 Feb 2026
 

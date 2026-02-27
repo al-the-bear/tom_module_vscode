@@ -1,4 +1,4 @@
-# DartScript Extension Bridge
+# Extension Bridge
 
 ## Role
 

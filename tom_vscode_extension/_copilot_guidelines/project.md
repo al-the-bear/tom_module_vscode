@@ -36,7 +36,7 @@ Maintainer docs:
 - `vscode_extension_overview.md`
 - `architecture.md`
 - `implementation.md`
-- `dartscript_extension_bridge.md`
+- `extension_bridge.md`
 
 ## Current naming conventions
 
