@@ -85,11 +85,16 @@ if (-not (Get-Command vsce -ErrorAction SilentlyContinue)) {
     npm install -g @vscode/vsce
 }
 
-# Uninstall old version
+# Uninstall old version(s)
 Write-Host ""
 Write-Host "🗑️  Uninstalling old version..." -ForegroundColor Yellow
 try {
     & code --uninstall-extension tom.dartscript-vscode 2>&1 | Out-Null
+} catch {
+    # Ignore errors if extension was not installed
+}
+try {
+    & code --uninstall-extension tom.tom-ai-extension 2>&1 | Out-Null
 } catch {
     # Ignore errors if extension was not installed
 }

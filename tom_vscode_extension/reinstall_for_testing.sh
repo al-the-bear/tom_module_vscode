@@ -94,10 +94,11 @@ else
     VSCE_CMD="npx --yes @vscode/vsce"
 fi
 
-# Uninstall old version
+# Uninstall old version(s)
 echo ""
 echo "🗑️  Uninstalling old version..."
 "$CODE_CLI" --uninstall-extension tom.dartscript-vscode 2>/dev/null || true
+"$CODE_CLI" --uninstall-extension tom.tom-ai-extension 2>/dev/null || true
 
 # Remove old VSIX files to prevent stale packaging
 rm -f *.vsix

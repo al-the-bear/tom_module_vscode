@@ -3,7 +3,7 @@
     "displayName": "@Tom",
     "description": "AI-powered build and documentation automation for Tom workspace with Copilot integration",
     "version": "0.1.0",
-    "publisher": "Peter Nicolai Alexis Kyaw",
+    "publisher": "tom",
     "engines": {
         "vscode": "^1.96.0"
     },
